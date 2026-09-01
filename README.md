@@ -9,8 +9,17 @@ It measures both **agent capability** (pass@k, oracle stages, research navigatio
 
 Every trial runs inside a real, disposable Daytona sandbox — nothing here is simulated. `results.json` stays a not-yet-run schema template until an actual trial has completed against the live Daytona and provider APIs.
 
+## Daytona adapter security and CLI
+
+GYMSIEGE's Daytona adapter layers its own containment on top of each upstream benchmark rather than trusting either alone. Every trial runs in a disposable, per-trial sandbox restored from a pinned snapshot; provider API keys reach it only via Daytona organization Secrets through `update_secrets` (never in `create()` parameters or logs); and `set_ttl` plus a `finally`-block `delete()` guarantee cleanup even on crash, with `orchestrator.py reap` as the backstop for anything that leaks. For ExploitGym specifically, `exploitgym_adapter.py` keeps the upstream evaluator's own two-network Docker firewall and retrieval-blocking LLM proxy live for the entire agent phase — hardcoded (`upstream_firewall=True`, no CLI flag disables it) — then independently calls `update_network_settings(network_block_all=True)` at the Daytona layer immediately after the evaluator returns, before any result or artifact is read.
+
+`orchestrator.py` is the single CLI entrypoint for the fleet, exposing five subcommands: `run` and `sweep` (CyberGym), `provision-bench` and `reap` (infrastructure), and `exploitgym-run` — the newest addition, which fans ExploitGym trials across the fleet under a bounded `--max-parallel` semaphore and writes live pass@1/pass@k results to `results/exploitgym_results.json` as each trial completes. See [ExploitGym protocol](#exploitgym-protocol) below for its flags and defaults.
+
+See [`daytona-notes.md`](daytona-notes.md) for a deeper walkthrough of the ARVO sanitizer oracle, the 60-minute safety TTL, the nested-container TLS/egress issue hit while baking the ExploitGym snapshot (and its workaround), and how the bake is monitored via read-only `list()` calls instead of overlapping sandboxes. `DAYTONA_BAKE_ISSUE.md` is the underlying support prompt that issue was filed under.
+
 ## Contents
 
+- [Daytona adapter security and CLI](#daytona-adapter-security-and-cli)
 - [How it fits together](#how-it-fits-together)
 - [Files](#files)
 - [Requirements](#requirements)
@@ -72,7 +81,7 @@ Generated/ignored at runtime (not committed): `.venv/`, `data/`, `artifacts/`, `
 
 - Python 3.11+ (tested against 3.11.9)
 - A [Daytona](https://www.daytona.io/) account and API key
-- An LLM provider key for whichever solver backend you run (OpenAI, Anthropic, or a LiteLLM/Bedrock deployment)
+- An OpenAI API key for ExploitGym and a LiteLLM route to OpenAI GPT models for CyberGym-E2E
 - Real API quota on both Daytona and the chosen LLM provider — every command in this README talks to live services and consumes it
 
 ## Local setup and credentials
@@ -87,25 +96,22 @@ Developer-local values belong in the git-ignored `.env.local`:
 ```dotenv
 DAYTONA_API_KEY=...
 OPENAI_API_KEY=...
-# Optional, for CyberGym's native Anthropic backend:
-ANTHROPIC_API_KEY=...
 ```
 
 Non-secret vault *names* are committed in `.env.defaults`. Copy local provider values into Daytona's organization vault once:
 
 ```bash
 .venv/bin/python configure_secrets.py openai
-# Optional:
-.venv/bin/python configure_secrets.py anthropic
 ```
 
 Existing secrets are reused; pass `--replace` only when deliberately rotating a value. Sandboxes receive mappings such as `OPENAI_API_KEY -> gymsiege-openai` through `update_secrets` — plaintext values are never placed in sandbox-create parameters or logs.
 
-CyberGym upstream doesn't currently accept a direct OpenAI provider the way ExploitGym does. For CyberGym, use its Anthropic backend or a LiteLLM deployment:
+CyberGym upstream doesn't currently accept a direct OpenAI provider the way ExploitGym does. This experiment fixes the runtime to Codex and routes its GPT model through a LiteLLM deployment:
 
 ```dotenv
 LITELLM_BASE_URL=https://your-litellm.example
 GYMSIEGE_LITELLM_SECRET_NAME=gymsiege-litellm
+LITELLM_MASTER_KEY=...
 ```
 
 ## CyberGym-E2E protocol
@@ -131,7 +137,13 @@ The upstream agent first performs its normal network-attached LLM loop. After it
 
 ## ExploitGym protocol
 
+[ExploitGym](https://github.com/sunblaze-ucb/exploitgym) ships its own agent runtimes and firewall dependencies — a two-network Docker firewall plus a local LLM proxy that blocks provider-side external retrieval — which GYMSIEGE bakes straight into the `gymsiege-exploitgym` snapshot rather than reimplementing. Upstream, the benchmark totals 869 tasks split across three families — userspace, V8, and kernel — of which a 20-task official sample is meant for lightweight evaluation; GYMSIEGE's default `exploitgym_tasks.pinned.txt` narrows that further to ten userspace-only tasks. Every trial runs the upstream evaluator with its `--use-firewall` flag mandatory and hardcoded, so the agent has no direct network egress even before GYMSIEGE's own post-run `network_block_all` is applied. Kernel and V8 tasks stay opt-in only, since they need matching hardware/KVM and image support the default userspace snapshot doesn't provide.
+
 The default is deliberately bounded to the ten official userspace sample tasks. It uses `exp.hardened`, upstream `--use-firewall`, the local LLM proxy (which blocks provider-side external retrieval), model allowlisting, a per-task budget, and `keep_container=false`. Generated exploit payloads remain inside the Daytona sandbox; only `result.json`, `task.log`, usage, and telemetry are downloaded.
+
+The corresponding image tags are frozen in `exploitgym_images.pinned.txt`.
+ExploitGym resolves them in `scripts/setup/pull_images.py` from each task's
+`images["exp.hardened"]` mapping in `src/cybergym/task/metadata.json`.
 
 ```bash
 # One-time public harness/runtime/image snapshot.
@@ -140,13 +152,17 @@ The default is deliberately bounded to the ten official userspace sample tasks. 
 # One-task validation with the existing OpenAI vault secret.
 .venv/bin/python orchestrator.py exploitgym-run \
   --limit 1 --k 1 --max-parallel 1 \
-  --agent codex --model gpt-5.3-codex --budget-usd 5
+  --agent codex --model gpt-5.6-luna --budget-usd 5
 
 # Ten-task pass@3 run.
 .venv/bin/python orchestrator.py exploitgym-run \
   --k 3 --max-parallel 2 \
-  --agent codex --model gpt-5.3-codex --budget-usd 5
+  --agent codex --model gpt-5.6-luna --budget-usd 5
 ```
+
+`--model` accepts `gpt-5.6-luna` (default), `gpt-5.6-sol`, and
+`gpt-daybreak-blue-latest`. The latter is an approved-project alias for
+`gpt-5.6-sol`; the model string does not itself grant Daybreak access.
 
 Kernel and V8 tasks are excluded by default because they change hardware/KVM and image requirements — a custom compatible snapshot plus `--allow-non-userspace` is required to opt in, and the hardened flags remain enforced regardless.
 
@@ -167,6 +183,10 @@ ExploitGym's agent interaction must retain LLM connectivity, so its containment 
 ```
 
 The dashboard combines the CyberGym and ExploitGym leaderboards, the concurrency failure curve, provisioning p50/p95, per-sandbox CPU/memory time-series, results, and CyberGym recordings. Publication uploads a point-in-time snapshot; re-run `--publish --sandbox-id ID` to refresh an existing dashboard sandbox in place.
+
+Example of a running sandbox as seen on the Daytona platform:
+
+![Daytona sandbox traces](assets/sandb_traces001.png)
 
 ## Metrics and interpretation
 
