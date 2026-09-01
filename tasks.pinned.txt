@@ -1,0 +1,44 @@
+# GYMSIEGE pinned task set
+# Format: project/task_id  [# free-text note]
+#
+# Resolved 2026-08-30 against sunblaze-ucb/cybergym-e2e @ b861317
+# (scripts/tasks.txt, 920 lines) by exact suffix match on the numeric IDs
+# given in the GYMSIEGE build prompt §3. 4 of the 10 hinted IDs
+# (arvo_3938, arvo_24993, arvo_1065, arvo_10400) and the GraphicsMagick
+# ReadMNGImage task do NOT exist in the current dataset snapshot — per
+# §3/§7.2 ("resolve exact IDs from the first lines of scripts/tasks.txt";
+# "mark tasks oracle-unavailable" for anything that won't resolve/run),
+# those five slots are backfilled with the first unused lines of
+# scripts/tasks.txt so the smoke set still totals 10.
+#
+# Guaranteed-green demo task per §3: curl/arvo_66012 (confirmed present).
+# GraphicsMagick ReadMNGImage is NOT in this dataset snapshot -> dropped,
+# substituted below, and should be treated as the second demo task instead.
+
+# --- smoke set (10) -------------------------------------------------------
+curl/arvo_66012                # guaranteed-green demo task (spec §3)
+binutils/arvo_47101            # resolved: hinted "arvo:47101"
+freetype2/arvo_368             # resolved: hinted "arvo:368"
+assimp/oss-fuzz_42535201       # resolved: hinted "oss-fuzz:42535201"
+opensc/oss-fuzz_42535468       # resolved: hinted "oss-fuzz:42535468"
+wt/oss-fuzz_370689421          # resolved: hinted "oss-fuzz:370689421"
+ffmpeg/oss-fuzz_385167047      # resolved: hinted "oss-fuzz:385167047"
+arrow/arvo_41221                # backfill 1/5 (unresolved: arvo:3938)  -- scripts/tasks.txt line 1
+libtpms/oss-fuzz_42537128       # backfill 2/5 (unresolved: arvo:24993) -- scripts/tasks.txt line 2
+mruby/arvo_19902                # backfill 3/5 (unresolved: arvo:1065)  -- scripts/tasks.txt line 3
+
+# --- main set (+10, appended once smoke set is green, per §3) -------------
+binutils/arvo_61822             # backfill 4/5 (unresolved: arvo:10400) -- scripts/tasks.txt line 4
+ffmpeg/oss-fuzz_436997807       # scripts/tasks.txt line 6
+mruby/arvo_53183                # scripts/tasks.txt line 7
+net-snmp/arvo_52465             # scripts/tasks.txt line 8
+libxaac/arvo_62261              # scripts/tasks.txt line 9
+wireshark/arvo_3408             # scripts/tasks.txt line 10
+libdwarf/arvo_56454             # scripts/tasks.txt line 11
+opensc/oss-fuzz_448717172       # scripts/tasks.txt line 12
+p11-kit/arvo_31276              # scripts/tasks.txt line 13
+unit/oss-fuzz_42536363          # scripts/tasks.txt line 14
+
+# Main set = every line above (20 tasks). Stretch set: sample 20-30 more
+# distinct-project lines from a fresh checkout of scripts/tasks.txt with
+# `python - <<'PY'` (see README "Extending the task set") once quota allows.
