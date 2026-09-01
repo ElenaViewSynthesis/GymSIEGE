@@ -1,0 +1,19 @@
+# GYMSIEGE orchestrator dependencies (run locally, NOT inside the sandbox)
+daytona>=0.207.0
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+httpx>=0.27.0
+pydantic>=2.8.0
+python-dotenv>=1.0.1
+rich>=13.7.0
+
+# Mirrors cybergym-e2e's own requirements (installed *inside* each sandbox by
+# snapshot_build.py, listed here too so `pip install -r requirements.txt`
+# is enough to develop/lint this repo locally).
+tomli>=2.0.1
+tomli_w>=1.0.0
+anthropic>=0.40.0
+openai>=1.50.0
+boto3>=1.35.0
+huggingface_hub>=0.25.0
+docker>=7.1.0

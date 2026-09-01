@@ -1,0 +1,16 @@
+{
+  "status": "not yet run",
+  "note": "This is the schema template, not a fabricated result. orchestrator.py overwrites it atomically as real CyberGym trials complete. Credentials are configured, but no live benchmark trial has completed yet.",
+  "generated_at": null,
+  "config": {
+    "tasks_file": "tasks.pinned.txt",
+    "k": null,
+    "modes": [],
+    "max_parallel": null,
+    "provisioning": null
+  },
+  "n_trials": 0,
+  "trials": [],
+  "pass_at_k": {},
+  "capability": {}
+}

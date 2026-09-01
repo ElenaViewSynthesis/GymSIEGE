@@ -1,0 +1,16 @@
+.env
+.env.local
+.venv/
+__pycache__/
+*.pyc
+
+data/
+artifacts/
+recordings/*.mp4
+results/*.json
+!results/.gitkeep
+snapshot_build.metrics.json
+*.log
+
+# keep the honest schema template, ignore live run output
+!results.json
