@@ -14,3 +14,6 @@ snapshot_build.metrics.json
 
 # keep the honest schema template, ignore live run output
 !results.json
+
+# personal resume/interview notes, not project documentation
+interview-bullets.md
