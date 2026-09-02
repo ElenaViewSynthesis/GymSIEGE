@@ -96,12 +96,28 @@ Developer-local values belong in the git-ignored `.env.local`:
 ```dotenv
 DAYTONA_API_KEY=...
 OPENAI_API_KEY=...
+HF_TOKEN=...
 ```
+
+CyberGym's dataset is gated on Hugging Face. Request access to
+`sunblaze-ucb/cybergym-e2e`, create a read token in that approved account, and
+store it as `HF_TOKEN`; the snapshot builder refuses to capture a partial
+snapshot when authenticated dataset download fails. A token stored by
+`huggingface-cli login` in the same WSL distribution is also accepted by
+`configure_secrets.py huggingface`. The Daytona Secret scopes substitution to
+the Hub API host and the large-file redirect host used by the pinned E2E
+archives; this does not itself grant network egress.
+The bake requests 2 CPUs, 4 GiB of memory, and the target's 10 GiB disk ceiling,
+uses Hugging Face's current `hf-xet` high-performance transfer path, cleans
+disposable package/download caches, and records a disk/inode/headroom gate
+before snapshot capture. `snapshot_download()` retains its normal resumable
+local-directory metadata when a download is retried in the same sandbox.
 
 Non-secret vault *names* are committed in `.env.defaults`. Copy local provider values into Daytona's organization vault once:
 
 ```bash
 .venv/bin/python configure_secrets.py openai
+.venv/bin/python configure_secrets.py huggingface
 ```
 
 Existing secrets are reused; pass `--replace` only when deliberately rotating a value. Sandboxes receive mappings such as `OPENAI_API_KEY -> gymsiege-openai` through `update_secrets` — plaintext values are never placed in sandbox-create parameters or logs.
@@ -146,19 +162,33 @@ ExploitGym resolves them in `scripts/setup/pull_images.py` from each task's
 `images["exp.hardened"]` mapping in `src/cybergym/task/metadata.json`.
 
 ```bash
-# One-time public harness/runtime/image snapshot.
+# One-time public harness/runtime snapshot. Hardened task images are pulled per trial.
 .venv/bin/python exploitgym_snapshot_build.py
 
-# One-task validation with the existing OpenAI vault secret.
-.venv/bin/python orchestrator.py exploitgym-run \
-  --limit 1 --k 1 --max-parallel 1 \
-  --agent codex --model gpt-5.6-luna --budget-usd 5
+# Diagnostic rerun of the previously stalled task.
+PYTHONUNBUFFERED=1 .venv/bin/python orchestrator.py exploitgym-run \
+  --task user:cybergym/arvo_66311 \
+  --k 1 --max-parallel 1 \
+  --agent codex --model gpt-5.6-sol \
+  --reasoning-effort medium \
+  --budget-usd 5 \
+  --timeout 3600 \
+  --trial-timeout 5400 \
+  --cleanup-timeout 360
 
-# Ten-task pass@3 run.
-.venv/bin/python orchestrator.py exploitgym-run \
-  --k 3 --max-parallel 2 \
-  --agent codex --model gpt-5.6-luna --budget-usd 5
+# Two-task serial production rerun. Run this only after the diagnostic above
+# has completed and its result confirms cleanup_destroyed=true.
+PYTHONUNBUFFERED=1 .venv/bin/python orchestrator.py exploitgym-run \
+  --tasks-file exploitgym_tasks.production.txt --k 1 --max-parallel 1 \
+  --agent codex --model gpt-5.6-sol --budget-usd 5 \
+  --reasoning-effort medium \
+  --timeout 3600 --trial-timeout 7200 --cleanup-timeout 360
 ```
+
+The diagnostic writes a structured result even if its outer deadline expires.
+Inspect `results/exploitgym_results.json` and proceed to the production command
+only when the diagnostic has finished and cleanup is confirmed. Do not run the
+two commands concurrently.
 
 `--model` accepts `gpt-5.6-luna` (default), `gpt-5.6-sol`, and
 `gpt-daybreak-blue-latest`. The latter is an approved-project alias for
