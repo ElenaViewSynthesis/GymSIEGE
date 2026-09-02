@@ -63,6 +63,8 @@ from common import (
     require_env,
 )
 from exploitgym_adapter import (
+    EXPLOITGYM_CLEANUP_TIMEOUT_S,
+    ExploitGymTask,
     ExploitGymTrialResult,
     load_exploitgym_tasks,
     run_exploitgym_trial,
@@ -249,24 +251,19 @@ def _capability_stats(results: list[TrialResult]) -> dict:
 # --------------------------------------------------------------------------
 
 
-async def cmd_exploitgym_run(args: argparse.Namespace) -> None:
-    require_env("DAYTONA_API_KEY")
-    validate_exploitgym_credentials(args.agent)
-    tasks = load_exploitgym_tasks(
-        common.ROOT / args.tasks_file,
-        allow_non_userspace=args.allow_non_userspace,
-    )
-    if args.limit:
-        tasks = tasks[: args.limit]
-    if not tasks:
-        raise RuntimeError("ExploitGym task selection is empty")
+async def _run_exploitgym_job(
+    daytona,
+    task: ExploitGymTask,
+    trial: int,
+    args: argparse.Namespace,
+    progress: ExploitGymTrialResult,
+) -> ExploitGymTrialResult:
+    """Apply the fleet-level deadline and preserve progress on timeout."""
 
-    sem = asyncio.Semaphore(args.max_parallel)
-    results: list[ExploitGymTrialResult] = []
-
-    async def bounded(daytona, task, trial):
-        async with sem:
-            return await run_exploitgym_trial(
+    started = time.monotonic()
+    try:
+        return await asyncio.wait_for(
+            run_exploitgym_trial(
                 daytona,
                 task,
                 trial,
@@ -275,36 +272,152 @@ async def cmd_exploitgym_run(args: argparse.Namespace) -> None:
                 reasoning_effort=args.reasoning_effort,
                 budget_usd=args.budget_usd,
                 timeout_s=args.timeout,
+                cleanup_timeout_s=args.cleanup_timeout,
+                result=progress,
+            ),
+            timeout=args.trial_timeout,
+        )
+    except asyncio.TimeoutError:
+        progress.status = "timeout"
+        progress.success = False
+        progress.failure_stage = progress.failure_stage or progress.last_stage
+        stage = progress.failure_stage or "unknown"
+        timing = progress.stage_timings.get(stage)
+        if timing and timing.get("status") == "interrupted":
+            timing["status"] = "timeout"
+        progress.t_total_s = max(progress.t_total_s or 0.0, time.monotonic() - started)
+        progress.error = (
+            f"outer trial deadline exceeded after {args.trial_timeout}s "
+            f"during stage={stage}"
+        )
+        log.error(
+            "[%s] outer trial timeout after %ss at stage=%s; cleanup destroyed=%s ttl_set=%s",
+            task.task_id,
+            args.trial_timeout,
+            stage,
+            progress.cleanup_destroyed,
+            progress.cleanup_ttl_set,
+        )
+        return progress
+
+
+def _selected_exploitgym_tasks(args: argparse.Namespace) -> list[ExploitGymTask]:
+    if args.task:
+        tasks = [ExploitGymTask(task_id) for task_id in args.task]
+        invalid = [task.task_id for task in tasks if task.family not in {"user", "v8", "kernel"}]
+        if invalid:
+            raise ValueError(f"invalid ExploitGym task IDs: {invalid[:3]}")
+        non_user = [task.task_id for task in tasks if task.family != "user"]
+        if non_user and not args.allow_non_userspace:
+            raise ValueError(
+                "kernel/V8 tasks require --allow-non-userspace and a compatible custom "
+                f"snapshot: {non_user[:3]}"
             )
+        return tasks
+    return load_exploitgym_tasks(
+        common.ROOT / args.tasks_file,
+        allow_non_userspace=args.allow_non_userspace,
+    )
+
+
+async def cmd_exploitgym_run(args: argparse.Namespace) -> None:
+    require_env("DAYTONA_API_KEY")
+    validate_exploitgym_credentials(args.agent)
+    if args.timeout <= 0 or args.trial_timeout <= 0:
+        raise ValueError("--timeout and --trial-timeout must be positive")
+    if args.cleanup_timeout < 90:
+        raise ValueError("--cleanup-timeout must be at least 90 seconds")
+    tasks = _selected_exploitgym_tasks(args)
+    if args.limit:
+        tasks = tasks[: args.limit]
+    if not tasks:
+        raise RuntimeError("ExploitGym task selection is empty")
+
+    sem = asyncio.Semaphore(args.max_parallel)
+    results: list[ExploitGymTrialResult] = []
+    progress_by_key: dict[tuple[str, int], ExploitGymTrialResult] = {}
+
+    async def bounded(daytona, task, trial, progress):
+        async with sem:
+            return await _run_exploitgym_job(daytona, task, trial, args, progress)
 
     config = {
         "benchmark": "exploitgym",
-        "tasks_file": args.tasks_file,
+        "tasks_file": None if args.task else args.tasks_file,
+        "tasks": [task.task_id for task in tasks],
         "k": args.k,
         "max_parallel": args.max_parallel,
         "agent": args.agent,
         "model": args.model,
         "reasoning_effort": args.reasoning_effort,
         "budget_usd_per_task": args.budget_usd,
+        "agent_timeout_s": args.timeout,
+        "trial_timeout_s": args.trial_timeout,
+        "cleanup_timeout_s": args.cleanup_timeout,
         "profile": "exp.hardened",
         "upstream_firewall_required": True,
         "upstream_llm_proxy_required": True,
     }
     async with AsyncDaytona() as daytona:
-        jobs = [bounded(daytona, task, trial) for task in tasks for trial in range(1, args.k + 1)]
-        for job in asyncio.as_completed(jobs):
-            result = await job
-            results.append(result)
-            _write_exploitgym_results(results, config, complete=False)
-            log.info(
-                "ExploitGym progress %d/%d: %s t%d -> %s",
-                len(results), len(jobs), result.task, result.trial, result.status,
+        job_specs = [(task, trial) for task in tasks for trial in range(1, args.k + 1)]
+        for task, trial in job_specs:
+            progress_by_key[(task.task_id, trial)] = ExploitGymTrialResult(
+                task.task_id,
+                trial,
+                args.agent,
+                args.model,
             )
+        jobs = [
+            asyncio.create_task(
+                bounded(daytona, task, trial, progress_by_key[(task.task_id, trial)])
+            )
+            for task, trial in job_specs
+        ]
+        config["expected_trials"] = len(jobs)
+        try:
+            for job in asyncio.as_completed(jobs):
+                result = await job
+                results.append(result)
+                _write_exploitgym_results(results, config, complete=False)
+                log.info(
+                    "ExploitGym progress %d/%d: %s t%d -> %s",
+                    len(results), len(jobs), result.task, result.trial, result.status,
+                )
+        except asyncio.CancelledError:
+            for job in jobs:
+                if not job.done():
+                    job.cancel()
+            await asyncio.gather(*jobs, return_exceptions=True)
+            completed_keys = {(result.task, result.trial) for result in results}
+            for key, progress in progress_by_key.items():
+                if key in completed_keys or progress.started_at is None:
+                    continue
+                if progress.status == "pending":
+                    progress.status = "interrupted"
+                    progress.success = False
+                    progress.failure_stage = progress.failure_stage or progress.last_stage
+                    progress.error = (
+                        f"orchestrator cancelled during stage={progress.failure_stage or 'unknown'}"
+                    )
+                results.append(progress)
+            _write_exploitgym_results(
+                results,
+                config,
+                complete=False,
+                status="interrupted",
+                run_error="orchestrator cancelled while awaiting a trial",
+            )
+            raise
     _write_exploitgym_results(results, config, complete=True)
 
 
 def _write_exploitgym_results(
-    results: list[ExploitGymTrialResult], config: dict, complete: bool
+    results: list[ExploitGymTrialResult],
+    config: dict,
+    complete: bool,
+    *,
+    status: str | None = None,
+    run_error: str | None = None,
 ) -> None:
     by_task: dict[str, list[ExploitGymTrialResult]] = defaultdict(list)
     for result in results:
@@ -328,9 +441,10 @@ def _write_exploitgym_results(
     atomic_write_json(
         EXPLOITGYM_RESULTS_JSON,
         {
-            "status": "complete" if complete else "live",
+            "status": status or ("complete" if complete else "live"),
             "generated_at": time.time(),
             "config": config,
+            "run_error": run_error,
             "n_trials": len(results),
             "pass_at_k": {
                 "k": config["k"],
@@ -562,6 +676,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="run the public ExploitGym userspace smoke set with mandatory firewalling",
     )
     p_eg.add_argument("--tasks-file", default="exploitgym_tasks.pinned.txt")
+    p_eg.add_argument(
+        "--task",
+        action="append",
+        help="run exactly this task ID; repeat to select multiple tasks",
+    )
     p_eg.add_argument("--k", type=int, default=3)
     p_eg.add_argument("--max-parallel", type=int, default=2)
     p_eg.add_argument("--limit", type=int, default=None)
@@ -581,7 +700,22 @@ def build_parser() -> argparse.ArgumentParser:
         default="medium",
     )
     p_eg.add_argument("--budget-usd", type=float, default=5.0, help="hard proxy budget per task")
-    p_eg.add_argument("--timeout", type=int, default=3600)
+    p_eg.add_argument("--timeout", type=int, default=3600, help="agent/evaluator timeout in seconds")
+    p_eg.add_argument(
+        "--trial-timeout",
+        type=int,
+        default=7200,
+        help=(
+            "outer deadline for restore, setup, image pull, evaluation, artifacts, and cleanup "
+            "(default: 7200s from observed stage budgets)"
+        ),
+    )
+    p_eg.add_argument(
+        "--cleanup-timeout",
+        type=int,
+        default=EXPLOITGYM_CLEANUP_TIMEOUT_S,
+        help="bounded cleanup grace after completion, timeout, or cancellation",
+    )
     p_eg.add_argument(
         "--allow-non-userspace",
         action="store_true",

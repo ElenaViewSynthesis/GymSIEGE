@@ -33,12 +33,16 @@ from common import SNAPSHOT_NAME
 
 async def exists():
     async with AsyncDaytona() as d:
-        page = await d.snapshot.list()  # PaginatedSnapshots
-        return any(getattr(s, "name", None) == SNAPSHOT_NAME for s in page.items)
+        page = await asyncio.wait_for(d.snapshot.list(), timeout=180)
+        return any(
+            getattr(s, "name", None) == SNAPSHOT_NAME
+            and str(getattr(s, "state", "")).rsplit(".", 1)[-1].upper() == "ACTIVE"
+            for s in page.items
+        )
 
 sys.exit(0 if asyncio.run(exists()) else 1)
 PY
-  echo "gymsiege-toolchain already baked, skipping."
+  echo "gymsiege-toolchain is ACTIVE, skipping bake."
 else
   .venv/bin/python snapshot_build.py
 fi
