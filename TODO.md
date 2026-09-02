@@ -462,6 +462,24 @@ launching duplicate trials.
 - [ ] Record Daytona SDK version, snapshot name/state, task-image digest, model
       ID, OpenAI project identity (non-secret identifier only), and Git commit
       in every publication run manifest.
+- [x] Document the OOM/timeout blind spot in `orchestrator.py`'s concurrency
+      sweep: `_trial_hit_oom_threshold` (line 555) only ever sees a trial's
+      `metrics_latest`/`metrics_series`, and `sandbox_runner.py` only
+      populates those fields *after* the build/PoC/patch phase completes
+      (lines 199-206). A trial that times out (`sweep`'s `bounded()`,
+      `asyncio.wait_for`) or errors before reaching that point never gets
+      telemetry at all, so it's counted only in `n_timeout`/`n_error`, never
+      in `n_oom` — even when the real cause was memory pressure severe
+      enough to hang the sandbox. `oom_rate` and `timeout_rate` are
+      mutually exclusive by construction, not because the two failure modes
+      don't overlap in practice. Same gap hides those trials from the
+      dashboard's per-sandbox telemetry charts (they only render trials with
+      a non-empty `metrics_series`). Written up in
+      [`codebase-overview.md`](codebase-overview.md#telemetry-capture-and-the-oom-proxy);
+      not yet fixed in code — fixing it would mean sampling
+      `get_metrics_latest()` on a timer/best-effort basis during the trial
+      (e.g. from `bounded()` in the sweep loop) rather than only once at the
+      end.
 
 ## Priority 7 — resume experiments incrementally
 
@@ -514,6 +532,8 @@ For every run, retain:
 - Daytona support prompt: `DAYTONA_BAKE_ISSUE.md`
 - Focused Hugging Face/CDN issue draft:
   `DAYTONA_HUGGINGFACE_EGRESS_ISSUE.md`
+- `AsyncDaytona`/`AsyncSandbox` usage map, isolated PoC re-detonation, and the
+  telemetry/OOM-proxy caveat above: `codebase-overview.md`
 
 ## Definition of the next safe checkpoint
 
