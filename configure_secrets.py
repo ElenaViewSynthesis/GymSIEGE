@@ -12,11 +12,17 @@ import asyncio
 import os
 
 from daytona import AsyncDaytona, CreateSecretParams, UpdateSecretParams
+from huggingface_hub import get_token
 
 import common
 
 
 PROVIDERS = {
+    "huggingface": (
+        "HF_TOKEN",
+        "GYMSIEGE_HF_SECRET_NAME",
+        ["huggingface.co", "us.aws.cdn.hf.co"],
+    ),
     "openai": ("OPENAI_API_KEY", "GYMSIEGE_OPENAI_SECRET_NAME", ["api.openai.com"]),
     "litellm": (
         "LITELLM_MASTER_KEY",
@@ -26,10 +32,24 @@ PROVIDERS = {
 }
 
 
+def credential_value(provider: str, key_env: str) -> str:
+    """Resolve a provider credential without ever logging its value."""
+
+    value = os.environ.get(key_env)
+    if not value and provider == "huggingface":
+        value = get_token()
+    if not value:
+        raise RuntimeError(
+            f"{key_env} is not set. Add it to .env.local or, for Hugging Face, "
+            "run `huggingface-cli login` from this WSL distribution."
+        )
+    return value
+
+
 async def configure(provider: str, replace: bool) -> None:
     common.require_env("DAYTONA_API_KEY")
     key_env, name_env, hosts = PROVIDERS[provider]
-    value = common.require_env(key_env)
+    value = credential_value(provider, key_env)
     name = common.require_env(name_env)
 
     async with AsyncDaytona() as daytona:

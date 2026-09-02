@@ -109,6 +109,7 @@ def sandbox_secret_refs(required_env_names: tuple[str, ...] | None = None) -> di
     mapping = {
         "OPENAI_API_KEY": os.environ.get("GYMSIEGE_OPENAI_SECRET_NAME"),
         "LITELLM_MASTER_KEY": os.environ.get("GYMSIEGE_LITELLM_SECRET_NAME"),
+        "HF_TOKEN": os.environ.get("GYMSIEGE_HF_SECRET_NAME"),
     }
     if required_env_names is not None:
         mapping = {name: mapping.get(name) for name in required_env_names}
