@@ -57,6 +57,46 @@ from common import (
 
 log = get_logger("snapshot_build")
 HF_HOST_OBSERVATIONS_JSON = common.RESULTS_DIR / "huggingface_hosts.json"
+CRASH_LOG_REPORT_JSON = common.RESULTS_DIR / "crash_log_fetch.json"
+# Marker lines the in-sandbox bootstrap prints, and where each is persisted.
+# Anything emitted this way is surfaced by timed_exec even on success --
+# a report nobody sees is the same as no report.
+EXEC_MARKERS = {
+    "[hf_hosts] ": HF_HOST_OBSERVATIONS_JSON,
+    "[crash_logs] ": CRASH_LOG_REPORT_JSON,
+}
+
+# Injected into BOOTSTRAP_SH and exec'd verbatim by tests, so the checksum and
+# header logic is covered by real execution rather than string matching.
+CRASH_LOG_HELPERS_PY = '''
+import hashlib
+
+
+def git_blob_sha1(payload):
+    """Git's object hash: sha1(b"blob <len>\\0" + content)."""
+    h = hashlib.sha1()
+    h.update(b"blob " + str(len(payload)).encode() + b"\\0")
+    h.update(payload)
+    return h.hexdigest()
+
+
+def normalize_etag(raw):
+    """Return a bare 40-hex git blob SHA-1, or None if not one.
+
+    Hugging Face returns the git blob SHA-1 as the ETag for plain-git files,
+    quoted, and sometimes weak-prefixed. Anything else (an LFS/Xet multipart
+    etag, a missing header) is not verifiable this way.
+    """
+    if not raw:
+        return None
+    value = raw.strip()
+    if value.startswith("W/"):
+        value = value[2:]
+    value = value.strip('"').lower()
+    if len(value) == 40 and all(c in "0123456789abcdef" for c in value):
+        return value
+    return None
+'''
 MIN_SNAPSHOT_FREE_BYTES = int(
     float(os.environ.get("GYMSIEGE_MIN_SNAPSHOT_FREE_GIB", "1.5")) * 1024**3
 )
@@ -148,21 +188,48 @@ selected_archives = [
         for task in tasks
     )
 ]
+# Every file the bake will request, not just the archives. Which ones the
+# client can size is a property of each file's storage class, so it must be
+# measured per file rather than inferred from its extension.
+selected_files = [
+    path
+    for path in repo_files
+    if any(
+        path.startswith(f"projects/{{task}}/")
+        or path.startswith(f"data/projects/{{task}}/")
+        for task in tasks
+    )
+]
+
 statuses = Counter()
 redirect_hosts = Counter()
+# Files huggingface_hub cannot size on this network path: served directly
+# (no redirect, so X-Linked-Size is absent) while Daytona's proxy removes
+# Content-Length. Any such file aborts the entire snapshot_download, so they
+# are excluded there and fetched directly instead. Classified by measurement,
+# because assuming a single affected extension is what broke the 20-task bake
+# after a 3-task validation passed.
+needs_direct_fetch = []
 with httpx.Client(follow_redirects=False, timeout=60) as client:
-    for path in selected_archives:
+    for path in selected_files:
         url = (
             "https://huggingface.co/datasets/{dataset}/resolve/main/"
             + quote(path, safe="/")
         )
         response = client.head(url, headers={{"Authorization": f"Bearer {{token}}"}})
-        statuses[str(response.status_code)] += 1
         location = response.headers.get("location")
-        redirect_hosts[urlsplit(location).hostname or "no-redirect"] += 1
+        is_redirect = bool(location) and 300 <= response.status_code < 400
+        if path in selected_archives:
+            statuses[str(response.status_code)] += 1
+            redirect_hosts[urlsplit(location).hostname or "no-redirect"] += 1
+        if not is_redirect and not response.headers.get("x-linked-size"):
+            needs_direct_fetch.append(path)
+
 host_observation = {{
     "dataset": "{dataset}",
     "files_probed": len(selected_archives),
+    "files_in_scope": len(selected_files),
+    "direct_fetch_required": len(needs_direct_fetch),
     "source_host": "huggingface.co",
     "statuses": dict(statuses),
     "redirect_hosts": dict(redirect_hosts),
@@ -173,13 +240,76 @@ Path("/tmp/gymsiege-hf-hosts.json").write_text(
 )
 print("[hf_hosts] " + json.dumps(host_observation, sort_keys=True), flush=True)
 
+# Exclude exactly the measured set. ignore_patterns matches literal paths as
+# well as globs, so this excludes what was observed to be unsizable rather
+# than a guessed extension. See DAYTONA_HUGGINGFACE_EGRESS_ISSUE.md.
 snapshot_download(
     repo_id="{dataset}",
     repo_type="dataset",
     local_dir="data",
     allow_patterns=patterns,
+    ignore_patterns=needs_direct_fetch or None,
     token=True,
 )
+
+{crash_log_helpers}
+
+crash_logs = needs_direct_fetch
+# A pinned task contributing no file at all to the listing means its data is
+# absent upstream; comparing only against what the listing returned would let
+# that produce a clean-looking report.
+tasks_with_files = {{
+    t for t in tasks for p in selected_files
+    if p.startswith(f"projects/{{t}}/") or p.startswith(f"data/projects/{{t}}/")
+}}
+missing_tasks = sorted(set(tasks) - tasks_with_files)
+
+report = {{"tasks": len(tasks), "expected": len(crash_logs),
+          "missing_tasks": missing_tasks, "written": 0, "verified": 0,
+          "unverified": [], "mismatched": [], "failed": []}}
+with httpx.Client(follow_redirects=True, timeout=120) as client:
+    for path in crash_logs:
+        url = (
+            "https://huggingface.co/datasets/{dataset}/resolve/main/"
+            + quote(path, safe="/")
+        )
+        try:
+            r = client.get(url, headers={{"Authorization": f"Bearer {{token}}"}})
+            r.raise_for_status()
+        except Exception as exc:
+            report["failed"].append({{"file": path, "error": type(exc).__name__}})
+            continue
+        target = Path("data") / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(r.content)
+        report["written"] += 1
+        # HF returns the git blob SHA-1 as the ETag for plain-git files, so
+        # integrity is still checkable even though Content-Length is gone.
+        etag = normalize_etag(r.headers.get("etag"))
+        if etag is None:
+            report["unverified"].append(path)
+        elif git_blob_sha1(r.content) == etag:
+            report["verified"] += 1
+        else:
+            report["mismatched"].append(path)
+
+print("[crash_logs] " + json.dumps(report, sort_keys=True), flush=True)
+# Deliberately non-fatal: warn, do not abort the bake.
+if (report["failed"] or report["mismatched"] or report["unverified"]
+        or report["missing_tasks"] or report["written"] != report["expected"]):
+    print(
+        "[crash_logs] WARN: {{}} of {{}} pinned tasks contributed no files "
+        "upstream; {{}} written of {{}} directly-fetched; {{}} failed, "
+        "{{}} checksum-mismatched, {{}} unverifiable. The bake continues by "
+        "design; treat any affected task's patch-only result as suspect, "
+        "since these files are part of the task input.".format(
+            len(report["missing_tasks"]), report["tasks"],
+            report["written"], report["expected"],
+            len(report["failed"]), len(report["mismatched"]),
+            len(report["unverified"]),
+        ),
+        flush=True,
+    )
 PY
 
 # Dataset revisions have used both projects/<task> and
@@ -355,16 +485,21 @@ async def timed_exec(
     ok = getattr(r, "exit_code", 0) == 0
     output = str(getattr(r, "result", r) or "")
     for line in output.splitlines():
-        if not line.startswith("[hf_hosts] "):
-            continue
-        try:
-            observation = json.loads(line.removeprefix("[hf_hosts] "))
-        except json.JSONDecodeError:
-            log.warning("exec[%s] emitted an invalid sanitized host record", label)
-            continue
-        observation["observed_at"] = time.time()
-        atomic_write_json(HF_HOST_OBSERVATIONS_JSON, observation)
-        log.info("exec[%s] sanitized Hugging Face hosts: %s", label, observation)
+        marker = next((m for m in EXEC_MARKERS if line.startswith(m)), None)
+        if marker is not None:
+            try:
+                observation = json.loads(line.removeprefix(marker))
+            except json.JSONDecodeError:
+                log.warning("exec[%s] emitted an invalid %s record", label, marker.strip())
+                continue
+            observation["observed_at"] = time.time()
+            atomic_write_json(EXEC_MARKERS[marker], observation)
+            log.info("exec[%s] %s%s", label, marker, observation)
+        elif line.startswith("[crash_logs] WARN"):
+            # Surfaced at WARNING even on a successful bake: this is the only
+            # signal that a task's crash.log is missing or unverified, and
+            # patch-only hands that file to the agent as task input.
+            log.warning("exec[%s] %s", label, line)
     log.info("exec[%s] done in %.1fs (exit=%s)", label, dt, getattr(r, "exit_code", "?"))
     if log_output and output:
         log.info("exec[%s] output:\n%s", label, output[-8000:])
@@ -441,6 +576,7 @@ async def build_snapshot(args: argparse.Namespace | None = None) -> None:
                 repo_url=CYBERGYM_REPO_URL,
                 tasks=tasks,
                 dataset=common.HF_DATASET,
+                crash_log_helpers=CRASH_LOG_HELPERS_PY,
             )
             bootstrap_step = await timed_exec(
                 sandbox, bootstrap, "bootstrap_toolchain", timeout=1800

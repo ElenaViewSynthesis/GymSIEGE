@@ -32,7 +32,7 @@ from orchestrator import (
     _write_exploitgym_results,
     build_parser,
 )
-from snapshot_build import BOOTSTRAP_SH, CLEANUP_AND_DISK_SH
+from snapshot_build import BOOTSTRAP_SH, CLEANUP_AND_DISK_SH, CRASH_LOG_HELPERS_PY
 
 
 class TaskParsingTests(unittest.TestCase):
@@ -162,6 +162,7 @@ class ExploitGymCommandTests(unittest.TestCase):
             repo_url="https://example.invalid/repo.git",
             tasks=["curl/arvo_66012"],
             dataset="example/dataset",
+            crash_log_helpers=CRASH_LOG_HELPERS_PY,
         )
         self.assertIn("[hf_hosts] ", bootstrap)
         self.assertNotIn("{dataset}", bootstrap)
@@ -212,6 +213,82 @@ class ExploitGymCommandTests(unittest.TestCase):
                 f"{name} pin drifted: requirements.txt=={req_pins[name]} "
                 f"but BOOTSTRAP_SH=={bake_pins[name]}",
             )
+
+    def test_crash_log_helpers_execute_correctly(self) -> None:
+        """Execute the injected helpers rather than string-matching them.
+
+        The same source string is embedded in BOOTSTRAP_SH and exec'd here, so
+        checksum and ETag logic is covered by real execution with no risk of
+        the test drifting from the code that ships.
+        """
+        from snapshot_build import CRASH_LOG_HELPERS_PY
+
+        ns: dict = {}
+        exec(CRASH_LOG_HELPERS_PY, ns)
+        git_blob_sha1, normalize_etag = ns["git_blob_sha1"], ns["normalize_etag"]
+
+        # `git hash-object` for "hello\n" is a well-known constant
+        self.assertEqual(
+            git_blob_sha1(b"hello\n"), "ce013625030ba8dba906f756967f9e9ca394464a"
+        )
+        self.assertEqual(
+            git_blob_sha1(b""), "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391"
+        )
+
+        sha = "ce013625030ba8dba906f756967f9e9ca394464a"
+        self.assertEqual(normalize_etag(f'"{sha}"'), sha)
+        self.assertEqual(normalize_etag(f'W/"{sha}"'), sha)
+        self.assertEqual(normalize_etag(sha.upper()), sha)
+        # not a git blob sha: LFS multipart etag, empty, or absent
+        self.assertIsNone(normalize_etag('"abc-123"'))
+        self.assertIsNone(normalize_etag(""))
+        self.assertIsNone(normalize_etag(None))
+
+        # a mismatch must be detectable, not silently accepted
+        self.assertNotEqual(git_blob_sha1(b"tampered\n"), sha)
+
+    def test_crash_log_report_is_surfaced_even_on_success(self) -> None:
+        """A report nobody sees is the same as no report.
+
+        The bootstrap runs with log_output=False and the failure tail only
+        fires on non-zero exit, so without an explicit marker rule the
+        [crash_logs] JSON is computed in the sandbox and discarded.
+        """
+        from snapshot_build import CRASH_LOG_REPORT_JSON, EXEC_MARKERS
+
+        self.assertIn("[crash_logs] ", EXEC_MARKERS)
+        self.assertIn("[hf_hosts] ", EXEC_MARKERS)
+        self.assertEqual(EXEC_MARKERS["[crash_logs] "], CRASH_LOG_REPORT_JSON)
+
+    def test_crash_logs_are_fetched_separately_and_warn_without_failing(self) -> None:
+        """crash.log cannot go through huggingface_hub on this Daytona target.
+
+        It is plain-git, served as a direct 200 with no X-Linked-Size, so
+        Content-Length is the only size the client can use -- and the sandbox
+        network path drops it. The bake skips those files in
+        snapshot_download and fetches them directly, verifying each against
+        the git blob SHA-1 that HF returns as the ETag.
+        """
+        bootstrap = BOOTSTRAP_SH.format(
+            repo_dir="/tmp/cybergym",
+            repo_url="https://example.invalid/repo.git",
+            tasks=["curl/arvo_66012"],
+            dataset="example/dataset",
+            crash_log_helpers=CRASH_LOG_HELPERS_PY,
+        )
+        # The unsizable set is MEASURED, never assumed from an extension.
+        # Hardcoding "**/crash.log" passed a 3-task validation and then failed
+        # the 20-task bake, because another file class was affected further in.
+        self.assertNotIn("**/crash.log", bootstrap)
+        self.assertIn("ignore_patterns=needs_direct_fetch", bootstrap)
+        self.assertIn("x-linked-size", bootstrap)
+        self.assertIn("selected_files", bootstrap)
+        self.assertIn("git_blob_sha1", bootstrap)
+        self.assertIn("[crash_logs] ", bootstrap)
+        # non-fatal by design: warn, never abort the bake
+        self.assertIn("WARN", bootstrap)
+        self.assertNotIn("raise RuntimeError(\"crash", bootstrap)
+        self.assertNotIn("sys.exit(1)", bootstrap.split("crash_logs")[-1])
 
     def test_limited_bake_cannot_publish_the_canonical_snapshot(self) -> None:
         """A truncated bake must never be published as `gymsiege-toolchain`.
