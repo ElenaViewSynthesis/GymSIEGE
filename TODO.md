@@ -573,6 +573,46 @@ Found by inspection, not yet fixed:
 - [ ] Once fixed, consider adding the OOM-proxy stat to
       `_write_exploitgym_results` for parity with CyberGym's `sweep`.
 
+## Priority 9 — evaluate `huggingface-community-evals` for future experiments
+
+Not started; recorded so it is not lost. Runs evaluations for Hugging Face Hub
+models using `inspect-ai` and `lighteval` on local hardware.
+
+Why it is worth a look for this project specifically:
+
+- [ ] It is a second, independent evaluation harness. GYMSIEGE currently
+      delegates all scoring to CyberGym's and ExploitGym's own evaluators, so
+      an outside harness is a cross-check on capability numbers rather than a
+      replacement for the sanitizer oracle.
+- [ ] `inspect-ai` is a maintained evaluation framework with its own task and
+      scoring model. If it can express a CyberGym-style find-vuln → PoC →
+      patch task, that is a portability argument for the protocol.
+- [ ] "On local hardware" is the interesting contrast. Every measurement in
+      this repo is Daytona-fleet-shaped: provisioning latency, concurrency
+      failure curves, TTL/cleanup reliability. A local-hardware baseline for
+      the *capability* half would separate agent capability from the
+      infrastructure behaviour it is currently entangled with.
+
+Before adopting it, resolve:
+
+- [ ] What it actually is — Hub Space, `hf jobs` workflow, or installable
+      package — and its licence and provenance. The description above is
+      recorded as given and has not been verified against upstream.
+- [ ] Whether it can run a security benchmark at all, or is scoped to
+      standard LLM evals (`lighteval` suggests the latter). If it cannot
+      express the sanitizer-oracle scoring, it is a capability-baseline tool
+      only, not a CyberGym substitute.
+- [ ] Whether "local hardware" is even viable here: the CyberGym oracle needs
+      Docker-in-Docker with OSS-Fuzz sanitizer images, which is what pushed
+      this project onto disposable cloud sandboxes in the first place.
+- [ ] Whether it pins model/runtime versions well enough to be comparable
+      across runs, given the pinning discipline the rest of this repo now
+      enforces.
+
+Do not start this until `gymsiege-toolchain` bakes and the pinned CyberGym
+protocol has produced at least one complete result. A second harness is only
+useful as a cross-check once there is something to cross-check against.
+
 ## Known code and data locations
 
 - Main CLI: `orchestrator.py`
