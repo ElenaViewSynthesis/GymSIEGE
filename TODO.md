@@ -613,6 +613,50 @@ Do not start this until `gymsiege-toolchain` bakes and the pinned CyberGym
 protocol has produced at least one complete result. A second harness is only
 useful as a cross-check once there is something to cross-check against.
 
+## Priority 10 — evaluate `trl-training` for future experiments
+
+Not started; recorded so it is not lost. Trains and fine-tunes transformer
+language models using TRL (Transformers Reinforcement Learning).
+
+Note this is a **scope expansion, not a next step**. GYMSIEGE is an evaluation
+harness: it measures how existing models behave. Training produces a new
+model, which is a different kind of artifact with different obligations.
+
+The reason it is worth recording anyway:
+
+- [ ] The isolated oracle is already a *verifiable* reward. Scoring requires a
+      sanitizer crash on the vulnerable build **and** a clean run on the
+      patched build, under network isolation, from a frozen PoC — a
+      ground-truth, non-gameable pass/fail signal rather than a model's
+      self-report. That is exactly the shape RL-with-verifiable-rewards
+      needs, and this repo already computes it per trial.
+- [ ] The harness already emits per-trial trajectories, stage timings, and
+      structured outcomes, so the data-generation half of a train/eval loop
+      largely exists as a by-product of running the protocol.
+
+Before going anywhere near it, resolve:
+
+- [ ] **Dual-use.** Fine-tuning a model toward better exploit development is
+      materially different from measuring existing models, and the intended
+      use, release posture, and disclosure position must be settled *first* —
+      not after a checkpoint exists. This gate is not a formality.
+- [ ] Whether the benchmark licences permit training use at all. CyberGym and
+      ExploitGym were obtained for evaluation; training on their tasks or on
+      derived trajectories may not be covered.
+- [ ] Data volume. Twenty pinned tasks times `k` trials is negligible as a
+      training set. Estimate honestly what would be needed before assuming
+      the existing protocol produces enough of anything.
+- [ ] Hardware. Current trials run on 2 CPU / 4 GB sandboxes with no GPU. A
+      `daytona-gpu` image exists in the organization's snapshot list but has
+      never been used here, and its cost and quota are unknown.
+- [ ] Whether any of this belongs in this repository at all, or in a separate
+      one that consumes GYMSIEGE's outputs. Mixing an evaluation harness with
+      a training pipeline compromises the harness's value as a neutral
+      measuring instrument.
+
+Gated behind everything in Priority 9, which is itself gated behind a
+successful bake and one complete pinned result.
+
 ## Known code and data locations
 
 - Main CLI: `orchestrator.py`
