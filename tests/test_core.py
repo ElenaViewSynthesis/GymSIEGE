@@ -326,6 +326,23 @@ class ExploitGymCommandTests(unittest.TestCase):
         self.assertEqual(len(tasks), 2)
         self.assertEqual(name, "gymsiege-scratch")
 
+    def test_bake_cleanup_never_masks_the_original_failure(self) -> None:
+        """A raise inside `finally` replaces the real error and skips delete().
+
+        A failed bake raised DaytonaNotFoundError from set_ttl() because the
+        sandbox's TTL had already deleted it, which hid the
+        DaytonaConnectionTimeoutError that actually ended the run and meant
+        delete() was never attempted.
+        """
+        source = Path("snapshot_build.py").read_text(encoding="utf-8")
+        finally_block = source.split("        finally:\n", 1)[1].split("\n\n", 1)[0]
+        self.assertIn("try:", finally_block)
+        self.assertIn("await sandbox.set_ttl(60)", finally_block)
+        self.assertIn("await sandbox.delete(", finally_block)
+        # both calls guarded, and an already-deleted sandbox is not an error
+        self.assertGreaterEqual(finally_block.count("except Exception"), 2)
+        self.assertIn("not found", finally_block.lower())
+
     def test_bake_ttl_outlasts_its_own_step_timeouts(self) -> None:
         """The safety net must not expire before the work it protects.
 

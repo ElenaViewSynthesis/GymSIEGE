@@ -648,9 +648,36 @@ async def build_snapshot(args: argparse.Namespace | None = None) -> None:
 
         finally:
             save_bench()
-            await sandbox.set_ttl(60)
-            await sandbox.delete(wait=True, timeout=180)
-            log.info("base sandbox %s deleted (safety ttl was also set to 60m)", sandbox.id)
+            # Cleanup must never mask the failure that brought us here, and a
+            # sandbox that is already gone -- TTL expiry, platform action -- is
+            # a benign outcome rather than an error. Previously a bare
+            # set_ttl() raised 404 when the sandbox had already been deleted,
+            # which replaced the real DaytonaConnectionTimeoutError with a
+            # confusing "Failed to set TTL" and skipped delete() entirely.
+            try:
+                await sandbox.set_ttl(60)
+            except Exception as exc:
+                log.warning(
+                    "could not reset TTL on %s (continuing to delete): %s",
+                    sandbox.id, exc,
+                )
+            try:
+                await sandbox.delete(wait=True, timeout=180)
+                log.info(
+                    "base sandbox %s deleted (safety ttl was also set to 60m)",
+                    sandbox.id,
+                )
+            except Exception as exc:
+                if "not found" in str(exc).lower():
+                    log.info(
+                        "base sandbox %s was already gone (TTL expiry or "
+                        "platform action); nothing leaked", sandbox.id,
+                    )
+                else:
+                    log.error(
+                        "base sandbox %s NOT deleted -- run `orchestrator.py "
+                        "reap`: %s", sandbox.id, exc,
+                    )
 
         t_restore = None
         if snapshot_name is not None:
