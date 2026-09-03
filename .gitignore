@@ -6,8 +6,12 @@ __pycache__/
 
 data/
 artifacts/
-recordings/*.mp4
+recordings/*
+!recordings/.gitkeep
 results/*.json
+# Nested run output too: common.py writes per-sandbox telemetry to
+# results/telemetry/, which `results/*.json` does not reach.
+results/**/*.json
 !results/.gitkeep
 snapshot_build.metrics.json
 *.log
