@@ -10,7 +10,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from common import Task, TrialResult, sandbox_secret_refs
-from configure_secrets import credential_value
+from configure_secrets import HUGGINGFACE_SECRET_HOSTS, credential_value
 from exploitgym_adapter import (
     EXPLOITGYM_CONTROLLER_PORT,
     EXPLOITGYM_PROXY_PORT,
@@ -64,6 +64,14 @@ class TaskParsingTests(unittest.TestCase):
                 credential_value("huggingface", "HF_TOKEN"),
                 "cached-token",
             )
+
+    def test_huggingface_secret_hosts_cover_current_transfer_endpoints(self) -> None:
+        self.assertEqual(len(HUGGINGFACE_SECRET_HOSTS), len(set(HUGGINGFACE_SECRET_HOSTS)))
+        self.assertIn("huggingface.co", HUGGINGFACE_SECRET_HOSTS)
+        self.assertIn("us.aws.cdn.hf.co", HUGGINGFACE_SECRET_HOSTS)
+        self.assertIn("us.gcp.cdn.hf.co", HUGGINGFACE_SECRET_HOSTS)
+        self.assertIn("cas-server.xethub.hf.co", HUGGINGFACE_SECRET_HOSTS)
+        self.assertIn("transfer.xethub-eu.hf.co", HUGGINGFACE_SECRET_HOSTS)
 
     def test_exploitgym_defaults_to_userspace(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -148,6 +156,14 @@ class ExploitGymCommandTests(unittest.TestCase):
         self.assertIn("df -h /", CLEANUP_AND_DISK_SH)
         self.assertIn("df -i /", CLEANUP_AND_DISK_SH)
         self.assertIn("available_bytes", CLEANUP_AND_DISK_SH)
+        bootstrap = BOOTSTRAP_SH.format(
+            repo_dir="/tmp/cybergym",
+            repo_url="https://example.invalid/repo.git",
+            tasks=["curl/arvo_66012"],
+            dataset="example/dataset",
+        )
+        self.assertIn("[hf_hosts] ", bootstrap)
+        self.assertNotIn("{dataset}", bootstrap)
         rendered = CLEANUP_AND_DISK_SH.format(
             repo_dir="/tmp/cybergym", minimum_free_bytes=123
         )

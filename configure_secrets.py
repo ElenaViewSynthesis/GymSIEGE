@@ -17,11 +17,28 @@ from huggingface_hub import get_token
 import common
 
 
+HUGGINGFACE_SECRET_HOSTS = [
+    # Exact FQDNs from Hugging Face's current download/firewall guidance.
+    # Daytona Secret hosts are a value-substitution trust boundary, not an
+    # outbound network allowlist, so keep this explicit rather than using a
+    # broad wildcard.
+    "huggingface.co",
+    "cas-server.xethub.hf.co",
+    "cas-server.xethub-eu.hf.co",
+    "transfer.xethub.hf.co",
+    "transfer.xethub-eu.hf.co",
+    "us.aws.cdn.hf.co",
+    "us.gcp.cdn.hf.co",
+    "cdn-lfs-us-1.hf.co",
+    "cdn-lfs-eu-1.hf.co",
+]
+
+
 PROVIDERS = {
     "huggingface": (
         "HF_TOKEN",
         "GYMSIEGE_HF_SECRET_NAME",
-        ["huggingface.co", "us.aws.cdn.hf.co"],
+        HUGGINGFACE_SECRET_HOSTS,
     ),
     "openai": ("OPENAI_API_KEY", "GYMSIEGE_OPENAI_SECRET_NAME", ["api.openai.com"]),
     "litellm": (
@@ -53,22 +70,31 @@ async def configure(provider: str, replace: bool) -> None:
     name = common.require_env(name_env)
 
     async with AsyncDaytona() as daytona:
-        page = await daytona.secret.list(name=name, limit=200)
+        page = await asyncio.wait_for(
+            daytona.secret.list(name=name, limit=200),
+            timeout=180,
+        )
         exact = next((item for item in page.items if item.name == name), None)
         if exact is None:
-            await daytona.secret.create(
-                CreateSecretParams(
-                    name=name,
-                    value=value,
-                    description=f"GYMSIEGE {provider} provider credential",
-                    hosts=hosts,
-                )
+            await asyncio.wait_for(
+                daytona.secret.create(
+                    CreateSecretParams(
+                        name=name,
+                        value=value,
+                        description=f"GYMSIEGE {provider} provider credential",
+                        hosts=hosts,
+                    )
+                ),
+                timeout=180,
             )
             print(f"Created Daytona organization secret: {name}")
         elif replace:
-            await daytona.secret.update(
-                exact.id,
-                UpdateSecretParams(value=value, hosts=hosts),
+            await asyncio.wait_for(
+                daytona.secret.update(
+                    exact.id,
+                    UpdateSecretParams(value=value, hosts=hosts),
+                ),
+                timeout=180,
             )
             print(f"Updated Daytona organization secret: {name}")
         else:

@@ -27,6 +27,7 @@ on the default region) in the environment. See README.md#credentials.
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import sys
 import time
@@ -54,6 +55,7 @@ from common import (
 )
 
 log = get_logger("snapshot_build")
+HF_HOST_OBSERVATIONS_JSON = common.RESULTS_DIR / "huggingface_hosts.json"
 MIN_SNAPSHOT_FREE_BYTES = int(
     float(os.environ.get("GYMSIEGE_MIN_SNAPSHOT_FREE_GIB", "1.5")) * 1024**3
 )
@@ -110,12 +112,61 @@ fi
 echo "[bootstrap] pinned CyberGym dataset payload"
 cd "{repo_dir}"
 python3 - <<'PY'
-from huggingface_hub import snapshot_download
+import json
+from collections import Counter
+from pathlib import Path
+from urllib.parse import quote, urlsplit
+
+import httpx
+from huggingface_hub import HfApi, get_token, snapshot_download
 
 tasks = {tasks!r}
 patterns = []
 for task in tasks:
     patterns.extend((f"projects/{{task}}/**", f"data/projects/{{task}}/**"))
+
+# Record only aggregate response codes and redirect hostnames. Never retain a
+# signed Location value, query string, authorization header, token, or Daytona
+# Secret placeholder.
+token = get_token()
+if not token:
+    raise RuntimeError("HF_TOKEN is unavailable inside the bake sandbox")
+repo_files = HfApi(token=True).list_repo_files("{dataset}", repo_type="dataset")
+selected_archives = [
+    path
+    for path in repo_files
+    if path.endswith("src.tgz")
+    and any(
+        path.startswith(f"projects/{{task}}/")
+        or path.startswith(f"data/projects/{{task}}/")
+        for task in tasks
+    )
+]
+statuses = Counter()
+redirect_hosts = Counter()
+with httpx.Client(follow_redirects=False, timeout=60) as client:
+    for path in selected_archives:
+        url = (
+            "https://huggingface.co/datasets/{dataset}/resolve/main/"
+            + quote(path, safe="/")
+        )
+        response = client.head(url, headers={{"Authorization": f"Bearer {{token}}"}})
+        statuses[str(response.status_code)] += 1
+        location = response.headers.get("location")
+        redirect_hosts[urlsplit(location).hostname or "no-redirect"] += 1
+host_observation = {{
+    "dataset": "{dataset}",
+    "files_probed": len(selected_archives),
+    "source_host": "huggingface.co",
+    "statuses": dict(statuses),
+    "redirect_hosts": dict(redirect_hosts),
+}}
+Path("/tmp/gymsiege-hf-hosts.json").write_text(
+    json.dumps(host_observation, sort_keys=True) + "\n",
+    encoding="utf-8",
+)
+print("[hf_hosts] " + json.dumps(host_observation, sort_keys=True), flush=True)
+
 snapshot_download(
     repo_id="{dataset}",
     repo_type="dataset",
@@ -231,6 +282,17 @@ async def timed_exec(
     dt = time.monotonic() - t0
     ok = getattr(r, "exit_code", 0) == 0
     output = str(getattr(r, "result", r) or "")
+    for line in output.splitlines():
+        if not line.startswith("[hf_hosts] "):
+            continue
+        try:
+            observation = json.loads(line.removeprefix("[hf_hosts] "))
+        except json.JSONDecodeError:
+            log.warning("exec[%s] emitted an invalid sanitized host record", label)
+            continue
+        observation["observed_at"] = time.time()
+        atomic_write_json(HF_HOST_OBSERVATIONS_JSON, observation)
+        log.info("exec[%s] sanitized Hugging Face hosts: %s", label, observation)
     log.info("exec[%s] done in %.1fs (exit=%s)", label, dt, getattr(r, "exit_code", "?"))
     if log_output and output:
         log.info("exec[%s] output:\n%s", label, output[-8000:])
