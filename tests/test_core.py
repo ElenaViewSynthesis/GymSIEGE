@@ -326,6 +326,32 @@ class ExploitGymCommandTests(unittest.TestCase):
         self.assertEqual(len(tasks), 2)
         self.assertEqual(name, "gymsiege-scratch")
 
+    def test_bake_ttl_outlasts_its_own_step_timeouts(self) -> None:
+        """The safety net must not expire before the work it protects.
+
+        A full bake was stopped mid-`docker pull` because the sandbox carried
+        the 60-minute trial TTL while the bake's own step timeouts total 160
+        minutes, and because auto-stop was never set -- a long pull issues no
+        API calls, so the sandbox reads as idle.
+        """
+        from snapshot_build import BAKE_STEP_TIMEOUT_BUDGET_S, BAKE_TTL_MINUTES
+
+        budget_minutes = BAKE_STEP_TIMEOUT_BUDGET_S / 60
+        self.assertGreater(
+            BAKE_TTL_MINUTES,
+            budget_minutes,
+            f"bake TTL {BAKE_TTL_MINUTES}min must exceed its own "
+            f"{budget_minutes:.0f}min timeout budget",
+        )
+        # and it must be longer than the trial default it replaces
+        from common import SANDBOX_SAFETY_TTL_MINUTES
+
+        self.assertGreater(BAKE_TTL_MINUTES, SANDBOX_SAFETY_TTL_MINUTES)
+
+        source = Path("snapshot_build.py").read_text(encoding="utf-8")
+        self.assertIn("auto_stop_interval=BAKE_TTL_MINUTES", source)
+        self.assertIn("set_autostop_interval(BAKE_TTL_MINUTES)", source)
+
     def test_production_batch_is_userspace_only(self) -> None:
         tasks = load_exploitgym_tasks(Path("exploitgym_tasks.production.txt"))
         self.assertEqual(len(tasks), 2)

@@ -101,6 +101,15 @@ MIN_SNAPSHOT_FREE_BYTES = int(
     float(os.environ.get("GYMSIEGE_MIN_SNAPSHOT_FREE_GIB", "1.5")) * 1024**3
 )
 
+# The bake's own step timeouts total 1800 + 3600 + 600 + 3600 = 160 minutes.
+# The 60-minute trial safety TTL is far shorter than that, and a full bake was
+# stopped mid-`docker pull` because of it: a long pull makes no API calls, so
+# the sandbox looked idle. Both the TTL and the auto-stop interval must exceed
+# the work they are protecting, or the safety net becomes the failure.
+# Trials keep the 60-minute default; this applies to the bake sandbox only.
+BAKE_STEP_TIMEOUT_BUDGET_S = 1800 + 3600 + 600 + 3600
+BAKE_TTL_MINUTES = int(os.environ.get("GYMSIEGE_BAKE_TTL_MIN", "180"))
+
 # Installed *inside* the sandbox. Kept as one script so a single process.exec
 # call gets us one clean exit code and one combined log instead of N round
 # trips (each process.exec is a real network hop to the sandbox).
@@ -556,6 +565,11 @@ async def build_snapshot(args: argparse.Namespace | None = None) -> None:
                 name=f"siege-cybergym-bake-{int(time.time())}",
                 os_user="root",
                 resources=Resources(cpu=2, memory=4, disk=10),
+                # Without this, Daytona's default auto-stop applies and can
+                # stop the sandbox during a long image pull, which issues no
+                # API calls and so reads as idle.
+                auto_stop_interval=BAKE_TTL_MINUTES,
+                ttl_minutes=BAKE_TTL_MINUTES,
             ),
             timeout=600,
         )
@@ -564,7 +578,11 @@ async def build_snapshot(args: argparse.Namespace | None = None) -> None:
         bake_steps.append({"label": "base_create", "duration_s": t_create, "exit_code": 0, "ok": True})
 
         try:
-            await sandbox.set_ttl(common.SANDBOX_SAFETY_TTL_MINUTES)
+            # Must outlast the bake's own step timeouts; see BAKE_TTL_MINUTES.
+            # The finally block drops this back to 60 minutes before deleting,
+            # so a crash still cannot leak a long-lived sandbox.
+            await sandbox.set_ttl(BAKE_TTL_MINUTES)
+            await sandbox.set_autostop_interval(BAKE_TTL_MINUTES)
             hf_secrets = common.sandbox_secret_refs(("HF_TOKEN",))
             log.info("attaching Hugging Face organization Secret")
             await sandbox.update_secrets(hf_secrets)
