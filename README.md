@@ -69,6 +69,7 @@ dashboard.py  (local uvicorn, or --publish to a live Daytona preview link)
 | `exploitgym_adapter.py` | Runs upstream ExploitGym inside a sandbox with mandatory firewall/proxy/hardened settings; delegates task construction and scoring to ExploitGym itself. |
 | `dashboard.py` | FastAPI app combining the CyberGym/ExploitGym leaderboards, concurrency curve, provisioning latency histogram, per-sandbox telemetry, and recording links. Runs locally or publishes to a live Daytona preview link. |
 | `configure_secrets.py` | Copies a local provider API key into a named Daytona organization Secret, once, without ever printing or committing the value. |
+| `HUGGINGFACE_HOSTS.md` | Records the exact Hugging Face Secret trust boundary and sanitized transfer hosts observed for the pinned dataset slice. |
 | `tasks.pinned.txt` | 20 pinned CyberGym tasks used by the main protocol. |
 | `exploitgym_tasks.pinned.txt` | Ten userspace tasks from ExploitGym's official 20-task sample. |
 | `.env.defaults` | Non-secret, committed Daytona Secret *names* (never values). |
@@ -121,6 +122,13 @@ Non-secret vault *names* are committed in `.env.defaults`. Copy local provider v
 ```
 
 Existing secrets are reused; pass `--replace` only when deliberately rotating a value. Sandboxes receive mappings such as `OPENAI_API_KEY -> gymsiege-openai` through `update_secrets` — plaintext values are never placed in sandbox-create parameters or logs.
+Because `--replace` also applies a provider's current host trust boundary, rerun
+the following after `configure_secrets.py` changes its Hugging Face host list:
+
+```bash
+.venv/bin/python configure_secrets.py huggingface --replace
+```
+
 CyberGym upstream doesn't currently accept a direct OpenAI provider the way ExploitGym does. This experiment fixes the runtime to Codex and routes its GPT model through a LiteLLM deployment:
 
 ```dotenv
@@ -237,6 +245,20 @@ Example of a running sandbox as seen on the Daytona platform:
 - ExploitGym always uses its internal no-route firewall and local retrieval-blocking LLM proxy — no direct-key mode is exposed.
 - Every trial arms TTL immediately and calls blocking deletion in `finally`; `reap` catches crash leftovers.
 - Provider keys stay in `.env.local` and Daytona organization Secrets. `.env.local`, benchmark data, recordings, and artifacts are git-ignored.
+- **Secret hosts scoping:** a Daytona Secret's `hosts` list is the trust
+  boundary for destinations to which Daytona may substitute/send that Secret
+  value. It does not grant DNS, TCP, TLS, or HTTP egress. GYMSIEGE uses explicit
+  Hugging Face FQDNs rather than an unrestricted Secret; see
+  [`HUGGINGFACE_HOSTS.md`](HUGGINGFACE_HOSTS.md).
+- **HF dataset bake is blocked by response-header stripping, not egress:** an
+  A/B probe (`hf_header_probe.py`) found sandbox responses identical to local
+  except that `Content-Length` is absent, and a ranged `GET` from inside a
+  sandbox returned `206` with real payload bytes from `us.aws.cdn.hf.co` —
+  so egress to the CDN works. `huggingface_hub` refuses to download a file
+  whose size it cannot determine, and `Content-Length` is the only size source
+  for small non-redirected files. Tracked in
+  [`DAYTONA_HUGGINGFACE_EGRESS_ISSUE.md`](DAYTONA_HUGGINGFACE_EGRESS_ISSUE.md);
+  host-scope details in [`HUGGINGFACE_HOSTS.md`](HUGGINGFACE_HOSTS.md).
 - ExploitGym exploit payloads are intentionally never exported to the host.
 
 ## Verification

@@ -94,28 +94,49 @@ actually apply to this repo rather than generic textbook definitions alone.
   provider API keys are injected into sandboxes by name reference via
   `update_secrets`, never as plaintext in `create()` parameters or logs.
 - **Secret `hosts` scoping** — each Daytona Secret can be created with a
-  `hosts` allowlist (`CreateSecretParams(..., hosts=[...])` in
-  `configure_secrets.py`); Daytona only injects the secret's value into
-  outbound requests whose destination host matches that list. `openai`
-  scopes to `api.openai.com`, `huggingface` currently scopes to only
-  `huggingface.co`. This matters because it's a narrower, per-host trust
-  boundary than just "the agent has this token" — a compromised or
-  off-script process in the sandbox still can't use the secret against an
-  arbitrary host outside the allowlist.
-- **HF CDN redirect host gap** — a known practical trap for the
-  `huggingface` secret specifically: Hugging Face Hub API calls
-  (metadata, file listing) go to `huggingface.co`, but the actual file
-  *content* for large/LFS-tracked files (like `cybergym-e2e`'s 159 GB of
-  blobs) is served from a **separate CDN redirect host** — e.g.
-  `us.aws.cdn.hf.co` or a `cdn-lfs*.huggingface.co`-style domain — which
-  varies by region/backend and isn't fixed. If the Daytona Secret's
-  `hosts` allowlist only includes `huggingface.co`, the token won't be
-  injected into the redirected CDN request, so `snapshot_download` can
-  authenticate the initial API call but then fail (401/403) on the actual
-  blob download. `configure_secrets.py`'s current
-  `"huggingface": (..., ["huggingface.co"])` entry does not yet account
-  for this — widening it to include the CDN redirect host(s) actually
-  observed in a bake's traffic is an open fix, not yet applied.
+  `hosts` list of exact FQDNs (`CreateSecretParams(..., hosts=[...])` in
+  `configure_secrets.py`), bounding where Daytona may substitute or send
+  that secret's value. `openai` scopes to `api.openai.com`;
+  `huggingface` scopes to the nine hosts in `HUGGINGFACE_SECRET_HOSTS`.
+  This matters because it's a narrower, per-host trust boundary than just
+  "the agent has this token" — a compromised or off-script process in the
+  sandbox still can't use the secret against an arbitrary host outside the
+  list. Critically, it is **not** an egress allowlist: it grants no DNS,
+  TCP, TLS, or HTTP reachability to any host, and listing a host is not
+  proof the bearer token is actually forwarded there (modern Hugging Face
+  transfers can use Hub-minted Xet credentials or pre-signed URLs at the
+  storage layer instead).
+- **HF CDN redirect host gap** — a theory this repo held for several
+  rounds and then **disproved**, recorded because the reasoning trap is
+  worth remembering. Hub API calls go to `huggingface.co` while large
+  file content is served after a `302` to a separate CDN host
+  (`us.aws.cdn.hf.co` here), so a download failure looked like a
+  host-allowlist gap. Widening the Secret to nine FQDNs changed nothing.
+  A ranged `GET` from inside a sandbox then returned `206` with real
+  payload bytes from that CDN — **egress was never blocked**. The trap
+  was treating "the Secret's host list is misconfigured" as the only
+  hypothesis consistent with "a download fails after a redirect," and
+  re-running the same bake rather than an experiment that could
+  distinguish causes. Superseded by the header-stripping finding below.
+- **Response-header stripping (current HF blocker)** — the actual cause
+  of the CyberGym dataset failure. An A/B probe found the sandbox's
+  responses identical to local except that **`Content-Length` is
+  absent**. `huggingface_hub` derives a file's expected size from
+  `X-Linked-Size` *or*, for a non-redirected response, `Content-Length`
+  (`file_download.py:1645-1648`), and raises `FileMetadataError`
+  ("Distant resource does not have a Content-Length") when neither
+  exists. Large redirected archives survive on `X-Linked-Size`; small
+  directly-served files have no fallback. The signature suggests a
+  transparent proxy re-framing responses. Tracked in
+  [`DAYTONA_HUGGINGFACE_EGRESS_ISSUE.md`](DAYTONA_HUGGINGFACE_EGRESS_ISSUE.md).
+- **Xet** — Hugging Face's current storage backend for large files,
+  using chunk-level deduplication; **Git LFS is the legacy path it
+  replaced**, not the other way round. `sunblaze-ucb/cybergym-e2e` is
+  Xet-backed (every probed file returns an `X-Xet-Hash` header), which
+  matters because `huggingface_hub` takes the CDN-redirect download
+  branch only when `xet_file_data is None`
+  (`file_download.py:1777`). The `cdn-lfs-*` hosts in the Secret's list
+  are legacy; the `xethub` and `cdn.hf.co` hosts are current.
 - **Honeypot** — a decoy resource deliberately exposed to detect
   unauthorized or out-of-scope access attempts by observing who
   interacts with it. See the dedicated section below.
@@ -125,6 +146,18 @@ actually apply to this repo rather than generic textbook definitions alone.
 
 ## Networking and Linux internals
 
+- **FQDN** — Fully Qualified Domain Name; a hostname written out to its
+  complete, unambiguous position in the DNS tree, with every label from
+  the host itself up to the root included — e.g. `us.aws.cdn.hf.co`
+  rather than a bare `us` or a wildcard `*.hf.co`. "Fully qualified"
+  means it needs no local search-domain suffix to resolve; it names
+  exactly one point in DNS from anywhere. GYMSIEGE's Hugging Face Secret
+  is deliberately scoped to nine **exact** FQDNs rather than a wildcard
+  pattern, so the token's trust boundary can't silently widen if Hugging
+  Face adds a new subdomain — a new host has to be reviewed and added on
+  purpose. See the nine-host table in
+  [`codebase-overview.md`](codebase-overview.md) and
+  [`HUGGINGFACE_HOSTS.md`](HUGGINGFACE_HOSTS.md).
 - **TLS** — Transport Layer Security; the encrypted-handshake protocol
   that was failing for package fetches inside the nested Alpine build
   container (`DAYTONA_BAKE_ISSUE.md`).

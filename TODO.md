@@ -75,7 +75,7 @@ Do not assume any terminal process from the previous session is still alive.
 - `results/exploitgym_results.json` is intentionally marked `interrupted`, with
   one completed trial out of two expected trials. It must not be presented as a
   completed two-task result.
-- The local test suite currently passes: 21 tests.
+- The local test suite currently passes: 22 tests.
 
 Official OpenAI documentation says `gpt-5.6-cyber` is separately approved and
 provisioned. Access in one organization/project does not imply access from a
@@ -155,7 +155,7 @@ git diff --check
 git status --short
 ```
 
-Expected test result: 21 tests pass. One argparse error line for the deliberately
+Expected test result: 22 tests pass. One argparse error line for the deliberately
 rejected `claude_code` choice is expected test output, followed by `OK`.
 
 ## Authoritative next implementation and run sequence
@@ -487,6 +487,13 @@ launching duplicate trials.
       Priority 8. Trials whose telemetry fetch fails outright remain invisible
       to the dashboard's per-sandbox charts, which only render a non-empty
       `metrics_series`.
+- [x] Record the Hugging Face Secret's nine-FQDN transfer-host scope and the
+      distinction between Secret `hosts` (a value-substitution trust boundary)
+      and an egress allowlist. Table in
+      [`codebase-overview.md`](codebase-overview.md#hugging-face-dataset-transfer-hosts),
+      `FQDN` and the corrected `Secret hosts scoping` / `HF CDN redirect host
+      gap` entries in [`glossary.md`](glossary.md), full detail in
+      [`HUGGINGFACE_HOSTS.md`](HUGGINGFACE_HOSTS.md).
 
 ## Priority 7 — resume experiments incrementally
 

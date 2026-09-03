@@ -100,6 +100,44 @@ phase. Instead, once `run_agent.py` has finished and frozen its artifacts
 came back non-`None`; a failure anywhere in that sequence is captured as
 `detonation_error` on the result instead of silently dropping the trial.
 
+## Hugging Face dataset transfer hosts
+
+The CyberGym dataset payload is fetched during the bake
+(`snapshot_build.py`'s `BOOTSTRAP_SH`), authenticated by the
+`gymsiege-huggingface` Daytona Secret. That Secret is scoped to nine exact
+FQDNs, defined once in `configure_secrets.py` as `HUGGINGFACE_SECRET_HOSTS`
+and mirrored in [`HUGGINGFACE_HOSTS.md`](HUGGINGFACE_HOSTS.md):
+
+| # | Host | Role |
+|---|---|---|
+| 1 | `huggingface.co` | Hub API — auth, gated-repo resolution, metadata |
+| 2 | `cas-server.xethub.hf.co` | Xet content-addressed store, US |
+| 3 | `cas-server.xethub-eu.hf.co` | Xet content-addressed store, EU |
+| 4 | `transfer.xethub.hf.co` | Xet transfer endpoint, US |
+| 5 | `transfer.xethub-eu.hf.co` | Xet transfer endpoint, EU |
+| 6 | `us.aws.cdn.hf.co` | CDN payload delivery, AWS US — **the observed redirect target** |
+| 7 | `us.gcp.cdn.hf.co` | CDN payload delivery, GCP US |
+| 8 | `cdn-lfs-us-1.hf.co` | Legacy LFS CDN, US |
+| 9 | `cdn-lfs-eu-1.hf.co` | Legacy LFS CDN, EU |
+
+Two things this list is *not*. It is not a network allowlist — a Daytona
+Secret's `hosts` field is a value-substitution trust boundary governing where
+Daytona may send that secret. And it is not permanent: it tracks Hugging Face's
+current download-behind-a-firewall guidance, so re-review it whenever
+`huggingface_hub` is upgraded. `tests/test_core.py` asserts the list is
+duplicate-free and still contains the key members.
+
+**This list is not what blocks the bake.** An A/B probe
+(`hf_header_probe.py`) transferred payload bytes from `us.aws.cdn.hf.co`
+*inside a sandbox* (ranged `GET` → `206`), retiring the egress theory. The
+sandbox's responses match local on every header the client needs except
+`Content-Length`, which is absent — and `huggingface_hub` refuses to download a
+file whose size it cannot determine. Details in
+[`DAYTONA_HUGGINGFACE_EGRESS_ISSUE.md`](DAYTONA_HUGGINGFACE_EGRESS_ISSUE.md).
+Note also that this dataset is Xet-backed, so `huggingface_hub`'s real payload
+path is Xet rather than the CDN redirect (`file_download.py:1777`); Xet is
+Hugging Face's *current* backend and Git LFS the legacy one, not the reverse.
+
 ## Telemetry capture and the OOM proxy
 
 Telemetry is captured at **two** points in a trial's life, and the second one
