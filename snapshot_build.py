@@ -26,6 +26,7 @@ on the default region) in the environment. See README.md#credentials.
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import json
 import os
@@ -273,6 +274,72 @@ def pinned_task_paths() -> list[str]:
     return [task.path for task in load_tasks(common.ROOT / "tasks.pinned.txt")]
 
 
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Bake the gymsiege-toolchain snapshot.")
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        metavar="N",
+        help=(
+            "Bake only the first N pinned tasks. For validating a change to the "
+            "bootstrap cheaply. Requires --no-snapshot or --snapshot-name, "
+            "because a truncated snapshot must never be published under the "
+            "canonical name."
+        ),
+    )
+    parser.add_argument(
+        "--no-snapshot",
+        action="store_true",
+        help="Run the bootstrap (and image pull) but capture no snapshot and skip the restore probe.",
+    )
+    parser.add_argument(
+        "--snapshot-name",
+        default=None,
+        metavar="NAME",
+        help=f"Capture under a different name instead of {SNAPSHOT_NAME!r}.",
+    )
+    parser.add_argument(
+        "--skip-image-pull",
+        action="store_true",
+        help="Skip the Docker image pull. Only meaningful with --no-snapshot; a snapshot without images is unusable.",
+    )
+    return parser
+
+
+def resolve_options(args: argparse.Namespace) -> tuple[list[str], str | None, bool]:
+    """Return (tasks, snapshot_name_or_None, skip_image_pull), failing closed.
+
+    A limited bake produces a snapshot that is missing data for every task it
+    did not download. Publishing that under SNAPSHOT_NAME would be silent
+    corruption: trials restore from it by name, and demo.sh skips baking when
+    a snapshot of that name is ACTIVE, so the truncated one would be treated
+    as complete. Refuse the combination outright rather than warn.
+    """
+    tasks = pinned_task_paths()
+    if args.limit is not None:
+        if args.limit < 1:
+            raise SystemExit("--limit must be >= 1")
+        if not args.no_snapshot and args.snapshot_name is None:
+            raise SystemExit(
+                "--limit truncates the dataset, so it refuses to publish under "
+                f"{SNAPSHOT_NAME!r}. Pass --no-snapshot to validate without "
+                "capturing, or --snapshot-name to capture under a distinct name."
+            )
+        tasks = tasks[: args.limit]
+        if not tasks:
+            raise SystemExit("no pinned tasks selected")
+
+    if args.skip_image_pull and not args.no_snapshot:
+        raise SystemExit(
+            "--skip-image-pull without --no-snapshot would capture a snapshot "
+            "with no build images, which is unusable at trial time."
+        )
+
+    snapshot_name = None if args.no_snapshot else (args.snapshot_name or SNAPSHOT_NAME)
+    return tasks, snapshot_name, args.skip_image_pull
+
+
 async def timed_exec(
     sandbox,
     script: str,
@@ -306,14 +373,34 @@ async def timed_exec(
     return {"label": label, "duration_s": dt, "exit_code": getattr(r, "exit_code", None), "ok": ok}
 
 
-async def build_snapshot() -> None:
+async def build_snapshot(args: argparse.Namespace | None = None) -> None:
+    if args is None:
+        args = build_parser().parse_args([])
     require_env("DAYTONA_API_KEY")
     hf_secret_name = require_env("GYMSIEGE_HF_SECRET_NAME")
-    tasks = pinned_task_paths()
-    log.info("baking %s for %d pinned tasks", SNAPSHOT_NAME, len(tasks))
+    tasks, snapshot_name, skip_image_pull = resolve_options(args)
+
+    # A truncated run's timings are not comparable to a full bake, and
+    # bench["bake"] is overwritten wholesale below -- so a validation run must
+    # not touch the file that holds the real bake's numbers.
+    limited = args.limit is not None
+    if limited:
+        log.warning(
+            "LIMITED bake: %d of %d pinned tasks, snapshot=%s. "
+            "provisioning_bench.json will NOT be written.",
+            len(tasks), len(pinned_task_paths()), snapshot_name or "(none)",
+        )
+    else:
+        log.info("baking %s for %d pinned tasks", snapshot_name, len(tasks))
 
     bake_steps: list[dict[str, Any]] = []
     bench = load_json(PROVISIONING_BENCH_JSON, {"bake": [], "cold_create": [], "snapshot_create": [], "fork_create": []})
+
+    def save_bench() -> None:
+        if limited:
+            return
+        bench["bake"] = bake_steps
+        atomic_write_json(PROVISIONING_BENCH_JSON, bench)
 
     async with AsyncDaytona() as daytona:
         secret_page = await asyncio.wait_for(
@@ -365,16 +452,19 @@ async def build_snapshot() -> None:
                     "refusing to pull images or capture an unusable snapshot"
                 )
 
-            pull = PULL_IMAGES_PY.format(repo_dir=CYBERGYM_REMOTE_DIR, tasks=tasks)
-            pull_step = await timed_exec(
-                sandbox, pull, "pull_pinned_images", timeout=3600
-            )
-            bake_steps.append(pull_step)
-            if not pull_step["ok"]:
-                raise RuntimeError(
-                    "mandatory pinned-image pull failed; refusing to capture "
-                    "an incomplete snapshot"
+            if skip_image_pull:
+                log.warning("skipping pinned-image pull (--skip-image-pull)")
+            else:
+                pull = PULL_IMAGES_PY.format(repo_dir=CYBERGYM_REMOTE_DIR, tasks=tasks)
+                pull_step = await timed_exec(
+                    sandbox, pull, "pull_pinned_images", timeout=3600
                 )
+                bake_steps.append(pull_step)
+                if not pull_step["ok"]:
+                    raise RuntimeError(
+                        "mandatory pinned-image pull failed; refusing to capture "
+                        "an incomplete snapshot"
+                    )
 
             cleanup_and_disk = CLEANUP_AND_DISK_SH.format(
                 repo_dir=CYBERGYM_REMOTE_DIR,
@@ -393,43 +483,55 @@ async def build_snapshot() -> None:
                     "snapshot cleanup/disk headroom gate failed; refusing to capture"
                 )
 
-            t_snap0 = time.monotonic()
-            await sandbox.create_snapshot(SNAPSHOT_NAME, timeout=3600)
-            t_snap = time.monotonic() - t_snap0
-            log.info("snapshot '%s' created in %.1fs", SNAPSHOT_NAME, t_snap)
-            bake_steps.append({"label": "create_snapshot", "duration_s": t_snap, "exit_code": 0, "ok": True})
+            if snapshot_name is None:
+                log.warning("--no-snapshot: bootstrap validated, capturing nothing")
+            else:
+                t_snap0 = time.monotonic()
+                await sandbox.create_snapshot(snapshot_name, timeout=3600)
+                t_snap = time.monotonic() - t_snap0
+                log.info("snapshot '%s' created in %.1fs", snapshot_name, t_snap)
+                bake_steps.append({"label": "create_snapshot", "duration_s": t_snap, "exit_code": 0, "ok": True})
 
         finally:
-            bench["bake"] = bake_steps
-            atomic_write_json(PROVISIONING_BENCH_JSON, bench)
+            save_bench()
             await sandbox.set_ttl(60)
             await sandbox.delete(wait=True, timeout=180)
             log.info("base sandbox %s deleted (safety ttl was also set to 60m)", sandbox.id)
 
-        # One immediate snapshot-restore sample so provision-bench has a
-        # same-day baseline even before orchestrator.py runs the full sweep.
-        t_restore0 = time.monotonic()
-        restored = await daytona.create(
-            CreateSandboxFromSnapshotParams(snapshot=SNAPSHOT_NAME, name="siege-snapshot-probe")
-        )
-        t_restore = time.monotonic() - t_restore0
-        log.info("snapshot-restore probe created in %.1fs", t_restore)
-        await restored.set_ttl(5)
-        await restored.delete(wait=True, timeout=180)
+        t_restore = None
+        if snapshot_name is not None:
+            # One immediate snapshot-restore sample so provision-bench has a
+            # same-day baseline even before orchestrator.py runs the full sweep.
+            t_restore0 = time.monotonic()
+            restored = await daytona.create(
+                CreateSandboxFromSnapshotParams(snapshot=snapshot_name, name="siege-snapshot-probe")
+            )
+            t_restore = time.monotonic() - t_restore0
+            log.info("snapshot-restore probe created in %.1fs", t_restore)
+            await restored.set_ttl(5)
+            await restored.delete(wait=True, timeout=180)
 
-    bench["bake"] = bake_steps
-    bench["snapshot_create"].append({"ts": time.time(), "duration_s": t_restore})
-    bench["cold_create"].append({"ts": time.time(), "duration_s": t_create})
-    atomic_write_json(PROVISIONING_BENCH_JSON, bench)
+    if not limited:
+        bench["bake"] = bake_steps
+        if t_restore is not None:
+            bench["snapshot_create"].append({"ts": time.time(), "duration_s": t_restore})
+        bench["cold_create"].append({"ts": time.time(), "duration_s": t_create})
+        atomic_write_json(PROVISIONING_BENCH_JSON, bench)
 
     total = sum(s["duration_s"] for s in bake_steps)
     ok = all(s["ok"] for s in bake_steps)
     log.info("=== snapshot bake %s in %.1fs total ===", "SUCCEEDED" if ok else "COMPLETED WITH WARNINGS", total)
-    log.info("cold create: %.1fs | snapshot restore: %.1fs (delta: %.1fs, %.0f%% faster)",
-              t_create, t_restore, t_create - t_restore, 100 * (t_create - t_restore) / max(t_create, 1e-9))
+    if t_restore is not None:
+        log.info("cold create: %.1fs | snapshot restore: %.1fs (delta: %.1fs, %.0f%% faster)",
+                  t_create, t_restore, t_create - t_restore, 100 * (t_create - t_restore) / max(t_create, 1e-9))
+    if limited:
+        log.warning(
+            "this was a LIMITED validation bake over %d task(s); it proves the "
+            "bootstrap path only, not a usable snapshot", len(tasks)
+        )
     if not ok:
         sys.exit(1)
 
 
 if __name__ == "__main__":
-    asyncio.run(build_snapshot())
+    asyncio.run(build_snapshot(build_parser().parse_args()))

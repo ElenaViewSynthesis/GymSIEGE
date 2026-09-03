@@ -10,7 +10,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from common import Task, TrialResult, sandbox_secret_refs
+from common import SNAPSHOT_NAME, Task, TrialResult, sandbox_secret_refs
 from configure_secrets import HUGGINGFACE_SECRET_HOSTS, credential_value
 from exploitgym_adapter import (
     EXPLOITGYM_CONTROLLER_PORT,
@@ -212,6 +212,42 @@ class ExploitGymCommandTests(unittest.TestCase):
                 f"{name} pin drifted: requirements.txt=={req_pins[name]} "
                 f"but BOOTSTRAP_SH=={bake_pins[name]}",
             )
+
+    def test_limited_bake_cannot_publish_the_canonical_snapshot(self) -> None:
+        """A truncated bake must never be published as `gymsiege-toolchain`.
+
+        Trials restore from that snapshot by name and demo.sh skips baking
+        when it is ACTIVE, so a snapshot missing 19 of 20 tasks' data would be
+        silently treated as complete. Refused outright rather than warned.
+        """
+        from snapshot_build import build_parser as bake_parser, resolve_options
+
+        parser = bake_parser()
+
+        with self.assertRaises(SystemExit):
+            resolve_options(parser.parse_args(["--limit", "1"]))
+        with self.assertRaises(SystemExit):
+            resolve_options(parser.parse_args(["--limit", "0", "--no-snapshot"]))
+        # a snapshot with no build images is unusable at trial time
+        with self.assertRaises(SystemExit):
+            resolve_options(parser.parse_args(["--skip-image-pull"]))
+
+        # the default path is untouched: all pinned tasks, canonical name
+        tasks, name, skip = resolve_options(parser.parse_args([]))
+        self.assertEqual(name, SNAPSHOT_NAME)
+        self.assertGreater(len(tasks), 1)
+        self.assertFalse(skip)
+
+        # validation runs are allowed when they cannot corrupt anything
+        tasks, name, _ = resolve_options(parser.parse_args(["--limit", "1", "--no-snapshot"]))
+        self.assertEqual(len(tasks), 1)
+        self.assertIsNone(name)
+
+        tasks, name, _ = resolve_options(
+            parser.parse_args(["--limit", "2", "--snapshot-name", "gymsiege-scratch"])
+        )
+        self.assertEqual(len(tasks), 2)
+        self.assertEqual(name, "gymsiege-scratch")
 
     def test_production_batch_is_userspace_only(self) -> None:
         tasks = load_exploitgym_tasks(Path("exploitgym_tasks.production.txt"))
