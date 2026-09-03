@@ -575,8 +575,17 @@ Found by inspection, not yet fixed:
 
 ## Priority 9 — evaluate `huggingface-community-evals` for future experiments
 
-Not started; recorded so it is not lost. Runs evaluations for Hugging Face Hub
-models using `inspect-ai` and `lighteval` on local hardware.
+Not started; recorded so it is not lost.
+
+**What it actually is** — verified 2026-09-03 against
+<https://github.com/huggingface/skills> (26 skills there). It is an **agent
+skill, not a library**: installed with `hf skills add
+huggingface-community-evals`, the same mechanism as the `hf-cli` skill already
+in `.agents/skills/`. Description upstream, verbatim: "Run evaluations for
+Hugging Face Hub models using inspect-ai and lighteval on local hardware."
+The skill teaches an agent to drive those tools; the open question for this
+project is about `inspect-ai`/`lighteval` themselves, not about the skill,
+which is only a thin instruction layer over them.
 
 Why it is worth a look for this project specifically:
 
@@ -595,13 +604,14 @@ Why it is worth a look for this project specifically:
 
 Before adopting it, resolve:
 
-- [ ] What it actually is — Hub Space, `hf jobs` workflow, or installable
-      package — and its licence and provenance. The description above is
-      recorded as given and has not been verified against upstream.
-- [ ] Whether it can run a security benchmark at all, or is scoped to
-      standard LLM evals (`lighteval` suggests the latter). If it cannot
-      express the sanitizer-oracle scoring, it is a capability-baseline tool
-      only, not a CyberGym substitute.
+- [x] What it actually is. Answered above: an agent skill over
+      `inspect-ai`/`lighteval`, not a package to integrate.
+- [ ] Whether it can express a security benchmark at all. Upstream material
+      points at standard LLM evals — MMLU, GSM8K, backend selection between
+      vLLM/Transformers/Accelerate — with no indication it can express
+      sanitizer-oracle scoring. Treat as **probably a capability-baseline
+      tool only, not a CyberGym substitute**, and confirm before spending
+      real effort.
 - [ ] Whether "local hardware" is even viable here: the CyberGym oracle needs
       Docker-in-Docker with OSS-Fuzz sanitizer images, which is what pushed
       this project onto disposable cloud sandboxes in the first place.
@@ -615,8 +625,17 @@ useful as a cross-check once there is something to cross-check against.
 
 ## Priority 10 — evaluate `trl-training` for future experiments
 
-Not started; recorded so it is not lost. Trains and fine-tunes transformer
-language models using TRL (Transformers Reinforcement Learning).
+Not started; recorded so it is not lost.
+
+**What it actually is** — verified 2026-09-03 against
+<https://github.com/huggingface/skills>. Like Priority 9 it is an **agent
+skill, not a library**: `hf skills add trl-training`. Description upstream,
+verbatim: "Train and fine-tune transformer language models using TRL
+(Transformers Reinforcement Learning)." Upstream does **not** state where it
+executes — a separate skill, `huggingface-llm-trainer`, is the one that
+trains "using Hugging Face Jobs infrastructure", so do not assume `trl-training`
+implies local hardware or HF Jobs without checking. Both would need
+evaluating if this is ever pursued.
 
 Note this is a **scope expansion, not a next step**. GYMSIEGE is an evaluation
 harness: it measures how existing models behave. Training produces a new
