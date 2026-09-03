@@ -17,3 +17,12 @@ snapshot_build.metrics.json
 
 # personal resume/interview notes, not project documentation
 interview-bullets.md
+
+# Agent CLI skills installed by `hf skills add --claude`. Not committed for
+# two reasons: the content is auto-generated from a pinned huggingface_hub
+# version, so `hf skills add --force` reproduces it exactly; and the
+# .claude/skills entry is a WSL symlink into .agents/ that Windows git cannot
+# traverse ("Function not implemented") and that would degrade to a plain text
+# file on a Windows checkout.
+.agents/
+.claude/skills/
