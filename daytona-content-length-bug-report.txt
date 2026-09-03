@@ -1,0 +1,250 @@
+================================================================================
+TITLE
+================================================================================
+
+Sandbox network path re-frames HTTP responses as chunked, removing
+Content-Length and breaking clients that require a declared body size
+
+Labels: runner, api, sdk, bug
+
+
+================================================================================
+SUMMARY
+================================================================================
+
+HTTP responses returned to a Daytona sandbox arrive with Content-Length
+removed and Transfer-Encoding added. The identical request, issued at the same
+time from outside the sandbox, carries Content-Length and no Transfer-Encoding.
+
+This is not an egress or reachability problem. The sandbox reaches the origin,
+authenticates, and transfers payload bytes successfully. Only the response
+framing differs.
+
+Any client that requires a declared body size fails on this target. We hit it
+through huggingface_hub, but the cause is transport-level and provider-neutral.
+
+
+================================================================================
+IMPACT
+================================================================================
+
+Our workload cannot provision at all. A snapshot bake downloads a 60-file
+dataset slice; 20 of those files abort, so the snapshot is never captured and
+the evaluation harness cannot run.
+
+The failure surfaces as a downstream library error that names a symptom rather
+than a cause, which cost several days of misdirected investigation:
+
+    huggingface_hub.errors.LocalEntryNotFoundError: Distant resource does not
+    have a Content-Length. We also cannot find the requested files in the
+    local cache.
+
+
+================================================================================
+MINIMAL REPRODUCTION
+================================================================================
+
+No account, credential, or third-party dataset is required. The behaviour is a
+property of the network path, so any public URL that returns a Content-Length
+demonstrates it.
+
+Run this INSIDE a sandbox, then again OUTSIDE it, and compare:
+
+    python3 - <<'PY'
+    import httpx
+    r = httpx.head("https://huggingface.co/api/models", timeout=30)
+    print("status           :", r.status_code)
+    print("content-length   :", r.headers.get("content-length"))
+    print("transfer-encoding:", r.headers.get("transfer-encoding"))
+    PY
+
+Observed:
+
+    OUTSIDE a sandbox     content-length: <an integer>    transfer-encoding: None
+    INSIDE  a sandbox     content-length: None            transfer-encoding: chunked
+
+That difference alone is the defect. Everything below is why it matters.
+
+
+================================================================================
+EVIDENCE
+================================================================================
+
+Method: one probe script executed verbatim in both environments, issuing
+byte-identical requests with the same credential within the same minute. The
+only variable is the network path. Recorded 2026-09-03.
+
+Six files, covering all three storage classes present in the request set:
+
+                                  LOCAL                    DAYTONA SANDBOX
+  ----------------------------------------------------------------------------
+  src.tgz    (LFS/Xet-backed)
+    HEAD status                   302                      302
+    X-Linked-Size                 12595315                 12595315  (identical)
+    Content-Length                1020                     absent
+    Transfer-Encoding             absent                   present
+    Ranged GET (bytes=0-0)        206, 1 byte              206, 1 byte
+
+  poc.bin    (LFS/Xet-backed)
+    HEAD status                   302                      302
+    X-Linked-Size                 1140                     1140      (identical)
+    Content-Length                1133                     absent
+    Transfer-Encoding             absent                   present
+    Ranged GET (bytes=0-0)        206, 1 byte              206, 1 byte
+
+  crash.log  (plain git, served directly)
+    HEAD status                   200                      200
+    X-Linked-Size                 absent                   absent
+    Content-Length                4895                     absent      <-- FAILS
+    Transfer-Encoding             absent                   present
+    Ranged GET (bytes=0-0)        206, 1 byte              206, 1 byte
+
+Note the last row of each block. Content is reachable from inside the sandbox
+in every case, including the files that abort. Only the size metadata is
+destroyed.
+
+Sending "Accept-Encoding: identity" -- the obvious suspect for a size header
+vanishing, and what the client itself always sends -- changed nothing in either
+environment.
+
+
+================================================================================
+WHY THIS BREAKS THE CLIENT
+================================================================================
+
+huggingface_hub resolves a file's expected size as follows
+(file_download.py:1645-1648, identical in versions 1.29.0 and 1.30.0):
+
+    size=_int_or_none(
+        response.headers.get(constants.HUGGINGFACE_HEADER_X_LINKED_SIZE)
+        or (None if response.is_redirect else response.headers.get("Content-Length"))
+    ),
+
+and refuses to proceed without it (line 1766):
+
+    expected_size = metadata.size
+    if expected_size is None:
+        raise FileMetadataError("Distant resource does not have a Content-Length.")
+
+Note the "None if response.is_redirect" clause. On a redirect the client
+ignores Content-Length entirely and uses X-Linked-Size, so removing
+Content-Length there is harmless. On a direct 200 with no X-Linked-Size,
+Content-Length is the only source, size becomes None, and the download aborts.
+
+The re-framing is applied uniformly to all responses. The damage is selective
+because only some files carry a second size source.
+
+
+================================================================================
+WHICH FILES ARE AFFECTED
+================================================================================
+
+Our bake requests 60 files across 20 tasks -- three per task:
+
+  File         Storage      Response   Size source           Result
+  ----------------------------------------------------------------------------
+  src.tgz      LFS/Xet      302        X-Linked-Size         downloads
+  poc.bin      LFS/Xet      302        X-Linked-Size         downloads
+  crash.log    plain git    200        Content-Length only   ABORTS
+
+20 of 60 files fail: every crash.log.
+
+File size is not the discriminator. A poc.bin is frequently under 1.2 KB and
+still redirects and succeeds; a 4.9 KB crash.log fails. What matters is whether
+the path is LFS/Xet-tracked and therefore carries X-Linked-Size as a fallback.
+
+
+================================================================================
+WHAT WAS RULED OUT
+================================================================================
+
+1. Authorization. An early 401 GatedRepoError was resolved. Not recurring.
+
+2. Egress restriction. DISPROVEN. A ranged GET issued from inside the sandbox
+   returns 206 with real payload bytes, including from the redirect target
+   us.aws.cdn.hf.co. Outbound HTTPS works.
+
+3. Secret host scoping. The organization Secret was widened to nine exact
+   Hugging Face FQDNs and re-applied; a read-only API query confirmed the
+   metadata applied. No change. A Secret's hosts list is a value-substitution
+   trust boundary and grants no network reachability.
+
+4. Client version skew. The sandbox runs huggingface_hub 1.30.0 and the local
+   client 1.29.0, but the size-resolution block is byte-identical between the
+   two releases.
+
+5. Content negotiation. Accept-Encoding: identity changes nothing.
+
+6. General connectivity. GitHub, Debian package repositories, and PyPI are all
+   reachable from the same sandbox during the same bootstrap.
+
+7. Flakiness. Two consecutive full bakes failed identically, and three
+   independent probe runs reproduced the header difference exactly.
+
+
+================================================================================
+EXPECTED BEHAVIOUR
+================================================================================
+
+A sandbox's HTTP responses should preserve upstream entity headers. Where the
+platform re-frames a response, that should be documented, because widely-used
+clients treat Content-Length as load-bearing rather than advisory.
+
+Failing that, in order of usefulness to us:
+
+1. Preserve Content-Length. Buffering a response in a proxy does not require
+   discarding a size the origin already declared.
+
+2. Document which response headers a sandbox's network path may add, alter, or
+   remove, so this is diagnosable from documentation rather than from a
+   controlled A/B experiment against an external reference.
+
+3. Provide a sandbox-visible diagnostic reporting the effective network path,
+   so proxy-induced rewriting can be distinguished from origin behaviour
+   without needing a machine outside the platform to compare against.
+
+
+================================================================================
+QUESTIONS
+================================================================================
+
+1. Is there a transparent HTTP/HTTPS proxy in the sandbox network path on this
+   target? Is it documented anywhere?
+
+2. Is dropping Content-Length while adding Transfer-Encoding intended, or a
+   defect?
+
+3. Does the re-framing apply to all responses, or only to some size or
+   content-type classes?
+
+4. Which other entity headers may be added, altered, or removed?
+
+5. Is there a supported way to obtain an unmodified response, or to inspect the
+   effective network path from inside a sandbox?
+
+
+================================================================================
+ENVIRONMENT
+================================================================================
+
+  Daytona Python SDK            0.207.0
+  Daytona API version (headers) v0.209.0
+  Sandbox image                 Image.debian_slim("3.12")
+  Sandbox creation              AsyncDaytona.create(), default settings
+  Network policy                centrally managed on this target;
+                                per-sandbox overrides are rejected
+  Local reference client        Python 3.12, Ubuntu on WSL
+  huggingface_hub               1.30.0 in sandbox / 1.29.0 local
+  Origin exercised              huggingface.co (and its CDN redirect target)
+  Date observed                 2026-09-03
+
+
+================================================================================
+POSSIBLY RELATED
+================================================================================
+
+  daytonaio/daytona#3357  Dynamic Network Egress Control for Running Sandboxes
+  daytonaio/daytona#5151  Allow sandbox egress to api.osv.dev
+
+Both concern network policy control rather than response integrity, so this is
+likely distinct, but they suggest the same subsystem.
