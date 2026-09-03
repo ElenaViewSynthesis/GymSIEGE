@@ -106,13 +106,33 @@ store it as `HF_TOKEN`; the snapshot builder refuses to capture a partial
 snapshot when authenticated dataset download fails. A token stored by
 `huggingface-cli login` in the same WSL distribution is also accepted by
 `configure_secrets.py huggingface`. The Daytona Secret scopes substitution to
-the Hub API host and the large-file redirect host used by the pinned E2E
-archives; this does not itself grant network egress.
+Hugging Face's documented transfer hosts; this is a trust boundary for where a
+Secret's value may be sent and does not itself grant network egress — see
+[`HUGGINGFACE_HOSTS.md`](HUGGINGFACE_HOSTS.md).
+
 The bake requests 2 CPUs, 4 GiB of memory, and the target's 10 GiB disk ceiling,
 uses Hugging Face's current `hf-xet` high-performance transfer path, cleans
 disposable package/download caches, and records a disk/inode/headroom gate
-before snapshot capture. `snapshot_download()` retains its normal resumable
-local-directory metadata when a download is retried in the same sandbox.
+before snapshot capture.
+
+Because this Daytona target re-frames responses as chunked and drops
+`Content-Length`, `snapshot_download()` cannot fetch files it is unable to
+size. The bootstrap therefore measures every file in the request set, excludes
+the unsizable ones from `snapshot_download()`, and fetches them directly,
+verifying each against the git blob SHA-1 that Hugging Face returns as the
+ETag. That path warns rather than aborting, so **check
+`results/crash_log_fetch.json` before trusting a bake** — the affected files
+are task inputs in patch-only mode. See
+[`DAYTONA_HUGGINGFACE_EGRESS_ISSUE.md`](DAYTONA_HUGGINGFACE_EGRESS_ISSUE.md).
+
+To validate a bootstrap change without a full 20-task run:
+
+```bash
+.venv/bin/python snapshot_build.py --limit 3 --no-snapshot
+```
+
+`--limit` refuses to publish under the canonical snapshot name, so a truncated
+bake cannot be mistaken for a complete one.
 
 Non-secret vault *names* are committed in `.env.defaults`. Copy local provider values into Daytona's organization vault once:
 

@@ -318,13 +318,25 @@ reference. Whatever egress policy exists should be introspectable without that.
 
 ## Current workarounds and limitations
 
-The affected set is now precisely identified — 20 `crash.log` files, a few KB
-each — so targeted workarounds exist:
+The affected set is defined by a property, not by a filename: **any file
+served directly (no redirect, so no `X-Linked-Size`) whose `Content-Length`
+this target removes.** `crash.log` is the confirmed example, but it is not
+necessarily the only one — a 20-task bake failed identically after excluding
+`crash.log` alone, so at least one further file class is affected. The set
+must therefore be measured per bake rather than assumed from extensions,
+because sizability follows a file's storage class: a 361-byte `poc.bin` is
+LFS-backed and redirects, while a 4.9 KB `crash.log` is plain-git and does
+not.
 
-1. **Fetch the 20 `crash.log` files with a plain HTTP client** that tolerates a
-   missing declared size, and let `huggingface_hub` handle the 40 redirected
-   files it downloads correctly. Cheapest, but those files then bypass the
-   client's size and ETag integrity checks.
+Given that, targeted workarounds exist:
+
+1. **Measure, then fetch the unsizable files with a plain HTTP client** that
+   tolerates a missing declared size, letting `huggingface_hub` handle the
+   redirected majority it downloads correctly. Cheapest, and integrity need
+   not be lost: Hugging Face returns the git blob SHA-1 as the ETag for
+   plain-git files and that header survives, so each fetch can be verified
+   against a recomputed blob hash. **This is what this repository
+   implements.**
 2. **Pre-stage them into the snapshot** via another transport at bake time.
    Adds provenance and lifecycle overhead for a few KB of data.
 3. **Mirror the 3.70 GiB selected subset into approved private storage.**

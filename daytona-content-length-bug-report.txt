@@ -147,11 +147,18 @@ Our bake requests 60 files across 20 tasks -- three per task:
   poc.bin      LFS/Xet      302        X-Linked-Size         downloads
   crash.log    plain git    200        Content-Length only   ABORTS
 
-20 of 60 files fail: every crash.log.
+At minimum every crash.log fails -- 20 of 60. Excluding only crash.log was
+not sufficient to complete the bake, so at least one further file is affected;
+the exact set is measured per run rather than assumed, because a single
+unsizable file aborts the entire download.
 
 File size is not the discriminator. A poc.bin is frequently under 1.2 KB and
 still redirects and succeeds; a 4.9 KB crash.log fails. What matters is whether
 the path is LFS/Xet-tracked and therefore carries X-Linked-Size as a fallback.
+
+The general statement, independent of this dataset: on this target, any file a
+client can only size from Content-Length becomes undownloadable, and any
+client that treats a declared body size as mandatory fails on it.
 
 
 ================================================================================

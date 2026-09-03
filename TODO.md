@@ -22,14 +22,31 @@ Do not assume any terminal process from the previous session is still alive.
   `gymsiege-huggingface` was created from it without exposing the value.
 - The 20 pinned task directories contain 60 files totalling about 3.70 GiB;
   the snapshot builder does not download the full approximately 160 GB dataset.
-  Every selected `src.tgz` redirects from `huggingface.co` to
-  `us.aws.cdn.hf.co`.
-- The latest authenticated rebake still failed when the Daytona sandbox
-  followed the archive redirect, even after both hosts were added to the
-  Secret. A target-managed network restriction is the leading hypothesis, but
-  it is not yet proven: the current `LocalEntryNotFoundError` does not
-  distinguish policy denial from DNS, TLS, proxy, or CDN transport failure.
-  The CyberGym smoke run and concurrency sweep remain intentionally unstarted.
+  Three files per task: `src.tgz` and `poc.bin` are LFS/Xet-backed and redirect
+  from `huggingface.co` to `us.aws.cdn.hf.co`; `crash.log` is plain-git and is
+  served directly as a `200`.
+- **The bake failure is diagnosed and worked around** (`bca2696`). It was never
+  an egress restriction: a ranged `GET` from inside a sandbox returns `206`
+  with real payload bytes from `us.aws.cdn.hf.co`. Daytona's network path
+  re-frames responses as chunked, removing `Content-Length`, and
+  `huggingface_hub` refuses any file whose size it cannot determine
+  (`file_download.py:1645-1648`, `:1766`). Redirected files survive on
+  `X-Linked-Size`; directly-served files have no fallback, and one of them
+  aborts the entire `snapshot_download`. The bootstrap now measures which
+  files are unsizable, excludes them via `ignore_patterns`, and fetches them
+  directly with git-blob-SHA-1 verification against the ETag. Full write-up in
+  `DAYTONA_HUGGINGFACE_EGRESS_ISSUE.md` and
+  `daytona-content-length-bug-report.txt`.
+- Validated at `--limit 1` and `--limit 3` (`written == verified == expected`).
+  **The full 20-task bake has not yet been re-run since the fix**, so
+  `gymsiege-toolchain` is still absent and the CyberGym smoke run and
+  concurrency sweep remain intentionally unstarted. Note a 3-task validation
+  previously passed under a hardcoded approach that then failed at 20 tasks;
+  only the full bake is conclusive.
+- Because the direct fetch warns rather than fails, a bake can now complete
+  with a missing or unverified `crash.log`. Check
+  `results/crash_log_fetch.json` before trusting any run — patch-only hands
+  that file to the agent as task input.
 - `snapshot_build.py` now mounts the Hugging Face token by organization Secret,
   requires authenticated dataset access, and aborts before image pulls or
   snapshot capture when a mandatory step fails. `demo.sh` now skips the bake
