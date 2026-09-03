@@ -227,10 +227,25 @@ def _selected_paths(limit: int) -> list[str]:
         and (in_pinned_scope(p) or in_project_scope(p))
     ]
 
+    # Sample each distinct file type rather than whichever sort first. The
+    # pinned scope holds crash.log / poc.bin / src.tgz per task, and only
+    # crash.log is served directly -- taking a flat prefix of `others` can
+    # miss it entirely and silently under-test the failing case.
+    buckets: dict[str, list[str]] = {}
+    for path in others:
+        name = path.rsplit("/", 1)[-1]
+        suffix = name.split(".", 1)[1] if "." in name else "(no extension)"
+        buckets.setdefault(suffix, []).append(path)
+
+    sampled: list[str] = []
+    for suffix in sorted(buckets):
+        sampled.extend(buckets[suffix][:limit])
+
     log.info(
-        "in pinned scope: %d archive(s), %d non-archive file(s)",
+        "in pinned scope: %d archive(s), %d non-archive file(s) across types %s",
         len(archives),
         len(others),
+        sorted(buckets) or "(none)",
     )
     if not others:
         log.warning(
@@ -238,7 +253,7 @@ def _selected_paths(limit: int) -> list[str]:
             "check cannot run, so a missing Content-Length on a 200 stays "
             "untested (huggingface_hub ignores Content-Length on redirects)"
         )
-    return archives[:limit] + others[:limit]
+    return archives[:limit] + sampled
 
 
 def probe_locally(dataset: str, paths: list[str]) -> Optional[dict[str, Any]]:

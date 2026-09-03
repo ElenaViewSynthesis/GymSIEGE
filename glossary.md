@@ -118,16 +118,23 @@ actually apply to this repo rather than generic textbook definitions alone.
   hypothesis consistent with "a download fails after a redirect," and
   re-running the same bake rather than an experiment that could
   distinguish causes. Superseded by the header-stripping finding below.
-- **Response-header stripping (current HF blocker)** — the actual cause
-  of the CyberGym dataset failure. An A/B probe found the sandbox's
-  responses identical to local except that **`Content-Length` is
-  absent**. `huggingface_hub` derives a file's expected size from
-  `X-Linked-Size` *or*, for a non-redirected response, `Content-Length`
+- **Chunked response re-framing (confirmed HF blocker)** — the
+  established cause of the CyberGym dataset failure. Responses reaching a
+  Daytona sandbox arrive with `Content-Length` removed and
+  `Transfer-Encoding` added, where the identical request from outside
+  carries the reverse. That is a proxy buffering and re-emitting
+  responses, not merely stripping a header. `huggingface_hub` derives a
+  file's expected size from `X-Linked-Size` *or*, only when the response
+  is **not** a redirect, `Content-Length`
   (`file_download.py:1645-1648`), and raises `FileMetadataError`
   ("Distant resource does not have a Content-Length") when neither
-  exists. Large redirected archives survive on `X-Linked-Size`; small
-  directly-served files have no fallback. The signature suggests a
-  transparent proxy re-framing responses. Tracked in
+  exists. The re-framing applies to every response but harms only the
+  files with no second size source: of the 60 files the bake requests,
+  the 20 `crash.log` files are plain-git and served as direct `200`s, so
+  they abort, while `src.tgz` and `poc.bin` are LFS/Xet-backed, redirect,
+  and carry `X-Linked-Size`. File size is irrelevant — a 1.1 KB
+  `poc.bin` redirects and survives. Confirmed 2026-09-03 by
+  `hf_header_probe.py`; tracked in
   [`DAYTONA_HUGGINGFACE_EGRESS_ISSUE.md`](DAYTONA_HUGGINGFACE_EGRESS_ISSUE.md).
 - **Xet** — Hugging Face's current storage backend for large files,
   using chunk-level deduplication; **Git LFS is the legacy path it

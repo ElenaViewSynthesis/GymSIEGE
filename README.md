@@ -250,13 +250,16 @@ Example of a running sandbox as seen on the Daytona platform:
   value. It does not grant DNS, TCP, TLS, or HTTP egress. GYMSIEGE uses explicit
   Hugging Face FQDNs rather than an unrestricted Secret; see
   [`HUGGINGFACE_HOSTS.md`](HUGGINGFACE_HOSTS.md).
-- **HF dataset bake is blocked by response-header stripping, not egress:** an
-  A/B probe (`hf_header_probe.py`) found sandbox responses identical to local
-  except that `Content-Length` is absent, and a ranged `GET` from inside a
-  sandbox returned `206` with real payload bytes from `us.aws.cdn.hf.co` —
-  so egress to the CDN works. `huggingface_hub` refuses to download a file
-  whose size it cannot determine, and `Content-Length` is the only size source
-  for small non-redirected files. Tracked in
+- **HF dataset bake is blocked by chunked response re-framing, not egress
+  (confirmed):** responses reaching a sandbox arrive with `Content-Length`
+  removed and `Transfer-Encoding` added; the same requests from outside carry
+  the reverse. Egress is fine — a ranged `GET` from inside a sandbox returns
+  `206` payload bytes. `huggingface_hub` takes a file's size from
+  `X-Linked-Size`, or from `Content-Length` only when the response is not a
+  redirect, so the 20 plain-git `crash.log` files in the bake's 60-file request
+  set have no fallback and abort; `src.tgz`/`poc.bin` are LFS/Xet-backed,
+  redirect, and are unaffected. Verified 2026-09-03 by `hf_header_probe.py`.
+  Tracked in
   [`DAYTONA_HUGGINGFACE_EGRESS_ISSUE.md`](DAYTONA_HUGGINGFACE_EGRESS_ISSUE.md);
   host-scope details in [`HUGGINGFACE_HOSTS.md`](HUGGINGFACE_HOSTS.md).
 - ExploitGym exploit payloads are intentionally never exported to the host.

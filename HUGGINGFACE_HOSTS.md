@@ -6,10 +6,12 @@ This file records the host trust boundary used by the Daytona organization
 Secret `gymsiege-huggingface`. It contains no tokens, authorization headers,
 signed URLs, query strings, or Secret placeholders.
 
-> **Status: the host list is no longer a suspect.** On 2026-09-03 an A/B probe
-> transferred payload bytes from `us.aws.cdn.hf.co` *from inside a Daytona
-> sandbox* (`206`, ranged GET). Egress works. The download failure has a
-> different cause — a missing `Content-Length` response header — tracked in
+> **Status: the host list is not the cause, and the cause is now confirmed.**
+> On 2026-09-03 an A/B probe transferred payload bytes from
+> `us.aws.cdn.hf.co` *from inside a Daytona sandbox* (`206`, ranged GET), so
+> egress works. The bake fails because sandbox responses arrive with
+> `Content-Length` removed and `Transfer-Encoding` added, which leaves the 20
+> directly-served `crash.log` files with no resolvable size. Tracked in
 > [`DAYTONA_HUGGINGFACE_EGRESS_ISSUE.md`](DAYTONA_HUGGINGFACE_EGRESS_ISSUE.md).
 > This file is retained as the record of the Secret's configured scope, not as
 > an open investigation.

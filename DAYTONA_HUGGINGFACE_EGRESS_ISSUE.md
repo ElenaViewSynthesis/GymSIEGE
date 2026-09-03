@@ -1,32 +1,37 @@
-# Daytona sandbox responses drop `Content-Length`, breaking `huggingface_hub` downloads
+# Sandbox network path re-frames responses as chunked, dropping `Content-Length` and breaking `huggingface_hub`
 
 **Labels:** `runner`, `api`, `sdk`, `bug`
 
 > **Filename note.** This file is still named `..._EGRESS_ISSUE.md` for link
-> stability, but as of 2026-09-03 the egress framing is **disproven**. See
-> "What was ruled out." Outbound HTTPS to Hugging Face's CDN works from inside
-> a sandbox.
+> stability, but the egress framing is **disproven**. See "What was ruled out."
+> Outbound HTTPS works from inside a sandbox, including to Hugging Face's CDN.
 
 ## Summary
 
-A Daytona sandbox reaches Hugging Face, authenticates against a gated dataset,
-resolves every selected file, **and successfully transfers bytes from the CDN**.
-Nevertheless `huggingface_hub.snapshot_download()` fails with:
+Responses returned to a Daytona sandbox arrive **chunked, with
+`Content-Length` removed**, where the identical request from outside carries
+`Content-Length` and no `Transfer-Encoding`. For any file whose size the client
+can only learn from `Content-Length`, this makes the size unresolvable and the
+download aborts:
 
 ```text
 huggingface_hub.errors.LocalEntryNotFoundError: Distant resource does not have
 a Content-Length. We also cannot find the requested files in the local cache.
 ```
 
-A controlled A/B probe run simultaneously on the local client and inside a
-Daytona sandbox, against the same three files with the same token, found
-exactly one difference in the HTTP responses: **the `Content-Length` header is
-present locally and absent inside the sandbox.** Every other header the client
-depends on — `X-Linked-Size`, `X-Linked-ETag`, `X-Repo-Commit`, `X-Xet-Hash` —
-arrives intact with byte-identical values.
+**One-file reproduction:** a `HEAD` on any directly-served (non-LFS) file, run
+once locally and once in a sandbox. Confirmed 2026-09-03 with a controlled A/B
+probe issuing byte-identical requests with the same token in both places:
 
-This is a response-header integrity problem in the Daytona network path, not a
-destination-reachability problem.
+| File | Local | Sandbox |
+|---|---|---|
+| `projects/arrow/arvo_24101/crash.log` | `200`, `content-length: 4895` | `200`, **no `content-length`**, `transfer-encoding` present |
+| `projects/arrow/arvo_41143/crash.log` | `200`, `content-length: 5364` | `200`, **no `content-length`**, `transfer-encoding` present |
+
+The file content itself remains reachable — a ranged `GET` for these same
+paths returns `206` from inside the sandbox. Only the size metadata is
+destroyed. This is a response-integrity problem in the network path, not a
+reachability problem.
 
 ## Environment
 
@@ -49,24 +54,30 @@ destination-reachability problem.
 places and records only hostnames, status codes, header **presence**, and byte
 counts — never a signed URL, query string, token, or Secret placeholder.
 
-Three pinned archives, identical token, run 2026-09-03:
+Six files across all three types in the bake's request set, identical token,
+run 2026-09-03. `Content-Length` is dropped and `Transfer-Encoding` added on
+**every** response, but only the directly-served class is harmed by it:
 
-| Observation | Local (WSL) | Daytona sandbox |
+| | `src.tgz` / `poc.bin` (LFS/Xet) | `crash.log` (direct) |
 |---|---|---|
-| HEAD status | `302` | `302` |
-| Redirect host | `us.aws.cdn.hf.co` | `us.aws.cdn.hf.co` |
-| `X-Repo-Commit` | present | present |
-| `X-Linked-ETag` | present | present |
-| `X-Linked-Size` | present (e.g. `12595315`) | present (identical value) |
-| `X-Xet-Hash` | present | present |
-| **`Content-Length`** | **present** | **absent** |
-| Ranged `GET` (`Range: bytes=0-0`) | `206`, 1 byte | `206`, 1 byte |
+| HEAD status, both envs | `302` | `200` |
+| `X-Linked-Size` | present, identical both envs | **absent in both** |
+| `Content-Length` local | present | present (`4895`, `5364`) |
+| `Content-Length` sandbox | **absent** | **absent** |
+| `Transfer-Encoding` local | absent | absent |
+| `Transfer-Encoding` sandbox | **present** | **present** |
+| Client can resolve size? | yes, from `X-Linked-Size` | **no — aborts** |
+| Ranged `GET` from sandbox | `206`, 1 byte | `206`, 1 byte |
 
-The ranged GET followed the redirect to completion and returned real payload
-bytes from `us.aws.cdn.hf.co` **from inside the sandbox**. Sending
-`Accept-Encoding: identity` (which `huggingface_hub` always does, and which
-would be the obvious suspect for a size header vanishing) changed nothing in
-either environment.
+The substitution of `Transfer-Encoding` for `Content-Length` is the signature
+of a proxy that buffers and re-emits responses rather than one that strips a
+header. It applies uniformly; the damage is selective because only some files
+carry a second size source.
+
+Sending `Accept-Encoding: identity` (which `huggingface_hub` always does, and
+the obvious suspect for a size header vanishing) changed nothing in either
+environment. The ranged `GET` returned payload bytes from inside the sandbox
+for every file, including the two that abort.
 
 ## What was ruled out
 
@@ -111,29 +122,29 @@ if expected_size is None:
     raise FileMetadataError("Distant resource does not have a Content-Length.")
 ```
 
-For a **redirected** response, `X-Linked-Size` supplies the size and the
-absence of `Content-Length` is harmless. For a **non-redirected** `200`
-response — a small file served directly, with no `X-Linked-Size` —
-`Content-Length` is the only source, and stripping it makes `size` `None` and
-raises exactly the observed error.
+Note the `None if response.is_redirect` clause. On a **redirect**, the client
+ignores `Content-Length` entirely and takes the size from `X-Linked-Size`, so
+dropping it there is harmless. On a **non-redirected `200`** with no
+`X-Linked-Size`, `Content-Length` is the only source, `size` becomes `None`,
+and the client raises exactly the observed error.
 
-## Open lead — not yet confirmed
+## Which files this hits
 
-The probe covered only large `src.tgz` archives, which are redirected and
-therefore immune. The bake's `allow_patterns` are `projects/<task>/**` and
-`data/projects/<task>/**` (`snapshot_build.py:126`), which also match small
-regular files such as `project.toml` and `config.toml`.
+The bake requests `projects/<task>/**` and `data/projects/<task>/**`
+(`snapshot_build.py:126`) for 20 pinned tasks — **60 files, three per task**:
 
-**Hypothesis:** the failing files are those small non-redirected ones, where
-the stripped `Content-Length` has no `X-Linked-Size` to fall back on.
+| File | Storage | Response | Size source | Result in sandbox |
+|---|---|---|---|---|
+| `src.tgz` | LFS/Xet | `302` | `X-Linked-Size` | downloads |
+| `poc.bin` | LFS/Xet | `302` | `X-Linked-Size` | downloads |
+| `crash.log` | plain git | `200` | `Content-Length` only | **aborts** |
 
-**Test that would confirm it:** run the same A/B probe against a small
-non-LFS file and check whether the sandbox's `200` response carries
-`Content-Length`, and whether `Transfer-Encoding: chunked` appears in its
-place — the signature of a proxy that buffers and re-frames responses.
+**20 of the 60 requested files are `crash.log` and every one of them fails.**
 
-Until that runs, the *mechanism* (missing `Content-Length`) is established but
-the *specific failing file* is not.
+Size is not the discriminator — `poc.bin` is often under 1.2 KB and still
+redirects. What matters is whether the path is LFS/Xet-tracked and therefore
+carries `X-Linked-Size` as a second size source. `.log` is not tracked, so it
+is served directly and has no fallback.
 
 ## Expected behavior
 
@@ -155,18 +166,35 @@ Failing that:
 
 ## Minimal reproduction
 
-The decisive repro is the A/B header comparison, not a download. It costs one
-short-lived sandbox and transfers one byte.
-
-Full script: `hf_header_probe.py` in this repository. Run:
+**This needs no Hugging Face account, no token, and no gated dataset.** The
+behaviour is a property of the network path, so any public URL that returns a
+`Content-Length` will do. Run this inside a sandbox and again outside it:
 
 ```bash
-.venv/bin/python hf_header_probe.py
+python3 - <<'PY'
+import httpx
+r = httpx.head("https://huggingface.co/api/models", timeout=30)
+print("status           :", r.status_code)
+print("content-length   :", r.headers.get("content-length"))
+print("transfer-encoding:", r.headers.get("transfer-encoding"))
+PY
 ```
 
-It prints local and sandbox observations side by side and writes
-`results/hf_header_probe.json`. The signal is a header present in the `LOCAL`
-block and absent in the `DAYTONA SANDBOX` block.
+Outside a sandbox this reports a `content-length` and no `transfer-encoding`.
+Inside one, `content-length` is `None` and `transfer-encoding` is set. That
+difference alone is the defect; everything below is why it matters.
+
+For the full authenticated comparison across all three file types, this
+repository ships `hf_header_probe.py`:
+
+```bash
+.venv/bin/python hf_header_probe.py --files 2
+```
+
+It runs one probe script verbatim locally and in a throwaway sandbox, prints
+both side by side, names the files whose size cannot be resolved, and writes
+`results/hf_header_probe.json`. It records only hostnames, status codes, header
+presence, and byte counts.
 
 The original download-level reproduction still fails identically:
 
@@ -290,16 +318,24 @@ reference. Whatever egress policy exists should be introspectable without that.
 
 ## Current workarounds and limitations
 
-If the missing `Content-Length` is confirmed as the cause, candidate
-workarounds are to pre-stage the affected small files into the snapshot by
-another transport, or to fetch them with a client that tolerates a missing
-size. Neither is attractive: both work around a platform behavior rather than
-fixing it, and the second means abandoning `huggingface_hub`'s integrity check.
+The affected set is now precisely identified — 20 `crash.log` files, a few KB
+each — so targeted workarounds exist:
 
-Mirroring the 3.70 GiB selected subset into approved private storage remains
-possible but adds storage, provenance, lifecycle, and transfer overhead. The
-Daytona target also has a 10 GiB snapshot disk limit, so mirroring the full
-~160 GB dataset into a snapshot is neither attempted nor desired.
+1. **Fetch the 20 `crash.log` files with a plain HTTP client** that tolerates a
+   missing declared size, and let `huggingface_hub` handle the 40 redirected
+   files it downloads correctly. Cheapest, but those files then bypass the
+   client's size and ETag integrity checks.
+2. **Pre-stage them into the snapshot** via another transport at bake time.
+   Adds provenance and lifecycle overhead for a few KB of data.
+3. **Mirror the 3.70 GiB selected subset into approved private storage.**
+   Heaviest; adds storage, provenance, lifecycle, and transfer overhead. The
+   10 GiB snapshot disk limit rules out mirroring the full ~160 GB dataset
+   regardless.
+
+All three work around platform behaviour rather than fixing it. The defect is
+also not specific to Hugging Face: any client on this target that requires a
+declared body size is affected, so working around it here does not retire the
+underlying issue.
 
 ## Possibly related issues
 

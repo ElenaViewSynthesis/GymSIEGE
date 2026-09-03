@@ -130,9 +130,13 @@ duplicate-free and still contains the key members.
 **This list is not what blocks the bake.** An A/B probe
 (`hf_header_probe.py`) transferred payload bytes from `us.aws.cdn.hf.co`
 *inside a sandbox* (ranged `GET` → `206`), retiring the egress theory. The
-sandbox's responses match local on every header the client needs except
-`Content-Length`, which is absent — and `huggingface_hub` refuses to download a
-file whose size it cannot determine. Details in
+confirmed cause is that responses reaching a sandbox arrive with
+`Content-Length` removed and `Transfer-Encoding` added — a proxy re-framing
+them as chunked. `huggingface_hub` takes a file's size from `X-Linked-Size`,
+or from `Content-Length` only when the response is *not* a redirect
+(`file_download.py:1645-1648`), so the bake's 20 plain-git `crash.log` files
+(direct `200`, no `X-Linked-Size`) abort while its 40 LFS/Xet-backed
+`src.tgz`/`poc.bin` files redirect and survive. Details in
 [`DAYTONA_HUGGINGFACE_EGRESS_ISSUE.md`](DAYTONA_HUGGINGFACE_EGRESS_ISSUE.md).
 Note also that this dataset is Xet-backed, so `huggingface_hub`'s real payload
 path is Xet rather than the CDN redirect (`file_download.py:1777`); Xet is
