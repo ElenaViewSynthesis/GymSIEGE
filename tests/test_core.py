@@ -26,6 +26,8 @@ from orchestrator import (
     _capability_stats,
     _pass_at_k,
     _run_exploitgym_job,
+    _run_sweep_trial_with_timeout,
+    _trial_hit_oom_threshold,
     _write_exploitgym_results,
     build_parser,
 )
@@ -323,6 +325,27 @@ class ExploitGymTimeoutTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result.cleanup_ttl_set)
         self.assertTrue(result.cleanup_destroyed)
         self.assertEqual(result.stage_timings["cleanup"]["status"], "complete")
+
+
+class SweepTimeoutTelemetryTests(unittest.IsolatedAsyncioTestCase):
+    async def test_timed_out_trial_retains_metrics_for_oom_accounting(self) -> None:
+        async def stalled_trial(*args, result, **kwargs):
+            try:
+                await asyncio.sleep(60)
+            finally:
+                result.metrics_latest = {"mem_total": 100, "mem_used": 98}
+                result.metrics_series = [{"mem_total": 100, "mem_used": 96}]
+
+        task = Task("curl", "arvo_66012")
+        with patch("orchestrator.run_trial", stalled_trial):
+            _, result, error, _ = await _run_sweep_trial_with_timeout(
+                object(), task, 1, object(), 0.01
+            )
+        self.assertEqual(error, "timeout")
+        self.assertIsNotNone(result)
+        assert result is not None
+        self.assertEqual(result.status, "timeout")
+        self.assertTrue(_trial_hit_oom_threshold(result))
 
 
 if __name__ == "__main__":

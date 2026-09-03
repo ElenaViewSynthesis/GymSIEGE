@@ -19,6 +19,7 @@ asyncio.Semaphore(MAX_PARALLEL) and fans this out across the fleet.
 
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import time
 import traceback
@@ -63,6 +64,7 @@ async def _create_sandbox(daytona: AsyncDaytona, provisioning: ProvisioningMode,
                     "VNC_RESOLUTION": DEFAULT_VNC_RESOLUTION,
                     "DAYTONA_RECORDINGS_DIR": "/home/daytona/rec",
                 },
+                ttl_minutes=SANDBOX_SAFETY_TTL_MINUTES,
             )
         )
     elif provisioning == "cold":
@@ -88,10 +90,18 @@ async def run_trial(
     model: Optional[ModelConfig] = None,
     warm_sandbox=None,
     record: bool = True,
+    result: TrialResult | None = None,
 ) -> TrialResult:
     started_at = datetime.now(timezone.utc).isoformat()
     name = f"{SANDBOX_NAME_PREFIX}-{task.safe_name}-{mode}-t{trial}-{int(time.time())}"
-    result = TrialResult(task=task.path, mode=mode, trial=trial, provisioning=provisioning, started_at=started_at)
+    if result is None:
+        result = TrialResult(
+            task=task.path,
+            mode=mode,
+            trial=trial,
+            provisioning=provisioning,
+        )
+    result.started_at = started_at
     append_event({"type": "trial_start", "task": task.path, "mode": mode, "trial": trial, "sandbox_name": name})
 
     t_total0 = time.monotonic()
@@ -242,9 +252,12 @@ async def run_trial(
         log.error("[%s] trial errored: %s", task.path, e)
 
     finally:
-        result.t_total_s = time.monotonic() - t_total0
-        result.finished_at = datetime.now(timezone.utc).isoformat()
         if sandbox is not None:
+            # A sweep-level wait_for() can cancel the build before the normal
+            # telemetry block. Fetch one bounded final sample before deletion
+            # so timeout/OOM accounting still has evidence when the control
+            # plane remains responsive enough to report metrics.
+            await _capture_telemetry_bounded(sandbox, result, task.path)
             if rec_handle is not None:
                 try:
                     await sandbox.computer_use.recording.stop(rec_handle.id)
@@ -272,12 +285,36 @@ async def run_trial(
                 except Exception:
                     pass
 
+        result.t_total_s = time.monotonic() - t_total0
+        result.finished_at = datetime.now(timezone.utc).isoformat()
+
         append_event({
             "type": "trial_end", "task": task.path, "mode": mode, "trial": trial,
             "status": result.status, "t_total_s": result.t_total_s,
         })
 
     return result
+
+
+async def _capture_telemetry_bounded(
+    sandbox,
+    result: TrialResult,
+    task_path: str,
+    *,
+    timeout_s: float = 30,
+) -> None:
+    """Best-effort final metrics capture, including cancellation/timeout paths."""
+
+    async def capture() -> None:
+        latest = await sandbox.get_metrics_latest()
+        result.metrics_latest = _metrics_to_dict(latest)
+        series = await sandbox.get_metrics(start=None, end=None)
+        result.metrics_series = [_metrics_to_dict(m) for m in (series or [])]
+
+    try:
+        await asyncio.wait_for(capture(), timeout=timeout_s)
+    except Exception as exc:
+        log.warning("[%s] bounded final telemetry fetch failed: %s", task_path, exc)
 
 
 def _artifact_path(task: Task, mode: Mode, trial: int, filename: str) -> Path:

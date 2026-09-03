@@ -464,6 +464,48 @@ def _write_exploitgym_results(
 # --------------------------------------------------------------------------
 
 
+async def _run_sweep_trial_with_timeout(
+    daytona,
+    task: Task,
+    trial_number: int,
+    model: ModelConfig,
+    timeout_s: float,
+) -> tuple[Task, Optional[TrialResult], Optional[str], float]:
+    """Return partial timeout results so final telemetry can classify OOMs."""
+
+    t0 = time.monotonic()
+    progress = TrialResult(
+        task.path,
+        "patch-only",
+        trial_number,
+        "snapshot",
+    )
+    try:
+        result = await asyncio.wait_for(
+            run_trial(
+                daytona,
+                task,
+                "patch-only",
+                trial_number,
+                provisioning="snapshot",
+                model=model,
+                record=False,
+                result=progress,
+            ),
+            timeout=timeout_s,
+        )
+        return task, result, None, time.monotonic() - t0
+    except asyncio.TimeoutError:
+        progress.status = "timeout"
+        progress.error = f"outer sweep trial deadline exceeded after {timeout_s}s"
+        return task, progress, "timeout", time.monotonic() - t0
+    except Exception as exc:
+        if progress.status == "pending":
+            progress.status = "error"
+            progress.error = str(exc)
+        return task, progress, f"error:{exc}", time.monotonic() - t0
+
+
 async def cmd_sweep(args: argparse.Namespace) -> None:
     require_env("DAYTONA_API_KEY")
     tasks = load_tasks(common.ROOT / args.tasks_file)
@@ -488,18 +530,13 @@ async def cmd_sweep(args: argparse.Namespace) -> None:
             async def bounded(item: tuple[int, Task]) -> tuple[Task, Optional[TrialResult], Optional[str], float]:
                 async with sem:
                     trial_number, task = item
-                    t0 = time.monotonic()
-                    try:
-                        r = await asyncio.wait_for(
-                            run_trial(daytona, task, "patch-only", trial_number, provisioning="snapshot", model=model,
-                                       record=False),
-                            timeout=args.trial_timeout,
-                        )
-                        return task, r, None, time.monotonic() - t0
-                    except asyncio.TimeoutError:
-                        return task, None, "timeout", time.monotonic() - t0
-                    except Exception as e:
-                        return task, None, f"error:{e}", time.monotonic() - t0
+                    return await _run_sweep_trial_with_timeout(
+                        daytona,
+                        task,
+                        trial_number,
+                        model,
+                        args.trial_timeout,
+                    )
 
             t_level0 = time.monotonic()
             outcomes = await asyncio.gather(*[bounded(item) for item in probe_items])
@@ -511,6 +548,11 @@ async def cmd_sweep(args: argparse.Namespace) -> None:
             n_capability_success = sum(1 for _, r, err, _ in outcomes if r and r.status == "success" and err is None)
             n_timeout = sum(1 for _, _, err, _ in outcomes if err == "timeout")
             n_oom = sum(1 for _, r, _, _ in outcomes if r and _trial_hit_oom_threshold(r))
+            n_timeout_oom = sum(
+                1
+                for _, result, error, _ in outcomes
+                if error == "timeout" and result and _trial_hit_oom_threshold(result)
+            )
             n_error = sum(1 for _, _, err, _ in outcomes if err and err != "timeout")
 
             level_record = {
@@ -521,6 +563,7 @@ async def cmd_sweep(args: argparse.Namespace) -> None:
                 "capability_success_rate": n_capability_success / n if n else None,
                 "timeout_rate": n_timeout / n if n else None,
                 "oom_rate": n_oom / n if n else None,
+                "timeout_oom_rate": n_timeout_oom / n if n else None,
                 "error_rate": n_error / n if n else None,
                 "create_latency_p50_s": _pctile(create_latencies, 50),
                 "create_latency_p95_s": _pctile(create_latencies, 95),

@@ -75,7 +75,7 @@ Do not assume any terminal process from the previous session is still alive.
 - `results/exploitgym_results.json` is intentionally marked `interrupted`, with
   one completed trial out of two expected trials. It must not be presented as a
   completed two-task result.
-- The local test suite currently passes: 20 tests.
+- The local test suite currently passes: 21 tests.
 
 Official OpenAI documentation says `gpt-5.6-cyber` is separately approved and
 provisioned. Access in one organization/project does not imply access from a
@@ -155,7 +155,7 @@ git diff --check
 git status --short
 ```
 
-Expected test result: 20 tests pass. One argparse error line for the deliberately
+Expected test result: 21 tests pass. One argparse error line for the deliberately
 rejected `claude_code` choice is expected test output, followed by `OK`.
 
 ## Authoritative next implementation and run sequence
@@ -462,24 +462,31 @@ launching duplicate trials.
 - [ ] Record Daytona SDK version, snapshot name/state, task-image digest, model
       ID, OpenAI project identity (non-secret identifier only), and Git commit
       in every publication run manifest.
-- [x] Document the OOM/timeout blind spot in `orchestrator.py`'s concurrency
-      sweep: `_trial_hit_oom_threshold` (line 555) only ever sees a trial's
-      `metrics_latest`/`metrics_series`, and `sandbox_runner.py` only
-      populates those fields *after* the build/PoC/patch phase completes
-      (lines 199-206). A trial that times out (`sweep`'s `bounded()`,
-      `asyncio.wait_for`) or errors before reaching that point never gets
-      telemetry at all, so it's counted only in `n_timeout`/`n_error`, never
-      in `n_oom` — even when the real cause was memory pressure severe
-      enough to hang the sandbox. `oom_rate` and `timeout_rate` are
-      mutually exclusive by construction, not because the two failure modes
-      don't overlap in practice. Same gap hides those trials from the
-      dashboard's per-sandbox telemetry charts (they only render trials with
-      a non-empty `metrics_series`). Written up in
-      [`codebase-overview.md`](codebase-overview.md#telemetry-capture-and-the-oom-proxy);
-      not yet fixed in code — fixing it would mean sampling
-      `get_metrics_latest()` on a timer/best-effort basis during the trial
-      (e.g. from `bounded()` in the sweep loop) rather than only once at the
-      end.
+- [x] Document *and fix* the OOM/timeout blind spot in `orchestrator.py`'s
+      concurrency sweep. **Was:** `_trial_hit_oom_threshold` only ever sees a
+      trial's `metrics_latest`/`metrics_series`, and `sandbox_runner.py` only
+      populated those fields *after* the build/PoC/patch phase completed, so a
+      trial that timed out or errored before that point carried no telemetry
+      and was counted only in `n_timeout`/`n_error`, never `n_oom` — even when
+      memory pressure was the real cause. `oom_rate` and `timeout_rate` were
+      mutually exclusive by construction rather than in reality.
+      **Now:** `run_trial`'s `finally` block calls `_capture_telemetry_bounded`
+      (`sandbox_runner.py:260`, defined line 299) before deletion — the same
+      two SDK calls under a 30s `asyncio.wait_for`, exceptions swallowed — and
+      `_run_sweep_trial_with_timeout` (`orchestrator.py`) pre-allocates the
+      `TrialResult`, passes it in as `result=`, and returns that partial object
+      on timeout instead of `None`. Timeout and OOM may now overlap by design;
+      the overlap is reported as `n_timeout_oom` / `timeout_oom_rate`
+      (`orchestrator.py:551-566`), so the two rates must not be read as a sum.
+      A timeout whose telemetry fetch also failed stays unclassified rather
+      than being assumed non-OOM. Covered by
+      `SweepTimeoutTelemetryTests.test_timed_out_trial_retains_metrics_for_oom_accounting`.
+      Written up in
+      [`codebase-overview.md`](codebase-overview.md#telemetry-capture-and-the-oom-proxy).
+      **Still open:** the identical pattern in `exploitgym_adapter.py` — see
+      Priority 8. Trials whose telemetry fetch fails outright remain invisible
+      to the dashboard's per-sandbox charts, which only render a non-empty
+      `metrics_series`.
 
 ## Priority 7 — resume experiments incrementally
 
@@ -513,6 +520,51 @@ For every run, retain:
 - cleanup TTL/delete outcome;
 - result/check scores and exclusion reason, if any;
 - non-sensitive logs and recordings required for the paper.
+
+## Priority 8 — close the ExploitGym telemetry blind spot on timeout/error
+
+The CyberGym `sweep`'s telemetry-vs-OOM gap is **fixed** (Priority 6, above);
+`exploitgym_adapter.py` still has the twin of it, and that twin is *worse*
+because nothing surfaces it yet — silent data loss, not a mislabeled rate.
+Found by inspection, not yet fixed:
+
+- [ ] `run_exploitgym_trial` only calls `sandbox.get_metrics_latest()` /
+      `sandbox.get_metrics(start=None, end=None)` once, very late —
+      `exploitgym_adapter.py:524-527`, *after* the `evaluation` stage's
+      `process.exec` (line 460), the post-run network block (line 476), and
+      `result.json` parsing/scoring (lines 493-517). `ExploitGymTrialResult`
+      fields `metrics_latest`/`metrics_series` (lines 75-76) stay `None` for
+      any trial that doesn't reach that line.
+- [ ] Three paths never reach it: `except Exception` (line 551 — e.g. the
+      explicit `RuntimeError` at line 508 when the evaluator never wrote
+      `result.json`), `except asyncio.CancelledError` (line 543), and the
+      fleet-level outer deadline in `orchestrator.py:_run_exploitgym_job`
+      (`asyncio.wait_for(..., timeout=args.trial_timeout)`, lines 265-278),
+      which cancels the trial task wherever it is and returns the
+      pre-existing `progress` object with `status="timeout"` — no telemetry
+      either way.
+- [ ] `_write_exploitgym_results` (`orchestrator.py:414-459`) has no
+      `_trial_hit_oom_threshold` equivalent at all today — it only computes
+      `pass_at_1`/`pass_at_k`/`total_solver_cost_usd`. `exploitgym-run` is
+      also a flat `asyncio.Semaphore` fan-out, not a concurrency ladder like
+      `sweep`. So there's nothing wrong to observe *yet* — but the moment
+      someone adds an ExploitGym concurrency sweep or an OOM proxy, it
+      inherits this exact end-of-trial-only capture point on day one.
+- [ ] Fix: sample `get_metrics_latest()` best-effort on a timer (or at each
+      `_stage_start`/`_stage_finish` boundary) during the trial instead of
+      only once at the very end, so a timed-out/cancelled/errored trial still
+      has partial telemetry. Store partial samples on `progress` as they're
+      taken (it's already mutated in place and returned on timeout) rather
+      than only assembling `metrics_series` in one shot near the end.
+      The CyberGym fix in `sandbox_runner.py` is the model to follow —
+      `_capture_telemetry_bounded` (line 299) called from the `finally` block
+      (line 260) before deletion, plus a caller-supplied `result=` object so
+      the partial survives cancellation. ExploitGym needs the same two
+      pieces; periodic sampling during the trial would be a strict
+      improvement on both, since the bounded final fetch still depends on the
+      control plane answering after the trial has already gone wrong.
+- [ ] Once fixed, consider adding the OOM-proxy stat to
+      `_write_exploitgym_results` for parity with CyberGym's `sweep`.
 
 ## Known code and data locations
 

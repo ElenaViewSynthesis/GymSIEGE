@@ -121,7 +121,6 @@ Non-secret vault *names* are committed in `.env.defaults`. Copy local provider v
 ```
 
 Existing secrets are reused; pass `--replace` only when deliberately rotating a value. Sandboxes receive mappings such as `OPENAI_API_KEY -> gymsiege-openai` through `update_secrets` — plaintext values are never placed in sandbox-create parameters or logs.
-
 CyberGym upstream doesn't currently accept a direct OpenAI provider the way ExploitGym does. This experiment fixes the runtime to Codex and routes its GPT model through a LiteLLM deployment:
 
 ```dotenv
@@ -223,6 +222,11 @@ Example of a running sandbox as seen on the Daytona platform:
 - **CyberGym**: stage1–4, isolated vulnerable/fixed exit codes, pass@1/pass@k by `e2e` and `patch-only`, research navigation success, tokens/cost.
 - **ExploitGym**: upstream score/checks, pass@1/pass@k, hardened/firewall/proxy assertions, tokens/cost.
 - **Infrastructure**: warm-pool vs. snapshot vs. fork p50/p95, concurrency completion/capability/timeout/OOM curves, per-trial metrics series, TTL/delete outcomes.
+- Sweep timeouts retain a partial trial and attempt one bounded final telemetry
+  fetch before deletion. Consequently, a timed-out trial can count toward both
+  `timeout_rate` and `oom_rate`; `timeout_oom_rate` reports the overlap. A
+  timeout without metrics remains unclassified rather than being assumed not
+  OOM.
 - `oracle_unavailable` is excluded from CyberGym capability denominators but remains in infrastructure statistics.
 - An ExploitGym flag score is distinct from the optional causal target-vulnerability scorer — don't label it "target vulnerability used" without running upstream `agent_scorer`.
 

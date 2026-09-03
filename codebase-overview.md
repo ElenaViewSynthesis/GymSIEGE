@@ -102,25 +102,40 @@ came back non-`None`; a failure anywhere in that sequence is captured as
 
 ## Telemetry capture and the OOM proxy
 
-1. Every trial, win or lose, ends by calling `sandbox.get_metrics_latest()`
-   and `sandbox.get_metrics(start=None, end=None)` inside `sandbox_runner.py`
-   (lines 201–204), storing the results on the `TrialResult` as
-   `metrics_latest` (one point-in-time sample) and `metrics_series` (the full
-   time-series across the trial's lifetime — `cpu_used_pct`, `mem_used`,
-   `mem_total`, `disk_used`, etc., straight from the real `SandboxMetrics`
-   the SDK returns). This is a single end-of-trial snapshot taken right after
-   the build/PoC/patch phase (including the isolated re-detonation above)
-   finishes and `status` is classified, not periodic polling during the
-   trial — `get_metrics()` with no bounds just pulls back whatever history
-   Daytona's backend already accumulated for that sandbox.
-2. Back in the sweep, once a probe batch at a given concurrency level
-   finishes, `orchestrator.py:_trial_hit_oom_threshold` (line 555) walks
+Telemetry is captured at **two** points in a trial's life, and the second one
+exists specifically so a trial that dies early still leaves evidence behind.
+
+1. **Normal path** — a trial that reaches the end of its build/PoC/patch
+   phase (including the isolated re-detonation above) calls
+   `sandbox.get_metrics_latest()` and `sandbox.get_metrics(start=None,
+   end=None)` at `sandbox_runner.py:210-216`, right after `status` is
+   classified. The results land on the `TrialResult` as `metrics_latest`
+   (one point-in-time sample) and `metrics_series` (the time-series across
+   the sandbox's lifetime — `cpu_used_pct`, `mem_used`, `mem_total`,
+   `disk_used`, etc., straight from the real `SandboxMetrics` the SDK
+   returns). Neither call is periodic polling: `get_metrics()` with no
+   bounds just pulls back whatever history Daytona's backend already
+   accumulated for that sandbox.
+2. **Cancellation/timeout path** — `run_trial`'s `finally` block calls
+   `_capture_telemetry_bounded` (`sandbox_runner.py:260`, defined at line
+   299) *before* the sandbox is deleted. It re-runs the same two SDK calls
+   under a 30-second `asyncio.wait_for` and swallows every exception. So a
+   trial cancelled mid-build by the sweep's outer deadline still gets
+   telemetry, provided the control plane is responsive enough to answer.
+   This capture is best-effort by design — an unresponsive control plane
+   logs a warning and leaves the fields `None` rather than blocking cleanup.
+3. **Retaining the partial result** — the sweep's own wrapper,
+   `orchestrator.py:_run_sweep_trial_with_timeout`, pre-allocates the
+   `TrialResult` and passes it into `run_trial` as the `result=` argument,
+   so the object the `finally` block mutates is the same one the wrapper
+   returns on timeout. Previously the timeout arm returned `None` and threw
+   the telemetry away even when it had been fetched.
+4. **Classification** — once a probe batch at a given concurrency level
+   finishes, `orchestrator.py:_trial_hit_oom_threshold` (line 598) walks
    every sample in that trial's `metrics_series` plus its final
-   `metrics_latest`, and flags the trial as OOM-adjacent if any single sample
-   shows `mem_used >= 0.95 * mem_total`.
-3. `n_oom` (line 513) is just the count of trials at that concurrency level
-   for which that flag came back true, and `oom_rate = n_oom / n` goes into
-   `results/concurrency_sweep.json`.
+   `metrics_latest`, flagging the trial as OOM-adjacent if any single sample
+   shows `mem_used >= 0.95 * mem_total`. `n_oom` (line 550) counts those,
+   and `oom_rate = n_oom / n` goes into `results/concurrency_sweep.json`.
 
 So "OOM" here really means "this sandbox's real memory telemetry crossed 95%
 utilization at some point during the trial," not a captured OOM-killer
@@ -131,15 +146,26 @@ process, a timeout), but it's correlational, not a confirmed cause. The 95%
 threshold is hardcoded (not configurable via CLI/env) — worth knowing if you
 want to tune sensitivity.
 
-**Caveat — trials that never reach the capture point.** Because step 1 only
-runs after the build phase completes, a trial that times out
-(`asyncio.wait_for` in `sweep`'s `bounded()`) or crashes before reaching that
-line in `sandbox_runner.py` never gets a `metrics_latest`/`metrics_series` at
-all — both fields stay `None` on its `TrialResult`. That makes such a trial
-invisible to `_trial_hit_oom_threshold`, so it's counted only in
-`n_timeout`/`n_error`, never in `n_oom` — even if the underlying cause was
-memory pressure severe enough to hang the sandbox. The two rates are
-mutually exclusive by construction, not because timeouts and OOM don't
-overlap in reality. The same gap makes those trials invisible to the
-dashboard's per-sandbox telemetry charts, which only render trials with a
-non-empty `metrics_series`.
+**Timeout and OOM now overlap on purpose.** Because a timed-out trial can
+carry telemetry, it can be counted in `n_timeout` *and* `n_oom`
+simultaneously. That is intended: the two describe different things (how the
+trial ended, versus what its memory was doing), and forcing them to be
+disjoint is what previously hid memory pressure behind timeouts. The overlap
+is reported explicitly as `n_timeout_oom` / `timeout_oom_rate`
+(`orchestrator.py:551-566`), so `timeout_rate + oom_rate` should not be read
+as a sum of distinct failures. A timeout whose telemetry fetch also failed
+stays unclassified — it is *not* assumed to be non-OOM.
+
+**Caveat — ExploitGym has not been fixed.** The above applies to CyberGym's
+`run_trial` only. `exploitgym_adapter.py` still captures telemetry once, very
+late (lines 524-527), after evaluation, the network block, and `result.json`
+scoring — so its error, cancellation, and outer-deadline paths all discard
+telemetry exactly the way `sweep` used to. Nothing surfaces this yet, because
+`exploitgym-run` is a flat semaphore fan-out with no concurrency ladder and
+`_write_exploitgym_results` computes no OOM statistic at all. It becomes a
+real data-loss bug the moment anyone adds either. Tracked as Priority 8 in
+[`TODO.md`](TODO.md).
+
+Both paths still leave a gap for the dashboard: trials whose telemetry fetch
+failed outright render nothing in the per-sandbox charts, which only draw
+trials with a non-empty `metrics_series`.
