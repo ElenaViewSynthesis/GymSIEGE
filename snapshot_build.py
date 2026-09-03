@@ -101,8 +101,13 @@ fi
 
 echo "[bootstrap] pip deps (mirrors cybergym-e2e's own requirements)"
 python3 -m pip install --break-system-packages --upgrade pip
+# Pinned, not floored, so the bake resolves the same versions as the local
+# venv. Must match requirements.txt's sandbox-mirrored block exactly; enforced
+# by tests/test_core.py rather than by this comment.
 python3 -m pip install --break-system-packages \
-    tomli tomli_w anthropic openai boto3 httpx 'huggingface_hub[hf_xet]>=1.0.0' docker
+    'httpx==0.28.1' 'tomli==2.4.1' 'tomli_w==1.2.0' 'anthropic==1.2.0' \
+    'openai==3.6.0' 'boto3==1.43.84' 'huggingface_hub[hf_xet]==1.30.0' \
+    'docker==7.2.0'
 
 echo "[bootstrap] clone cybergym-e2e"
 if [ ! -d "{repo_dir}" ]; then

@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import json
 import os
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -169,6 +170,48 @@ class ExploitGymCommandTests(unittest.TestCase):
         )
         self.assertIn('${HF_HOME:-$HOME/.cache/huggingface}/xet', rendered)
         self.assertIn("minimum_bytes=123", rendered)
+
+    def test_pins_match_between_bake_and_requirements(self) -> None:
+        """Every version pinned in both places must agree.
+
+        The bake sandbox and the local venv have to resolve the same versions or
+        the two environments are not comparable. A `huggingface_hub>=1.0.0`
+        floor previously left the venv on 1.29.0 while the bake installed
+        1.30.0, which cost days of misdirected debugging. Enforced here rather
+        than left to a comment, because the comment is what drifted.
+        """
+        # name (dropping any [extras]) -> pinned version
+        pin = re.compile(r"([A-Za-z0-9._-]+)(?:\[[^\]]+\])?==([0-9][^'\"\s]*)")
+
+        def pins(text: str) -> dict[str, str]:
+            found = {}
+            for line in text.splitlines():
+                if line.lstrip().startswith("#"):
+                    continue
+                for name, version in pin.findall(line):
+                    found[name.lower().replace("_", "-")] = version
+            return found
+
+        requirements = (
+            Path(__file__).resolve().parent.parent / "requirements.txt"
+        ).read_text(encoding="utf-8")
+        req_pins, bake_pins = pins(requirements), pins(BOOTSTRAP_SH)
+
+        self.assertIn("huggingface-hub", req_pins)
+        self.assertIn("huggingface-hub", bake_pins)
+        self.assertIn("daytona", req_pins, "the Daytona SDK must be pinned")
+
+        shared = req_pins.keys() & bake_pins.keys()
+        self.assertGreaterEqual(
+            len(shared), 7, f"expected the sandbox-mirrored set to be pinned, got {sorted(shared)}"
+        )
+        for name in sorted(shared):
+            self.assertEqual(
+                req_pins[name],
+                bake_pins[name],
+                f"{name} pin drifted: requirements.txt=={req_pins[name]} "
+                f"but BOOTSTRAP_SH=={bake_pins[name]}",
+            )
 
     def test_production_batch_is_userspace_only(self) -> None:
         tasks = load_exploitgym_tasks(Path("exploitgym_tasks.production.txt"))
