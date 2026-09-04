@@ -77,6 +77,33 @@ from solver_agent import ModelConfig
 log = get_logger("orchestrator")
 
 
+# Human-readable log labels for trial statuses. Display only -- the stored
+# `status` strings are unchanged, because pass@k, the aggregation in
+# results/*.json, and the dashboard all key off them.
+#
+# "failed" on its own reads as "something broke", when it actually means the
+# trial ran correctly end to end and the agent did not exploit the target.
+# That is the single most important distinction this harness reports, so the
+# terminal should not make a reader guess it. Note that "success" is
+# deliberately not reused for the no-exploitation case: it already means
+# "the agent exploited the target" here, and pass@k counts exactly those.
+STATUS_LABELS = {
+    "success": "success (exploited)",
+    "failed": "completed - no exploitation",
+    "other_vuln": "completed - triggered a different vulnerability",
+    "error": "ERROR - harness/platform failure, not an agent result",
+    "timeout": "TIMEOUT - deadline hit, agent result unknown",
+    "interrupted": "INTERRUPTED - cancelled before completion",
+    "oracle_unavailable": "oracle unavailable - task could not be scored",
+    "skipped_over_budget": "skipped - budget cap reached before launch",
+}
+
+
+def status_label(status: str | None) -> str:
+    """Render a trial status for humans, leaving unknown values untouched."""
+    return STATUS_LABELS.get(status or "", status or "unknown")
+
+
 def _selected_model_id(model: ModelConfig) -> str:
     return model.litellm_model_id
 
@@ -236,7 +263,8 @@ async def cmd_run(args: argparse.Namespace) -> None:
                 _write_results_json(all_results, config=config, complete=False,
                                     budget=budget.summary())
                 log.info("progress: %d/%d trials done (last: %s %s trial=%d -> %s)",
-                          len(all_results), len(coros), result.task, result.mode, result.trial, result.status)
+                          len(all_results), len(coros), result.task, result.mode, result.trial,
+                          status_label(result.status))
             _write_results_json(all_results, config=config, complete=True,
                                 budget=budget.summary())
             if budget.skipped:
@@ -464,7 +492,8 @@ async def cmd_exploitgym_run(args: argparse.Namespace) -> None:
                 _write_exploitgym_results(results, config, complete=False)
                 log.info(
                     "ExploitGym progress %d/%d: %s t%d -> %s",
-                    len(results), len(jobs), result.task, result.trial, result.status,
+                    len(results), len(jobs), result.task, result.trial,
+                    status_label(result.status),
                 )
         except asyncio.CancelledError:
             for job in jobs:
@@ -763,6 +792,27 @@ async def cmd_reap(args: argparse.Namespace) -> None:
         # a plain list — collect matches while paging through it.
         stray = [s async for s in daytona.list() if getattr(s, "name", "").startswith(SANDBOX_NAME_PREFIX + "-")]
         log.info("reap: found %d sandbox(es) named %s-*", len(stray), SANDBOX_NAME_PREFIX)
+
+        selected = getattr(args, "sandbox", None)
+        if selected:
+            # Deleting every siege-* sandbox destroys trials that are still
+            # running. When an orphan sits alongside a live trial, act only on
+            # the named ones.
+            wanted = set(selected)
+            stray = [
+                s for s in stray
+                if getattr(s, "id", None) in wanted or getattr(s, "name", None) in wanted
+            ]
+            matched = {getattr(s, "id", None) for s in stray} | {
+                getattr(s, "name", None) for s in stray
+            }
+            # A typo must not read as "nothing to clean up".
+            if missing := sorted(wanted - matched):
+                raise SystemExit(
+                    "reap: no live sandbox matches " + ", ".join(missing)
+                    + " -- check `reap --dry-run` for what is actually alive"
+                )
+            log.info("reap: restricted to %d explicitly named sandbox(es)", len(stray))
         for s in stray:
             if args.dry_run:
                 log.info("reap (dry-run): would delete %s (%s)", getattr(s, "name", "?"), getattr(s, "id", "?"))
@@ -848,7 +898,20 @@ def build_parser() -> argparse.ArgumentParser:
         help="run exactly this task ID; repeat to select multiple tasks",
     )
     p_eg.add_argument("--k", type=int, default=3)
-    p_eg.add_argument("--max-parallel", type=int, default=2)
+    p_eg.add_argument(
+        "--max-parallel",
+        type=int,
+        default=1,
+        help=(
+            "concurrent trials (default 1: serial). The ExploitGym snapshot "
+            "restores at 8 GiB per sandbox against a 10 GiB organization-wide "
+            "total memory limit, so a second concurrent trial cannot be "
+            "scheduled -- it fails with 'Total memory limit exceeded. Maximum "
+            "allowed: 10GiB', and a sandbox that is refused capacity can wedge "
+            "in CREATING while still holding its reservation. Raise this only "
+            "after the organization tier lifts that ceiling."
+        ),
+    )
     p_eg.add_argument("--limit", type=int, default=None)
     p_eg.add_argument("--agent", choices=["codex"], default="codex")
     p_eg.add_argument(
@@ -904,6 +967,17 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_reap = sub.add_parser("reap", help="delete stray siege-* sandboxes")
     p_reap.add_argument("--dry-run", action="store_true")
+    p_reap.add_argument(
+        "--sandbox",
+        action="append",
+        metavar="ID_OR_NAME",
+        help=(
+            "delete only this sandbox instead of every siege-* one; repeat to "
+            "name several. Use when a live trial is running alongside the "
+            "sandbox you want gone -- the default sweep would destroy both. "
+            "A value matching no live sandbox is an error, not a no-op."
+        ),
+    )
     p_reap.set_defaults(func=cmd_reap)
 
     return p
