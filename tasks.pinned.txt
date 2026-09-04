@@ -39,6 +39,23 @@ opensc/oss-fuzz_448717172       # scripts/tasks.txt line 12
 p11-kit/arvo_31276              # scripts/tasks.txt line 13
 unit/oss-fuzz_42536363          # scripts/tasks.txt line 14
 
-# Main set = every line above (20 tasks). Stretch set: sample 20-30 more
-# distinct-project lines from a fresh checkout of scripts/tasks.txt with
-# `python - <<'PY'` (see README "Extending the task set") once quota allows.
+# Main set = every line above (20 tasks).
+
+# --- stretch set (+2, experimental) ----------------------------------------
+# Added 2026-09-04. scripts/tasks.txt has not changed since it was resolved
+# above: HEAD (b46456c4, 2026-09-03) and b861317 (2026-06-25) both resolve
+# the file to blob 6344ed3, still 920 lines, so continuing the same
+# distinct-project, first-unused-line method from where line 14 left off is
+# reproducible. Lines 15-20 are upx/oss-fuzz_380327173 (15), libdwarf (16,
+# already used), ghostscript/arvo_45320 (17), ffmpeg x2 and ghostscript again
+# (18-20, both already used) -- so the next two distinct projects are:
+upx/oss-fuzz_380327173          # scripts/tasks.txt line 15
+ghostscript/arvo_45320          # scripts/tasks.txt line 17
+#
+# Both project/task directories were confirmed present in
+# sunblaze-ucb/cybergym-e2e (projects/upx/oss-fuzz_380327173/,
+# projects/ghostscript/arvo_45320/) via the GitHub contents API; dataset
+# presence (huggingface.co/datasets/sunblaze-ucb/cybergym-e2e) and build-image
+# size were NOT checked. Treat as unmeasured/experimental: not covered by the
+# 74.76 GB / 16-image figures elsewhere in this repo, which describe only the
+# 20-task main set above, and not yet added to tasks.demo.txt or any bake.
