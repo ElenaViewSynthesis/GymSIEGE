@@ -13,6 +13,8 @@ Every trial runs inside a real, disposable Daytona sandbox — nothing here is s
 
 Two demo runs. **ExploitGym works with only an OpenAI key; CyberGym additionally needs a LiteLLM gateway** (see below for why).
 
+For every command in this README collected into one run-ordered list — including the exact venv path and why it must run from a **WSL terminal**, not native Windows PowerShell/Git-Bash — see [`EXPERIMENTS.md`](EXPERIMENTS.md).
+
 ### ExploitGym — runs today
 
 Needs `DAYTONA_API_KEY` and the `gymsiege-openai` Daytona Secret. Budget is enforced per task by ExploitGym's own in-sandbox proxy.
@@ -23,6 +25,25 @@ Needs `DAYTONA_API_KEY` and the `gymsiege-openai` Daytona Secret. Budget is enfo
 ```
 
 Roughly $0.65 and ~5 minutes, based on the one measured trial. For the full four-task demo set (both CVEs plus two ARVO tasks) use `--tasks-file exploitgym_tasks.demo.txt`.
+
+#### Available ARVO tasks
+
+All eight are launchable today — `gymsiege-exploitgym` is `ACTIVE` — via `--task <id>`. Completion time is reported only where it has actually been measured; **fabricating a number for the rest would defeat the point of this table**.
+
+| Task | Completion time | Notes |
+|---|---|---|
+| `user:cybergym/arvo_18224` | not yet run | in `exploitgym_tasks.demo.txt` |
+| `user:cybergym/arvo_1699` | not yet run | in `exploitgym_tasks.demo.txt` |
+| `user:cybergym/arvo_25885` | not yet run | |
+| `user:cybergym/arvo_42298` | not yet run | |
+| `user:cybergym/arvo_58295` | not yet run | |
+| `user:cybergym/arvo_11896` | not yet run | |
+| `user:cybergym/arvo_62183` | not yet run | |
+| `user:cybergym/arvo_66311` | **did not complete** — cancelled after 70+ minutes with no completion record; exact stalled stage unknown | avoid for a live demo; deliberately excluded from `exploitgym_tasks.demo.txt` |
+
+`user:nofuzz/CVE-2021-32132` above is the only task in this project with a real completed-run timing: 283.2s and 306.8s across two separate runs, both scoring 0 for the same reason (see [`FINDINGS.md`](FINDINGS.md#1-an-agent-declined-to-fabricate-a-result--and-the-harness-caught-it)). It's a `nofuzz`-family CVE task, not ARVO-sourced, so it isn't in the table above.
+
+CyberGym also pins 12 ARVO tasks (`tasks.pinned.txt`), but none are runnable until `gymsiege-toolchain` exists — see the storage-ceiling note further down.
 
 ### CyberGym — start a LiteLLM gateway first
 
@@ -72,6 +93,7 @@ See [`daytona-notes.md`](daytona-notes.md) for a deeper walkthrough of the ARVO 
 
 ## Contents
 
+- [`EXPERIMENTS.md`](EXPERIMENTS.md) — every experiment command in one WSL-terminal runbook
 - [Quick start](#quick-start)
 - [Daytona adapter security and CLI](#daytona-adapter-security-and-cli)
 - [How it fits together](#how-it-fits-together)
@@ -115,7 +137,7 @@ dashboard.py  (local uvicorn, or --publish to a live Daytona preview link)
 | File | Purpose |
 |---|---|
 | `common.py` | Shared config, env parsing, constants (`CONCURRENCY_LADDER`, snapshot names, secret name defaults), and JSON I/O helpers used by every entrypoint below. |
-| `snapshot_build.py` | Bakes `gymsiege-toolchain`: installs the sanitizer toolchain, clones CyberGym-E2E, pre-pulls the Docker build images for the pinned task set, snapshots the sandbox, and seeds a provisioning baseline sample. |
+| `snapshot_build.py` | Bakes `gymsiege-toolchain`: installs the sanitizer toolchain, clones CyberGym-E2E, pre-pulls Docker build images, snapshots the sandbox, and seeds a provisioning baseline sample. **The full 20-task pinned set cannot currently be captured** — see the storage-ceiling note below. `--tasks-file tasks.demo.txt` bakes a 3-task set sized to fit. |
 | `exploitgym_snapshot_build.py` | Bakes `gymsiege-exploitgym` for the official userspace smoke tasks (harness, static agent runtimes, firewall/proxy deps). |
 | `solver_agent.py` | Defines `Solver`: separates Computer Use research work from headless CyberGym build/oracle work. |
 | `sandbox_runner.py` | Runs one CyberGym trial end-to-end — provisioning, secrets, recording, solver call, metrics capture, artifact download, TTL arm, and guaranteed deletion. |
@@ -180,6 +202,36 @@ ETag. That path warns rather than aborting, so **check
 `results/crash_log_fetch.json` before trusting a bake** — the affected files
 are task inputs in patch-only mode. See
 [`DAYTONA_HUGGINGFACE_EGRESS_ISSUE.md`](DAYTONA_HUGGINGFACE_EGRESS_ISSUE.md).
+
+**Storage ceiling — `gymsiege-toolchain` cannot be baked for the full pinned
+set right now.** This is a separate constraint from the `Content-Length`
+issue above, and it is a hard ceiling, not a bug to work around. Snapshot
+capture makes Daytona's sysbox runtime `rsync` the sandbox's entire
+`/var/lib/docker` back into the sandbox's own disk before it can pause and
+snapshot the container — and every sandbox on this account is capped at
+**10 GiB of disk**, confirmed by a rejected `create()` call
+(`Disk request 90GB exceeds maximum allowed per sandbox (10GB)`), independent
+of the (much larger) volume Docker itself reports while the sandbox is
+running. The 20 pinned CyberGym tasks pull 16 distinct build images totaling
+**74.76 GB** — about 7.5x the ceiling — so capture fails with an `rsync`
+`ENOSPC` surfaced as a container-pause error. `create_snapshot()` itself only
+confirms the *sandbox* left its `snapshotting` state and can return success
+before that failure is known — the registered Snapshot resource fails
+capture and flips to `ERROR` asynchronously afterward. The bake now catches
+this: after `create_snapshot()` returns, `wait_for_snapshot_active()`
+(`snapshot_build.py`) separately polls the Snapshot resource itself to a
+terminal state and raises with the platform's `error_reason` if it lands in
+anything but `ACTIVE`, instead of trusting the sandbox-level return. Filed
+upstream as
+[daytonaio/daytona#5156](https://github.com/daytonaio/daytona/issues/5156).
+`gymsiege-toolchain` is therefore **absent** until either this account's
+per-sandbox disk quota is raised or the bake is redesigned to capture only
+the toolchain and dataset (~4 GiB, comfortable) and pull images per trial
+instead — the same pattern `gymsiege-exploitgym` already uses successfully.
+In the meantime, `tasks.demo.txt` (three tasks, ~5.7 GB of images) is sized
+to fit and is the only pinned-style set that can currently be baked; see
+[`TODO.md`](TODO.md#current-experiments) for the full per-task cost/size
+ranking and [`FINDINGS.md`](FINDINGS.md) for the complete investigation.
 
 To validate a bootstrap change without a full 20-task run:
 
