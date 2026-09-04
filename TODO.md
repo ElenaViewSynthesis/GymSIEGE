@@ -57,6 +57,21 @@ Do not assume any terminal process from the previous session is still alive.
   below is implemented and tested.
 - All failed-rebake temporary sandboxes were deleted successfully; no cleanup
   action is outstanding from these attempts.
+- Per-sandbox resource ceilings on this account, confirmed 2026-09-04 by a
+  rejected create (`Disk request 90GB exceeds maximum allowed per sandbox
+  (10GB)`) and by the dashboard: **4 vCPU / 8 GiB memory / 10 GiB storage /
+  0 GPUs**. The bake currently requests 2 CPU / 4 GiB, so there is compute
+  headroom but none on disk. Note the dashboard's storage field accepts a
+  two-digit value while the backend rejects anything above 10.
+- **The bake cannot pre-pull images into the snapshot on this target.**
+  Snapshot capture makes sysbox rsync `/var/lib/docker` back into the
+  sandbox's own disk; the 20 pinned tasks need 16 distinct images totalling
+  74.76 GB against a hard 10 GiB ceiling, so capture fails with an rsync
+  ENOSPC surfaced as a container-pause error — *after* `create_snapshot()`
+  has already returned success. Filed as
+  <https://github.com/daytonaio/daytona/issues/5156>. The bake must be
+  redesigned to bake toolchain + dataset only (~4 GiB, fits) and pull images
+  per trial.
 - The snapshot uses a 10 GiB disk, the maximum allowed by this Daytona target.
   It contains the ExploitGym harness, Docker, Codex/Node runtime, static network
   helpers, and the small Squid image. Hardened challenge images are deliberately
@@ -682,9 +697,13 @@ Before going anywhere near it, resolve:
 - [ ] Data volume. Twenty pinned tasks times `k` trials is negligible as a
       training set. Estimate honestly what would be needed before assuming
       the existing protocol produces enough of anything.
-- [ ] Hardware. Current trials run on 2 CPU / 4 GB sandboxes with no GPU. A
-      `daytona-gpu` image exists in the organization's snapshot list but has
-      never been used here, and its cost and quota are unknown.
+- [x] Hardware. **Answered, and it is disqualifying.** This account's
+      per-sandbox ceilings are 4 vCPU / 8 GiB memory / 10 GiB storage /
+      **0 GPUs**. A `daytona-gpu` image appears in the snapshot list, but the
+      GPU quota is zero, so no training can run on this target at all.
+      Pursuing `trl-training` would require either a quota increase or
+      entirely different infrastructure — which reinforces the last gate
+      below: this does not belong in this repository.
 - [ ] Whether any of this belongs in this repository at all, or in a separate
       one that consumes GYMSIEGE's outputs. Mixing an evaluation harness with
       a training pipeline compromises the harness's value as a neutral
