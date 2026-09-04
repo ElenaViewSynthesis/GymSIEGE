@@ -770,6 +770,51 @@ its aggregated result. Full mechanism in
       future one with the same signature) as requiring manual transcript
       review before being counted as a plain failure.
 
+## Current experiments
+
+### CyberGym cost-risk ranking, all 20 pinned tasks
+
+Driven by codebase size and agent iterations, not image size — so the Risk
+column is **ranked inference, not measurement**. No CyberGym trial has ever
+completed, so there is no per-task cost data to rank against instead (see
+`FINDINGS.md` §8).
+
+The Description column is the **open-source project each task's target
+belongs to**, not the specific vulnerability — real per-bug descriptions
+turned out not to be verifiable from this environment (OSS-Fuzz's issue
+tracker requires sign-in; `arvo.sbs`, the domain `solver_agent.py:58` builds
+report URLs against, did not resolve from here). Rather than invent bug
+details, this records what's actually confirmable: what the project is.
+Task IDs and their source-line comments are copied verbatim from
+`tasks.pinned.txt`.
+
+| Risk | Task | Why | Project |
+|---|---|---|---|
+| High | `ffmpeg/oss-fuzz_385167047` | Enormous codebase; long search, many iterations | Multimedia framework — decodes/encodes/transcodes audio and video |
+| High | `ffmpeg/oss-fuzz_436997807` | Enormous codebase; long search, many iterations | Multimedia framework — decodes/encodes/transcodes audio and video |
+| High | `wireshark/arvo_3408` | Enormous codebase; long search, many iterations | Network protocol analyzer — packet capture and dissection |
+| Medium | `binutils/arvo_47101` | Large C/C++ tree | GNU binary utilities — assembler, linker, `objdump`, and related tools |
+| Medium | `binutils/arvo_61822` | Large C/C++ tree | GNU binary utilities — assembler, linker, `objdump`, and related tools |
+| Medium | `arrow/arvo_41221` | Large C/C++ tree | Apache Arrow — in-memory columnar data format and cross-language toolkit |
+| Medium | `net-snmp/arvo_52465` | Large C/C++ tree | Suite of tools implementing SNMP, the network-management protocol |
+| Medium | `assimp/oss-fuzz_42535201` | Large C/C++ tree; 40+ supported formats widen the parser surface | Open Asset Import Library — imports/exports 3D model file formats |
+| Medium | `opensc/oss-fuzz_42535468` | Large C/C++ tree | Smart-card and PKCS#11 tools/libraries for cryptographic tokens |
+| Medium | `opensc/oss-fuzz_448717172` | Large C/C++ tree | Smart-card and PKCS#11 tools/libraries for cryptographic tokens |
+| Medium | `wt/oss-fuzz_370689421` | Full C++ web application framework, larger than a single-purpose library | Wt — C++ toolkit for building web UIs in native code |
+| Low | `freetype2/arvo_368` | Focused codebase — one of the demo three | Font-rendering library used across Linux, Android, and many applications |
+| Low | `libtpms/oss-fuzz_42537128` | Focused codebase — one of the demo three | Software emulation of a Trusted Platform Module (TPM) |
+| Low | `unit/oss-fuzz_42536363` | Focused codebase — one of the demo three | NGINX Unit — dynamic, multi-language application server |
+| Low | `curl/arvo_66012` | `tasks.pinned.txt`'s own comment: `"guaranteed-green demo task (spec §3)"` | Command-line tool and library for transferring data with URLs |
+| Low | `mruby/arvo_19902` | Lightweight, embeddable codebase | Lightweight, embeddable implementation of the Ruby language |
+| Low | `mruby/arvo_53183` | Lightweight, embeddable codebase | Lightweight, embeddable implementation of the Ruby language |
+| Low | `libxaac/arvo_62261` | Single-purpose codec library | Android's xHE-AAC audio codec (encoder/decoder) |
+| Low | `libdwarf/arvo_56454` | Narrow-purpose library | Library for reading (and writing) DWARF debugging information |
+| Low | `p11-kit/arvo_31276` | Small, focused C library | PKCS#11 module loader and proxy for cryptographic tokens |
+
+`curl/arvo_66012` is the one task in this set with a stated expectation from
+the people who pinned it, not just inferred codebase size — worth treating as
+the canary task if anything in a CyberGym run needs a quick sanity check.
+
 ## Known code and data locations
 
 - Main CLI: `orchestrator.py`
