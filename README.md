@@ -70,6 +70,7 @@ dashboard.py  (local uvicorn, or --publish to a live Daytona preview link)
 | `dashboard.py` | FastAPI app combining the CyberGym/ExploitGym leaderboards, concurrency curve, provisioning latency histogram, per-sandbox telemetry, and recording links. Runs locally or publishes to a live Daytona preview link. |
 | `configure_secrets.py` | Copies a local provider API key into a named Daytona organization Secret, once, without ever printing or committing the value. |
 | `HUGGINGFACE_HOSTS.md` | Records the exact Hugging Face Secret trust boundary and sanitized transfer hosts observed for the pinned dataset slice. |
+| `vnc-access.md` | Daytona VNC reference — dashboard access, `VNC_RESOLUTION`, `computer_use` start/stop/status, and the X11 packages a custom image must install. |
 | `tasks.pinned.txt` | 20 pinned CyberGym tasks used by the main protocol. |
 | `exploitgym_tasks.pinned.txt` | Ten userspace tasks from ExploitGym's official 20-task sample. |
 | `.env.defaults` | Non-secret, committed Daytona Secret *names* (never values). |

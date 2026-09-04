@@ -118,6 +118,27 @@ actually apply to this repo rather than generic textbook definitions alone.
   hypothesis consistent with "a download fails after a redirect," and
   re-running the same bake rather than an experiment that could
   distinguish causes. Superseded by the header-stripping finding below.
+- **Secret-injection proxy (`netleash`)** — the component that makes
+  Daytona Secrets work, and the cause of this project's dataset failure.
+  Sandboxes are created with `HTTP_PROXY`/`HTTPS_PROXY` set to
+  `http://172.20.0.1:18080`, so every client honouring those variables —
+  `httpx`, `requests`, `huggingface_hub`, the `hf` CLI — routes through it.
+  It **terminates TLS**, using a CA shipped in the image at
+  `/usr/local/share/ca-certificates/daytona-secret-proxy-ca.crt` and issuing
+  certificates as `O=netleash ephemeral CA`.
+  A Secret's value is **not** placed in the sandbox: the environment holds a
+  short placeholder (27 characters, not in the provider's token format) and
+  the proxy substitutes the real credential in flight for hosts on that
+  Secret's `hosts` list. That is literally what **Secret `hosts` scoping**
+  above describes, and why widening the host list fixed an early `401`.
+  Its side effect is the blocker below: it downgrades HTTP/2 to HTTP/1.1,
+  buffers, and re-emits responses chunked, discarding `Content-Length`.
+  Bypassing it (`--noproxy`) restores `Content-Length` but loses the
+  credential — `401` on gated content — so the two cannot be had together.
+  Easy to miss: `openssl s_client` does **not** honour the proxy environment
+  variables and therefore reports the genuine upstream certificate chain, so
+  TLS-level checks show no interception. Confirmed 2026-09-04 by SSH into a
+  live sandbox.
 - **Chunked response re-framing (confirmed HF blocker)** — the
   established cause of the CyberGym dataset failure. Responses reaching a
   Daytona sandbox arrive with `Content-Length` removed and
