@@ -38,7 +38,7 @@ import asyncio
 import os
 import time
 from collections import defaultdict
-from typing import Optional
+from typing import Any, Optional
 
 from daytona import AsyncDaytona, CreateSandboxFromSnapshotParams
 
@@ -99,6 +99,71 @@ def _validate_solver_credentials(model: ModelConfig) -> None:
 # --------------------------------------------------------------------------
 
 
+class BudgetGuard:
+    """Stops launching new trials once recorded solver spend reaches a cap.
+
+    This is a launch gate, NOT a hard ceiling. A trial's cost is only known
+    once it finishes, so trials already in flight can push the total past the
+    cap -- with `--max-parallel N`, by up to roughly N trials' worth. It exists
+    because CyberGym `run`/`sweep` otherwise have no spend limit at all:
+    `--k 3 --modes e2e patch-only` is six trials per task, uncapped.
+
+    ExploitGym is different: it passes `--budget-usd` down to the upstream CLI,
+    which provisions a LiteLLM key with a real per-task `max_budget` the proxy
+    enforces. Nothing equivalent is exposed on CyberGym's `run_agent.py`, so
+    this guard is the available mechanism rather than the ideal one.
+    """
+
+    def __init__(self, cap_usd: Optional[float]) -> None:
+        # 0 (or negative) means 'no cap', matching the flag's help text.
+        # Storing 0.0 would make `spent >= cap` true immediately and skip
+        # every trial -- a disabled cap must not become a total block.
+        self.cap_usd = cap_usd if (cap_usd is not None and cap_usd > 0) else None
+        self.spent_usd = 0.0
+        self.skipped = 0
+        self._lock = asyncio.Lock()
+
+    async def allow(self) -> bool:
+        if self.cap_usd is None:
+            return True
+        async with self._lock:
+            if self.spent_usd >= self.cap_usd:
+                self.skipped += 1
+                return False
+            return True
+
+    async def record(self, result: Optional[TrialResult]) -> None:
+        cost = getattr(result, "solver_cost_usd", None) if result else None
+        if not cost:
+            return
+        async with self._lock:
+            self.spent_usd += float(cost)
+            if self.cap_usd is not None and self.spent_usd >= self.cap_usd:
+                log.warning(
+                    "BUDGET REACHED: $%.2f of $%.2f cap; no further trials will "
+                    "be launched (in-flight trials still finish)",
+                    self.spent_usd, self.cap_usd,
+                )
+
+    def summary(self) -> dict[str, Any]:
+        return {
+            "budget_usd": self.cap_usd,
+            "solver_spend_usd": round(self.spent_usd, 6),
+            "trials_skipped_over_budget": self.skipped,
+            "budget_exhausted": self.cap_usd is not None and self.spent_usd >= self.cap_usd,
+        }
+
+
+def _budget_skipped_result(task: Task, mode: str, trial: int, guard: BudgetGuard) -> TrialResult:
+    r = TrialResult(task=task.path, mode=mode, trial=trial, provisioning="skipped")
+    r.status = "skipped_over_budget"
+    r.error = (
+        f"not launched: solver spend ${guard.spent_usd:.2f} reached the "
+        f"${guard.cap_usd:.2f} --budget-usd cap"
+    )
+    return r
+
+
 async def cmd_run(args: argparse.Namespace) -> None:
     require_env("DAYTONA_API_KEY")
     tasks = load_tasks(common.ROOT / args.tasks_file)
@@ -117,14 +182,24 @@ async def cmd_run(args: argparse.Namespace) -> None:
 
     sem = asyncio.Semaphore(args.max_parallel)
     all_results: list[TrialResult] = []
+    budget = BudgetGuard(args.budget_usd)
+    if budget.cap_usd is not None:
+        log.info("solver spend cap: $%.2f (launch gate; in-flight trials still finish)",
+                 budget.cap_usd)
 
     async def bounded(daytona: AsyncDaytona, task: Task, mode: Mode, trial: int, warm_sandbox=None) -> TrialResult:
         async with sem:
-            return await run_trial(
+            if not await budget.allow():
+                log.warning("skipping %s %s trial %d: over $%.2f budget",
+                            task.path, mode, trial, budget.cap_usd)
+                return _budget_skipped_result(task, mode, trial, budget)
+            result = await run_trial(
                 daytona, task, mode, trial,
                 provisioning=args.provisioning, model=model, warm_sandbox=warm_sandbox,
                 record=not args.no_record,
             )
+            await budget.record(result)
+            return result
 
     async with AsyncDaytona() as daytona:
         warm_parent = None
@@ -157,10 +232,15 @@ async def cmd_run(args: argparse.Namespace) -> None:
             for coro in asyncio.as_completed(coros):
                 result = await coro
                 all_results.append(result)
-                _write_results_json(all_results, config=config, complete=False)
+                _write_results_json(all_results, config=config, complete=False,
+                                    budget=budget.summary())
                 log.info("progress: %d/%d trials done (last: %s %s trial=%d -> %s)",
                           len(all_results), len(coros), result.task, result.mode, result.trial, result.status)
-            _write_results_json(all_results, config=config, complete=True)
+            _write_results_json(all_results, config=config, complete=True,
+                                budget=budget.summary())
+            if budget.skipped:
+                log.warning("%d trial(s) never launched: $%.2f of $%.2f budget spent",
+                            budget.skipped, budget.spent_usd, budget.cap_usd)
         finally:
             if warm_parent is not None:
                 await warm_parent.delete(wait=True, timeout=180)
@@ -168,7 +248,8 @@ async def cmd_run(args: argparse.Namespace) -> None:
     log.info("run complete: %d trials -> %s", len(all_results), RESULTS_JSON)
 
 
-def _write_results_json(results: list[TrialResult], config: dict, complete: bool = False) -> None:
+def _write_results_json(results: list[TrialResult], config: dict, complete: bool = False,
+                        budget: Optional[dict] = None) -> None:
     pass_at_k = {}
     for mode in {r.mode for r in results}:
         pass_at_k[mode] = _pass_at_k(results, mode)
@@ -183,6 +264,7 @@ def _write_results_json(results: list[TrialResult], config: dict, complete: bool
         "trials": [r.to_json() for r in results],
         "pass_at_k": pass_at_k,
         "capability": capability,
+        "budget": budget or {},
     })
 
 
@@ -518,9 +600,17 @@ async def cmd_sweep(args: argparse.Namespace) -> None:
     _validate_solver_credentials(model)
 
     curve = load_json(CONCURRENCY_SWEEP_JSON, {"levels": []})
+    budget = BudgetGuard(args.budget_usd)
+    if budget.cap_usd is not None:
+        log.info("solver spend cap: $%.2f across the whole ladder "
+                 "(launch gate; in-flight trials still finish)", budget.cap_usd)
 
     async with AsyncDaytona() as daytona:
         for level in ladder:
+            if budget.cap_usd is not None and budget.spent_usd >= budget.cap_usd:
+                log.warning("stopping ladder before level %d: $%.2f of $%.2f spent",
+                            level, budget.spent_usd, budget.cap_usd)
+                break
             probe_tasks = (tasks * ((level // max(len(tasks), 1)) + 1))[:level]
             probe_items = list(enumerate(probe_tasks, start=1))
             log.info("sweep: concurrency level=%d, probe batch=%d trials", level, len(probe_items))
@@ -530,13 +620,20 @@ async def cmd_sweep(args: argparse.Namespace) -> None:
             async def bounded(item: tuple[int, Task]) -> tuple[Task, Optional[TrialResult], Optional[str], float]:
                 async with sem:
                     trial_number, task = item
-                    return await _run_sweep_trial_with_timeout(
+                    if not await budget.allow():
+                        log.warning("skipping %s trial %d: over $%.2f budget",
+                                    task.path, trial_number, budget.cap_usd)
+                        return (task, _budget_skipped_result(task, "patch-only", trial_number, budget),
+                                "skipped_over_budget", 0.0)
+                    outcome = await _run_sweep_trial_with_timeout(
                         daytona,
                         task,
                         trial_number,
                         model,
                         args.trial_timeout,
                     )
+                    await budget.record(outcome[1])
+                    return outcome
 
             t_level0 = time.monotonic()
             outcomes = await asyncio.gather(*[bounded(item) for item in probe_items])
@@ -712,6 +809,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_run.add_argument("--provisioning", default="snapshot", choices=["snapshot", "fork"])
     p_run.add_argument("--limit", type=int, default=None, help="cap number of tasks (smoke-test)")
     p_run.add_argument("--no-record", action="store_true", help="skip screen recording")
+    p_run.add_argument("--budget-usd", type=float, default=36.0, help="hard cap on cumulative LLM solver spend in USD for this command (default 36). Launch gate: trials already running still finish, so with --max-parallel N the total can overshoot by up to ~N trials. Pass 0 to disable.")
     p_run.set_defaults(func=cmd_run)
 
     p_eg = sub.add_parser(
@@ -772,6 +870,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_sweep.add_argument("--trial-timeout", type=int, default=1800)
     p_sweep.add_argument("--stop-on-knee", action=argparse.BooleanOptionalAction, default=True)
     p_sweep.add_argument("--knee-threshold", type=float, default=0.7)
+    p_sweep.add_argument("--budget-usd", type=float, default=36.0, help="hard cap on cumulative LLM solver spend in USD for this command (default 36). Launch gate: trials already running still finish, so with --max-parallel N the total can overshoot by up to ~N trials. Pass 0 to disable.")
     p_sweep.set_defaults(func=cmd_sweep)
 
     p_bench = sub.add_parser("provision-bench", help="cold vs snapshot vs fork latency")

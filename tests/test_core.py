@@ -573,6 +573,65 @@ class ExploitGymTimeoutTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.stage_timings["cleanup"]["status"], "complete")
 
 
+class BudgetGuardTests(unittest.IsolatedAsyncioTestCase):
+    """CyberGym run/sweep had no spend cap at all before this.
+
+    `run` defaults to --k 3 --modes e2e patch-only, i.e. six trials per task,
+    each making unbounded LLM calls. The one measured trial in this project
+    cost $0.65, so a default 20-task run could plausibly reach three figures
+    with nothing to stop it.
+    """
+
+    async def test_cap_blocks_further_launches_once_reached(self) -> None:
+        from orchestrator import BudgetGuard
+
+        guard = BudgetGuard(1.0)
+
+        class R:
+            solver_cost_usd = 0.60
+
+        self.assertTrue(await guard.allow())
+        await guard.record(R())
+        self.assertTrue(await guard.allow(), "0.60 < 1.00 must still allow")
+        await guard.record(R())
+        self.assertFalse(await guard.allow(), "1.20 >= 1.00 must block")
+        self.assertEqual(guard.skipped, 1)
+
+        s = guard.summary()
+        self.assertTrue(s["budget_exhausted"])
+        self.assertAlmostEqual(s["solver_spend_usd"], 1.20, places=6)
+
+    async def test_zero_or_none_disables_the_cap_rather_than_blocking(self) -> None:
+        """A disabled cap must not become a total block.
+
+        Storing 0.0 as the cap would make `spent >= cap` true immediately and
+        skip every trial -- the opposite of what --budget-usd 0 documents.
+        """
+        from orchestrator import BudgetGuard
+
+        for cap in (0.0, None, -5.0):
+            guard = BudgetGuard(cap)
+            self.assertIsNone(guard.cap_usd, f"cap={cap!r} should disable, not clamp")
+            self.assertTrue(await guard.allow(), f"cap={cap!r} must not block trials")
+
+    async def test_untracked_cost_does_not_corrupt_the_total(self) -> None:
+        from orchestrator import BudgetGuard
+
+        guard = BudgetGuard(10.0)
+        await guard.record(None)                       # trial returned nothing
+        await guard.record(type("R", (), {"solver_cost_usd": None})())
+        self.assertEqual(guard.spent_usd, 0.0)
+        self.assertTrue(await guard.allow())
+
+    def test_run_and_sweep_expose_the_cap(self) -> None:
+        parser = build_parser()
+        self.assertEqual(parser.parse_args(["run"]).budget_usd, 36.0)
+        self.assertEqual(parser.parse_args(["sweep"]).budget_usd, 36.0)
+        self.assertEqual(
+            parser.parse_args(["run", "--budget-usd", "5"]).budget_usd, 5.0
+        )
+
+
 class SweepTimeoutTelemetryTests(unittest.IsolatedAsyncioTestCase):
     async def test_timed_out_trial_retains_metrics_for_oom_accounting(self) -> None:
         async def stalled_trial(*args, result, **kwargs):
