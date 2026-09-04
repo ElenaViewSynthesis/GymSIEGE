@@ -57,6 +57,22 @@ Do not assume any terminal process from the previous session is still alive.
   below is implemented and tested.
 - All failed-rebake temporary sandboxes were deleted successfully; no cleanup
   action is outstanding from these attempts.
+- **CyberGym `run`/`sweep` cannot run at all right now: there is no LiteLLM
+  deployment.** Verified 2026-09-04: `LITELLM_BASE_URL` is unset and the
+  Daytona organization has only `gymsiege-openai` and `gymsiege-huggingface` —
+  no `gymsiege-litellm`. `sandbox_runner.py:122` injects
+  `LITELLM_MASTER_KEY -> gymsiege-litellm`, so the reference resolves to a
+  secret that does not exist, and `_validate_solver_credentials` fails fast on
+  the missing base URL. This is not a config oversight to patch around:
+  upstream CyberGym does not accept a direct OpenAI provider, which is why the
+  router is in the design. Running CyberGym requires standing up a LiteLLM
+  instance configured with the OpenAI key as its upstream credential, and
+  creating the `gymsiege-litellm` Secret from its master key.
+- **ExploitGym does run today.** It injects `OPENAI_API_KEY ->
+  gymsiege-openai` (exists) and gets budget enforcement from its own in-sandbox
+  proxy, which is how the one completed trial minted a `cgym-*` key with
+  `max_budget: 5.0` without any external LiteLLM. `gymsiege-exploitgym` is
+  ACTIVE. Demo set: `exploitgym_tasks.demo.txt`.
 - Per-sandbox resource ceilings on this account, confirmed 2026-09-04 by a
   rejected create (`Disk request 90GB exceeds maximum allowed per sandbox
   (10GB)`) and by the dashboard: **4 vCPU / 8 GiB memory / 10 GiB storage /
