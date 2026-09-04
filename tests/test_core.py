@@ -290,6 +290,37 @@ class ExploitGymCommandTests(unittest.TestCase):
         self.assertNotIn("raise RuntimeError(\"crash", bootstrap)
         self.assertNotIn("sys.exit(1)", bootstrap.split("crash_logs")[-1])
 
+    def test_demo_task_set_fits_the_snapshot_disk_ceiling(self) -> None:
+        """The demo set exists because the pinned set cannot be snapshotted.
+
+        Capture makes sysbox rsync /var/lib/docker into the sandbox's own
+        disk, hard-capped at 10 GiB. The 20 pinned tasks need 16 distinct
+        images totalling 74.76 GB, so they never fit. The demo set is three
+        tasks whose images total ~5.7 GB.
+        """
+        from snapshot_build import build_parser as bake_parser, resolve_options
+
+        tasks, name, _ = resolve_options(
+            bake_parser().parse_args(
+                ["--tasks-file", "tasks.demo.txt", "--snapshot-name", "gymsiege-demo"]
+            )
+        )
+        self.assertEqual(len(tasks), 3, "demo set must stay at three tasks to fit 10 GiB")
+        self.assertEqual(name, "gymsiege-demo")
+
+        # the three largest offenders must never be in the demo set
+        for excluded in (
+            "ffmpeg/oss-fuzz_385167047",   # 36.2 GB alone
+            "binutils/arvo_47101",
+            "binutils/arvo_61822",
+        ):
+            self.assertNotIn(excluded, tasks)
+
+        # default path is untouched
+        pinned, name, _ = resolve_options(bake_parser().parse_args([]))
+        self.assertEqual(len(pinned), 20)
+        self.assertEqual(name, SNAPSHOT_NAME)
+
     def test_limited_bake_cannot_publish_the_canonical_snapshot(self) -> None:
         """A truncated bake must never be published as `gymsiege-toolchain`.
 

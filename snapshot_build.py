@@ -409,8 +409,8 @@ fi
 """
 
 
-def pinned_task_paths() -> list[str]:
-    return [task.path for task in load_tasks(common.ROOT / "tasks.pinned.txt")]
+def pinned_task_paths(tasks_file: str = "tasks.pinned.txt") -> list[str]:
+    return [task.path for task in load_tasks(common.ROOT / tasks_file)]
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -443,6 +443,16 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Skip the Docker image pull. Only meaningful with --no-snapshot; a snapshot without images is unusable.",
     )
+    parser.add_argument(
+        "--tasks-file",
+        default="tasks.pinned.txt",
+        metavar="FILE",
+        help=(
+            "Task set to bake (default tasks.pinned.txt). Use tasks.demo.txt for "
+            "the three-task set sized to fit the 10 GiB snapshot ceiling; the "
+            "full pinned set needs 74.76 GB of images and cannot be captured."
+        ),
+    )
     return parser
 
 
@@ -455,7 +465,7 @@ def resolve_options(args: argparse.Namespace) -> tuple[list[str], str | None, bo
     a snapshot of that name is ACTIVE, so the truncated one would be treated
     as complete. Refuse the combination outright rather than warn.
     """
-    tasks = pinned_task_paths()
+    tasks = pinned_task_paths(getattr(args, "tasks_file", "tasks.pinned.txt"))
     if args.limit is not None:
         if args.limit < 1:
             raise SystemExit("--limit must be >= 1")
@@ -532,7 +542,7 @@ async def build_snapshot(args: argparse.Namespace | None = None) -> None:
         log.warning(
             "LIMITED bake: %d of %d pinned tasks, snapshot=%s. "
             "provisioning_bench.json will NOT be written.",
-            len(tasks), len(pinned_task_paths()), snapshot_name or "(none)",
+            len(tasks), len(pinned_task_paths(args.tasks_file)), snapshot_name or "(none)",
         )
     else:
         log.info("baking %s for %d pinned tasks", snapshot_name, len(tasks))

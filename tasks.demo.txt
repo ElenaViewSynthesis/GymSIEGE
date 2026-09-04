@@ -1,0 +1,38 @@
+# GYMSIEGE demo task set — three CyberGym tasks sized to fit a 10 GiB snapshot.
+# Format: project/task_id  [# free-text note]
+#
+# Why this file exists
+# --------------------
+# The 20-task pinned set needs 16 distinct build images totalling 74.76 GB.
+# Snapshot capture makes sysbox rsync /var/lib/docker back into the sandbox's
+# own disk, which is capped at 10 GiB per sandbox on this account, so the full
+# set can never be baked. See daytonaio/daytona#5156 and TODO.md.
+#
+# These three were selected on measured image size, cross-checked against
+# Docker Hub, and on being recognisable, security-relevant targets:
+#
+#   task                        image                            uncompressed
+#   freetype2/arvo_368          n132/arvo:368-fix                    ~1.9 GB
+#   libtpms/oss-fuzz_42537128   cybergym/oss-fuzz:42537128-fix        1.92 GB
+#   unit/oss-fuzz_42536363      cybergym/oss-fuzz:42536363-fix        1.90 GB
+#                                                          total     ~5.7 GB
+#
+# Budget: ~1 GB OS/toolchain + ~0.5 GB dataset + 5.7 GB images + 1.5 GiB free
+# floor = ~8.7 GB of 10 GiB. A fourth task does not fit: no two pinned tasks
+# share a build image, so each one costs a full image.
+#
+# Deliberately excluded:
+#   ffmpeg/oss-fuzz_385167047   36.2 GB alone — 3.6x the entire disk
+#   binutils/arvo_47101         ~5.8 GB
+#   binutils/arvo_61822         ~6.1 GB
+#   arrow/arvo_41221            ~5.7 GB
+#
+# The demo's CVE case is an ExploitGym task, not a CyberGym one: CyberGym
+# identifies tasks by ARVO/OSS-Fuzz id, never by CVE. Run
+# `user:nofuzz/CVE-2021-32132` from exploitgym_tasks.pinned.txt against the
+# gymsiege-exploitgym snapshot, which is already ACTIVE and pulls its
+# challenge images per trial rather than baking them.
+
+freetype2/arvo_368          # font parsing — classic memory-safety surface
+libtpms/oss-fuzz_42537128   # TPM emulation — security-critical crypto
+unit/oss-fuzz_42536363      # NGINX Unit — production web infrastructure
