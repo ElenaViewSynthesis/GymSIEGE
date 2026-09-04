@@ -163,7 +163,13 @@ rsync ...: No space left on device (28)
 Two aggravating factors:
 
 - **`create_snapshot()` reported success.** It returned cleanly in 46s; the
-  snapshot went to `ERROR` asynchronously. Nothing polls for `ACTIVE`.
+  snapshot went to `ERROR` asynchronously, and at the time nothing polled for
+  `ACTIVE`. **Fixed:** `snapshot_build.py`'s `wait_for_snapshot_active()` now
+  polls the registered Snapshot resource (not the sandbox) to a terminal
+  state after every `create_snapshot()` call and raises with the platform's
+  `error_reason` if it isn't `ACTIVE`, so a failed capture can no longer be
+  reported as a successful bake step. Covered by
+  `tests/test_core.py::SnapshotCaptureTests`.
 - **In-sandbox disk checks cannot see it.** `/var/lib/docker` sits on a 4 TB
   volume during the sandbox's life; `df /` showed 5.4 GiB free and the
   headroom gate passed. The constraint only materialises at capture.

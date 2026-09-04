@@ -110,6 +110,13 @@ MIN_SNAPSHOT_FREE_BYTES = int(
 BAKE_STEP_TIMEOUT_BUDGET_S = 1800 + 3600 + 600 + 3600
 BAKE_TTL_MINUTES = int(os.environ.get("GYMSIEGE_BAKE_TTL_MIN", "180"))
 
+# sandbox.create_snapshot() only confirms the sandbox itself left its
+# 'snapshotting' state; the registered Snapshot resource can still fail
+# (e.g. rsync ENOSPC) and flip to ERROR afterward. Poll it separately to a
+# terminal state before trusting the bake. See wait_for_snapshot_active().
+SNAPSHOT_STATE_POLL_TIMEOUT_S = 300
+SNAPSHOT_STATE_POLL_INTERVAL_S = 5
+
 # Installed *inside* the sandbox. Kept as one script so a single process.exec
 # call gets us one clean exit code and one combined log instead of N round
 # trips (each process.exec is a real network hop to the sandbox).
@@ -527,6 +534,47 @@ async def timed_exec(
     return {"label": label, "duration_s": dt, "exit_code": getattr(r, "exit_code", None), "ok": ok}
 
 
+async def wait_for_snapshot_active(
+    daytona,
+    name: str,
+    *,
+    timeout: float = SNAPSHOT_STATE_POLL_TIMEOUT_S,
+    interval: float = SNAPSHOT_STATE_POLL_INTERVAL_S,
+) -> str:
+    """Poll the Snapshot resource (not the sandbox) until it leaves a
+    non-terminal state, and raise if it lands anywhere but ACTIVE.
+
+    `sandbox.create_snapshot()` only waits for the *sandbox* to leave its
+    'snapshotting' state; it returned success in 46s on a run where the
+    underlying Snapshot then failed capture (rsync ENOSPC) and transitioned
+    to ERROR asynchronously afterward, with nothing in the bake catching it
+    (see FINDINGS.md #3, daytonaio/daytona#5156). The Snapshot's own state
+    is the only thing that actually reflects whether capture succeeded.
+    """
+    terminal = {"active", "error", "build_failed"}
+    deadline = time.monotonic() + timeout
+    state = "unknown"
+    error_reason = None
+    while True:
+        snap = await daytona.snapshot.get(name)
+        state = str(getattr(snap, "state", "unknown")).lower()
+        error_reason = getattr(snap, "error_reason", None)
+        if state in terminal:
+            break
+        if time.monotonic() >= deadline:
+            raise RuntimeError(
+                f"snapshot {name!r} did not reach a terminal state within "
+                f"{timeout:.0f}s (last state={state!r}); refusing to trust it"
+            )
+        await asyncio.sleep(interval)
+    if state != "active":
+        raise RuntimeError(
+            f"snapshot capture failed: {name!r} landed in state={state!r}, "
+            f"reason={error_reason!r}"
+        )
+    return state
+
+
 async def build_snapshot(args: argparse.Namespace | None = None) -> None:
     if args is None:
         args = build_parser().parse_args([])
@@ -652,8 +700,16 @@ async def build_snapshot(args: argparse.Namespace | None = None) -> None:
             else:
                 t_snap0 = time.monotonic()
                 await sandbox.create_snapshot(snapshot_name, timeout=3600)
+                # create_snapshot() only confirms the sandbox left
+                # 'snapshotting'; confirm the Snapshot resource itself
+                # actually reached ACTIVE before trusting it (see
+                # wait_for_snapshot_active docstring and FINDINGS.md #3).
+                state = await wait_for_snapshot_active(daytona, snapshot_name)
                 t_snap = time.monotonic() - t_snap0
-                log.info("snapshot '%s' created in %.1fs", snapshot_name, t_snap)
+                log.info(
+                    "snapshot '%s' created in %.1fs (state=%s)",
+                    snapshot_name, t_snap, state,
+                )
                 bake_steps.append({"label": "create_snapshot", "duration_s": t_snap, "exit_code": 0, "ok": True})
 
         finally:

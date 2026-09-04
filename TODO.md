@@ -83,11 +83,20 @@ Do not assume any terminal process from the previous session is still alive.
   Snapshot capture makes sysbox rsync `/var/lib/docker` back into the
   sandbox's own disk; the 20 pinned tasks need 16 distinct images totalling
   74.76 GB against a hard 10 GiB ceiling, so capture fails with an rsync
-  ENOSPC surfaced as a container-pause error — *after* `create_snapshot()`
-  has already returned success. Filed as
+  ENOSPC surfaced as a container-pause error. Filed as
   <https://github.com/daytonaio/daytona/issues/5156>. The bake must be
   redesigned to bake toolchain + dataset only (~4 GiB, fits) and pull images
   per trial.
+- **Fixed: the `create_snapshot()` success trap.** `sandbox.create_snapshot()`
+  only confirms the *sandbox* left its `snapshotting` state and previously
+  reported success (46s) before the registered Snapshot resource's own
+  capture failure (the rsync ENOSPC above) surfaced asynchronously as
+  `ERROR` — nothing polled for `ACTIVE`, so a broken bake could record a
+  clean `create_snapshot` step. `snapshot_build.py:wait_for_snapshot_active()`
+  now polls the Snapshot resource itself to a terminal state after every
+  `create_snapshot()` call and raises with the platform's `error_reason` if
+  it isn't `ACTIVE`. Covered by `tests/test_core.py::SnapshotCaptureTests`
+  (39 tests now pass, up from 22).
 - The snapshot uses a 10 GiB disk, the maximum allowed by this Daytona target.
   It contains the ExploitGym harness, Docker, Codex/Node runtime, static network
   helpers, and the small Squid image. Hardened challenge images are deliberately
