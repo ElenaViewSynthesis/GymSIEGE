@@ -162,6 +162,61 @@ client that treats a declared body size as mandatory fails on it.
 
 
 ================================================================================
+MECHANISM (identified from inside a sandbox over SSH)
+================================================================================
+
+The rewriting is done by the secret-injection proxy, and it is not optional.
+
+Sandboxes are created with these set:
+
+    HTTP_PROXY  = http://172.20.0.1:18080
+    HTTPS_PROXY = http://172.20.0.1:18080
+    no_proxy    = localhost,127.0.0.1,::1
+
+Every HTTP client that honours those variables -- httpx, requests,
+huggingface_hub, the hf CLI -- goes through it. It terminates TLS using a CA
+installed in the image at:
+
+    /usr/local/share/ca-certificates/daytona-secret-proxy-ca.crt
+
+Same URL, same sandbox, same second:
+
+                        THROUGH THE PROXY        BYPASSING IT (--noproxy '*')
+  ------------------------------------------------------------------------
+  Protocol              HTTP/1.1                 HTTP/2
+  Framing               Transfer-Encoding:       content-length: 533308
+                        chunked
+  Content-Length        absent                   present
+  TLS cert issuer       O=netleash ephemeral CA  C=US, O=Amazon,
+                                                 CN=Amazon RSA 2048 M01
+
+So the proxy downgrades HTTP/2 to HTTP/1.1, buffers, and re-emits the response
+chunked -- discarding the upstream Content-Length. `openssl s_client` sees the
+genuine Amazon certificate because it does not honour the proxy variables,
+which is why TLS interception is invisible unless specifically tested for.
+
+WHY THE PROXY CANNOT SIMPLY BE BYPASSED
+
+A Daytona Secret does not place its value in the sandbox. The environment
+holds a short placeholder (27 characters, and not in the provider's token
+format); the proxy substitutes the real credential in flight for hosts on the
+Secret's `hosts` list. That is what Secret host scoping does.
+
+Consequently, for a gated resource:
+
+  through the proxy   ->  authenticates (200), but Content-Length is destroyed
+  bypassing the proxy ->  Content-Length preserved, but no credential (401)
+
+There is no configuration that yields both. A client needing a declared body
+size AND a Secret-injected credential cannot succeed on this target, which is
+why this is a defect rather than an inconvenience.
+
+It is also not specific to huggingface_hub. `hf sync` against a Hugging Face
+Bucket -- an unrelated transport -- fails on the same target with
+"Could not get size for '.gitattributes'", aborting after 4 of 2757 files.
+
+
+================================================================================
 WHAT WAS RULED OUT
 ================================================================================
 
@@ -215,19 +270,30 @@ Failing that, in order of usefulness to us:
 QUESTIONS
 ================================================================================
 
-1. Is there a transparent HTTP/HTTPS proxy in the sandbox network path on this
-   target? Is it documented anywhere?
+1. Is the secret-injection proxy (netleash, at 172.20.0.1:18080) expected to
+   discard Content-Length and re-frame responses as chunked, or is this a
+   defect in its response handling?
 
-2. Is dropping Content-Length while adding Transfer-Encoding intended, or a
-   defect?
+2. Can it preserve the upstream Content-Length? Buffering a response does not
+   require discarding a length the origin already declared.
 
-3. Does the re-framing apply to all responses, or only to some size or
-   content-type classes?
+3. Is the HTTP/2 -> HTTP/1.1 downgrade intentional? Preserving HTTP/2 would
+   also preserve exact framing.
 
-4. Which other entity headers may be added, altered, or removed?
+4. Is there a supported way to use a Secret-injected credential WITHOUT the
+   response rewriting -- injection at connect time, or a pass-through mode for
+   allowlisted hosts? Today the two are inseparable: bypassing the proxy loses
+   the credential (401), using it loses Content-Length.
 
-5. Is there a supported way to obtain an unmodified response, or to inspect the
-   effective network path from inside a sandbox?
+5. Does the re-framing apply to all responses, or only to some size or
+   content-type classes? Which other entity headers may be altered?
+
+6. Are the proxy, its CA, and its response rewriting documented anywhere? They
+   are discoverable only by reading environment variables inside a sandbox or
+   by comparing against an external control. `openssl s_client` does not
+   reveal the interception, because it ignores the proxy environment
+   variables -- which makes this easy to misdiagnose as an egress or origin
+   problem.
 
 
 ================================================================================
