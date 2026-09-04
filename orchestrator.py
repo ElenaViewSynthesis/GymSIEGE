@@ -36,6 +36,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
+import sys
 import time
 from collections import defaultdict
 from typing import Any, Optional
@@ -756,6 +757,7 @@ async def cmd_provision_bench(args: argparse.Namespace) -> None:
 async def cmd_reap(args: argparse.Namespace) -> None:
     require_env("DAYTONA_API_KEY")
     reaped = []
+    failed = []
     async with AsyncDaytona() as daytona:
         # daytona.list() is an async generator (paginated server-side), not
         # a plain list — collect matches while paging through it.
@@ -770,13 +772,36 @@ async def cmd_reap(args: argparse.Namespace) -> None:
                 reaped.append({"id": getattr(s, "id", None), "name": getattr(s, "name", None), "ts": time.time()})
                 log.info("reap: deleted %s (%s)", getattr(s, "name", "?"), getattr(s, "id", "?"))
             except Exception as e:
-                log.error("reap: failed to delete %s: %s", getattr(s, "id", "?"), e)
+                # A sandbox can be stuck in a platform-side state (e.g.
+                # "state change in progress") where delete() genuinely fails,
+                # not just logs noise to ignore. Track it as a real outcome
+                # rather than letting the summary line imply it was removed.
+                failed.append({
+                    "id": getattr(s, "id", None), "name": getattr(s, "name", None),
+                    "error": str(e), "ts": time.time(),
+                })
+                log.error("reap: failed to delete %s (%s): %s", getattr(s, "name", "?"), getattr(s, "id", "?"), e)
 
     if not args.dry_run:
         log_data = load_json(REAP_LOG_JSON, {"runs": []})
-        log_data["runs"].append({"ts": time.time(), "reaped": reaped})
+        log_data["runs"].append({"ts": time.time(), "reaped": reaped, "failed": failed})
         atomic_write_json(REAP_LOG_JSON, log_data)
-    log.info("reap complete: %d sandbox(es) %s", len(stray), "would be reaped" if args.dry_run else "reaped")
+
+    if args.dry_run:
+        log.info("reap complete (dry-run): %d sandbox(es) would be reaped", len(stray))
+    elif failed:
+        log.warning(
+            "reap complete: %d/%d sandbox(es) deleted, %d FAILED and still live -- "
+            "rerun `orchestrator.py reap`, or check the Daytona dashboard if it "
+            "keeps failing (a sandbox can be stuck in a platform-side state that "
+            "rejects delete)",
+            len(reaped), len(stray), len(failed),
+        )
+    else:
+        log.info("reap complete: %d/%d sandbox(es) deleted", len(reaped), len(stray))
+
+    if failed and not args.dry_run:
+        sys.exit(1)
 
 
 # --------------------------------------------------------------------------

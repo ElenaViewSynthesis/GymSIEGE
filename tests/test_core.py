@@ -31,6 +31,7 @@ from orchestrator import (
     _trial_hit_oom_threshold,
     _write_exploitgym_results,
     build_parser,
+    cmd_reap,
 )
 from snapshot_build import BOOTSTRAP_SH, CLEANUP_AND_DISK_SH, CRASH_LOG_HELPERS_PY
 
@@ -571,6 +572,75 @@ class ExploitGymTimeoutTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result.cleanup_ttl_set)
         self.assertTrue(result.cleanup_destroyed)
         self.assertEqual(result.stage_timings["cleanup"]["status"], "complete")
+
+
+class ReapTests(unittest.IsolatedAsyncioTestCase):
+    """A stuck sandbox made reap's own summary line lie about what happened.
+
+    Two sandboxes named siege-*, one deletes cleanly, one fails with a
+    platform-side "state change in progress" error (observed live: a
+    sandbox stuck in CREATING that also refuses delete). The old summary
+    line counted sandboxes *found*, not *deleted*, so it printed
+    "2 sandbox(es) reaped" even though only one actually was.
+    """
+
+    async def test_summary_reports_actual_deletions_not_sandboxes_found(self) -> None:
+        class FakeSandbox:
+            def __init__(self, name, id_, should_fail):
+                self.name, self.id, self._fail = name, id_, should_fail
+
+            async def delete(self, wait=True, timeout=None):
+                if self._fail:
+                    raise RuntimeError("Failed to remove sandbox: Sandbox state change in progress")
+
+        ok = FakeSandbox("siege-ok", "id-ok", should_fail=False)
+        stuck = FakeSandbox("siege-stuck", "id-stuck", should_fail=True)
+
+        class FakeDaytona:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *exc):
+                return False
+
+            async def list(self):
+                for s in (ok, stuck):
+                    yield s
+
+        with patch("orchestrator.AsyncDaytona", return_value=FakeDaytona()), \
+             patch("orchestrator.require_env"), \
+             patch("orchestrator.atomic_write_json") as write_json, \
+             self.assertRaises(SystemExit) as ctx:
+            await cmd_reap(argparse.Namespace(dry_run=False))
+
+        # exits non-zero specifically because a delete failed
+        self.assertEqual(ctx.exception.code, 1)
+
+        # the persisted log must record the failure, not just successes
+        logged = write_json.call_args[0][1]
+        run = logged["runs"][-1]
+        self.assertEqual([r["name"] for r in run["reaped"]], ["siege-ok"])
+        self.assertEqual([f["name"] for f in run["failed"]], ["siege-stuck"])
+        self.assertIn("state change in progress", run["failed"][0]["error"])
+
+    async def test_summary_is_clean_when_every_delete_succeeds(self) -> None:
+        class FakeSandbox:
+            name, id = "siege-ok", "id-ok"
+            async def delete(self, wait=True, timeout=None):
+                return None
+
+        class FakeDaytona:
+            async def __aenter__(self):
+                return self
+            async def __aexit__(self, *exc):
+                return False
+            async def list(self):
+                yield FakeSandbox()
+
+        with patch("orchestrator.AsyncDaytona", return_value=FakeDaytona()), \
+             patch("orchestrator.require_env"), \
+             patch("orchestrator.atomic_write_json"):
+            await cmd_reap(argparse.Namespace(dry_run=False))  # must not raise
 
 
 class BudgetGuardTests(unittest.IsolatedAsyncioTestCase):
