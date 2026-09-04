@@ -9,6 +9,59 @@ It measures both **agent capability** (pass@k, oracle stages, research navigatio
 
 Every trial runs inside a real, disposable Daytona sandbox — nothing here is simulated. `results.json` stays a not-yet-run schema template until an actual trial has completed against the live Daytona and provider APIs.
 
+## Quick start
+
+Two demo runs. **ExploitGym works with only an OpenAI key; CyberGym additionally needs a LiteLLM gateway** (see below for why).
+
+### ExploitGym — runs today
+
+Needs `DAYTONA_API_KEY` and the `gymsiege-openai` Daytona Secret. Budget is enforced per task by ExploitGym's own in-sandbox proxy.
+
+```bash
+.venv/bin/python orchestrator.py exploitgym-run \
+    --task user:nofuzz/CVE-2021-32132 --k 1 --budget-usd 3
+```
+
+Roughly $0.65 and ~5 minutes, based on the one measured trial. For the full four-task demo set (both CVEs plus two ARVO tasks) use `--tasks-file exploitgym_tasks.demo.txt`.
+
+### CyberGym — start a LiteLLM gateway first
+
+CyberGym cannot reach OpenAI directly: upstream expects an Anthropic-shaped backend, so a router is required, not optional. Without it `orchestrator.py run` fails fast on a missing `LITELLM_BASE_URL`, and the sandbox is handed a reference to a `gymsiege-litellm` Secret that does not exist.
+
+```bash
+# Gateway on :4000 plus a Postgres for models, keys, and spend logs
+curl -sSLO https://docs.litellm.ai/docker-compose.yml
+docker compose up -d
+```
+
+Piping straight to `docker compose -f - up -d` also works, but downloading the file first lets you pin a release tag instead of `latest` and change credentials.
+
+> **Set a real `LITELLM_SALT_KEY` before adding any model you intend to keep.**
+> It encrypts the provider API keys stored in the UI, and the quickstart compose file ships a placeholder. Use a long random value and **never change it afterwards** — credentials encrypted with the old salt cannot be decrypted with a new one.
+
+Then add your OpenAI key as the upstream credential in the LiteLLM UI, define a route named to match `--litellm-model-id` (default `openai/gpt-5.6-luna`), and wire the gateway into GYMSIEGE:
+
+```bash
+# Copy the LiteLLM master key into the Daytona vault (never printed, never committed)
+.venv/bin/python configure_secrets.py litellm
+
+# In .env.local — must be reachable FROM A SANDBOX, not just from your laptop
+LITELLM_BASE_URL=https://<your-gateway-host>:4000
+```
+
+**`http://localhost:4000` will not work.** `sandbox_runner.py` copies `LITELLM_BASE_URL` verbatim into the sandbox, where `localhost` is the sandbox's own loopback. The gateway must be on a host the sandbox can reach — a public deployment, or a tunnel (`cloudflared`, `ngrok`) in front of your local container.
+
+Once that resolves:
+
+```bash
+.venv/bin/python orchestrator.py run --tasks-file tasks.demo.txt \
+    --k 1 --modes patch-only --max-parallel 1 --budget-usd 12
+```
+
+`--k 1 --modes patch-only` is deliberate: the defaults are `--k 3` over both modes, i.e. six trials per task. `--budget-usd` caps cumulative solver spend as a launch gate — in-flight trials still finish, so with `--max-parallel N` the total can overshoot by up to ~N trials.
+
+`tasks.demo.txt` is three CyberGym tasks whose images fit the 10 GiB snapshot ceiling; the full 20-task pinned set needs 74.76 GB of images and cannot be captured at all ([daytonaio/daytona#5156](https://github.com/daytonaio/daytona/issues/5156)).
+
 ## Daytona adapter security and CLI
 
 GYMSIEGE's Daytona adapter layers its own containment on top of each upstream benchmark rather than trusting either alone. Every trial runs in a disposable, per-trial sandbox restored from a pinned snapshot; provider API keys reach it only via Daytona organization Secrets through `update_secrets` (never in `create()` parameters or logs); and `set_ttl` plus a `finally`-block `delete()` guarantee cleanup even on crash, with `orchestrator.py reap` as the backstop for anything that leaks. For ExploitGym specifically, `exploitgym_adapter.py` keeps the upstream evaluator's own two-network Docker firewall and retrieval-blocking LLM proxy live for the entire agent phase — hardcoded (`upstream_firewall=True`, no CLI flag disables it) — then independently calls `update_network_settings(network_block_all=True)` at the Daytona layer immediately after the evaluator returns, before any result or artifact is read.
@@ -19,6 +72,7 @@ See [`daytona-notes.md`](daytona-notes.md) for a deeper walkthrough of the ARVO 
 
 ## Contents
 
+- [Quick start](#quick-start)
 - [Daytona adapter security and CLI](#daytona-adapter-security-and-cli)
 - [How it fits together](#how-it-fits-together)
 - [Files](#files)
