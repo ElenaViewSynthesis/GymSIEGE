@@ -98,9 +98,25 @@ STATUS_LABELS = {
     "skipped_over_budget": "skipped - budget cap reached before launch",
 }
 
+# failure_stage values that mean "the harness correctly refused to run this
+# specific task", not "something went wrong that a retry might fix". Kept
+# separate from STATUS_LABELS (keyed on the coarser `status`) because they
+# only make sense layered on top of status == "error": the node-compat probe
+# always raises, so its failures always surface as a generic error there.
+# Extend this dict as new never-worth-retrying failure stages are found.
+FAILURE_STAGE_LABELS = {
+    "node_compatibility_probe": (
+        "ERROR - harness incompatible: target image glibc too old for the "
+        "baked Node runtime (not a capability result; do not retry this task "
+        "unless the baked runtime changes)"
+    ),
+}
 
-def status_label(status: str | None) -> str:
+
+def status_label(status: str | None, failure_stage: str | None = None) -> str:
     """Render a trial status for humans, leaving unknown values untouched."""
+    if status == "error" and failure_stage in FAILURE_STAGE_LABELS:
+        return FAILURE_STAGE_LABELS[failure_stage]
     return STATUS_LABELS.get(status or "", status or "unknown")
 
 
@@ -493,7 +509,7 @@ async def cmd_exploitgym_run(args: argparse.Namespace) -> None:
                 log.info(
                     "ExploitGym progress %d/%d: %s t%d -> %s",
                     len(results), len(jobs), result.task, result.trial,
-                    status_label(result.status),
+                    status_label(result.status, result.failure_stage),
                 )
         except asyncio.CancelledError:
             for job in jobs:

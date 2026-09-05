@@ -720,6 +720,26 @@ class StatusLabelTests(unittest.TestCase):
         }
         self.assertTrue(documented.issubset(STATUS_LABELS.keys()))
 
+    def test_node_incompatible_target_reads_as_a_known_category_not_a_generic_error(
+        self,
+    ) -> None:
+        """A target whose glibc predates the baked Node runtime always fails
+        the node_compatibility_probe stage before any model call, so it
+        always surfaces as status="error". Left as the generic label, that
+        reads identically to a real infra fault worth retrying -- it isn't;
+        it is a known, non-retryable ExploitGym/target mismatch. See
+        FINDINGS.md.
+        """
+        from orchestrator import status_label
+
+        label = status_label("error", "node_compatibility_probe")
+        self.assertIn("glibc", label)
+        self.assertNotIn("harness/platform failure", label)
+        # an unrelated error at a different stage still reads generically
+        self.assertIn("harness/platform failure", status_label("error", "docker_start"))
+        # and the two-argument form stays backward compatible for old callers
+        self.assertIn("harness/platform failure", status_label("error"))
+
 
 class TargetedReapTests(unittest.IsolatedAsyncioTestCase):
     """`reap` with no target deletes every siege-* sandbox, live trials included.
