@@ -1,6 +1,10 @@
 .env
 .env.local
 .venv/
+
+# Local LiteLLM gateway stack: docker-compose.yml holds the real
+# LITELLM_MASTER_KEY/LITELLM_SALT_KEY/DB password once configured.
+litellm-gateway/
 __pycache__/
 *.pyc
 

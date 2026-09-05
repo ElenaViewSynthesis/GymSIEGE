@@ -205,8 +205,9 @@ docker compose up -d
 Then wire it in (set a real `LITELLM_SALT_KEY` in the compose file first —
 see README):
 
+Push the master key into the Daytona vault as the `gymsiege-litellm` secret:
+
 ```bash
-# Copy the LiteLLM master key into the Daytona vault
 .venv/bin/python configure_secrets.py litellm
 ```
 
