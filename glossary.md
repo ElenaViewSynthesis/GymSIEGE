@@ -65,7 +65,14 @@ actually apply to this repo rather than generic textbook definitions alone.
 - **VNC / noVNC / x11vnc / Xvfb / xfce4** — the virtual-display stack
   Computer Use starts inside a sandbox: `Xvfb` (virtual X server), `xfce4`
   (desktop environment), `x11vnc` (VNC server), `noVNC` (browser-based VNC
-  client).
+  client). `Image.debian_slim()` ships none of these, so a snapshot baked
+  from it needs them installed explicitly or `/computeruse/start` 503s
+  forever with "still loading or failed to initialize." The apt packages:
+  `xvfb xfce4 xfce4-terminal x11vnc novnc dbus-x11` plus the X11 libs
+  (`libx11-6`, `libxrandr2`, `libxext6`, `libxrender1`, `libxfixes3`,
+  `libxss1`, `libxtst6`, `libxi6`) — added to the `apt-get install` line in
+  both `exploitgym_snapshot_build.py` and `snapshot_build.py`. See
+  `vnc-access.md`.
 - **TTL** — Time To Live; a server-side auto-expiry timer Daytona enforces
   on a sandbox (`set_ttl`), independent of the client process. GYMSIEGE's
   default is 60 minutes (`SANDBOX_SAFETY_TTL_MINUTES`), used as a safety

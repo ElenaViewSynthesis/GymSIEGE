@@ -139,7 +139,15 @@ $SUDO apt-get install -y --no-install-recommends \
     git curl ca-certificates build-essential \
     clang clang-tools llvm lld \
     python3 python3-pip python3-venv \
-    docker.io
+    docker.io \
+    xvfb xfce4 xfce4-terminal x11vnc novnc dbus-x11 \
+    libx11-6 libxrandr2 libxext6 libxrender1 libxfixes3 libxss1 libxtst6 libxi6
+# sandbox_runner.py calls `await sandbox.computer_use.start()` unconditionally
+# (no try/except) before every trial's research phase. That call launches
+# Xvfb/xfce4/x11vnc/novnc, none of which Image.debian_slim() ships -- without
+# them the computer-use plugin never finishes initializing and
+# /computeruse/start 503s forever ("still loading or failed to initialize").
+# See vnc-access.md.
 
 echo "[bootstrap] docker daemon"
 $SUDO service docker start || true
