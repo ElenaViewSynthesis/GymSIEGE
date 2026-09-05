@@ -93,6 +93,25 @@ PYTHONUNBUFFERED=1 .venv/bin/python orchestrator.py exploitgym-run \
   --cleanup-timeout 360
 ```
 
+Retry of `user:cybergym/arvo_42298` after it hit the outer `--trial-timeout`
+mid-`evaluation` (see [TODO.md](TODO.md)) — trial timeout and sandbox
+safety-net TTL both doubled-ish to 75 minutes, and switched from `gpt-5.6-sol`
+to `gpt-5.6-luna` since sol burns budget much faster for the same run:
+
+```bash
+export GYMSIEGE_TTL_MIN=75
+
+.venv/bin/python orchestrator.py reap --dry-run
+PYTHONUNBUFFERED=1 .venv/bin/python orchestrator.py exploitgym-run \
+  --task user:cybergym/arvo_42298 \
+  --k 1 --model gpt-5.6-luna --reasoning-effort medium \
+  --budget-usd 5 --timeout 900 --trial-timeout 4500 \
+  | tee results/run1-arvo_42298-retry.log
+cp results/exploitgym_results.json results/run1-arvo_42298-retry.json
+
+unset GYMSIEGE_TTL_MIN   # don't carry the extended TTL into other runs
+```
+
 Two-task serial production rerun — only after the diagnostic above has
 finished and its result confirms `cleanup_destroyed=true`; do not run both
 concurrently:

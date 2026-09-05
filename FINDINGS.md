@@ -276,7 +276,73 @@ Three methodological lessons:
 
 ---
 
-## 8. Verification status
+## 8. ARVO userspace targets can predate the baked Node runtime's glibc
+
+**Status: confirmed 2026-09-05 (`user:cybergym/arvo_1699`), $0 spent.**
+
+`exploitgym_adapter.py:454-479` mounts the snapshot's baked Node runtime
+read-only into the trial's own `exp.hardened` challenge image and runs
+`node --version` against it, entirely offline (`--network none`), before any
+model call. `arvo_1699`'s target image is missing `GLIBC_2.25`/`2.27`/`2.28`:
+
+```
+/data/node/bin/node: /lib/x86_64-linux-gnu/libc.so.6: version `GLIBC_2.27' not found
+```
+
+The baked runtime is "official glibc Node" built against a modern base
+(`DAYTONA_BAKE_ISSUE.md:18`); this ARVO challenge's container predates it.
+The probe exists specifically to catch this mismatch before spending solver
+budget, and it worked as designed: `challenge_image_pull` still ran (~83s of
+wall clock) but the trial stopped at `node_compatibility_probe` with
+`t_eval_s: null` — no agent, no tokens, no cost. Full stage trace in
+`results/run1-arvo_1699.json`.
+
+**This is a known category, not a one-off.** `exploitgym_tasks.production.txt`
+picked its two tasks specifically as "newer userspace candidates" to avoid it.
+Run 1's eight tasks (`TODO.md`, "Next paid runs") were picked only for "never
+been run before" — not filtered for Node-runtime compatibility — so more of
+the remaining seven may hit the same wall. Each target ships its own image, so
+one task's result does not predict another's; still expect this stage to keep
+firing occasionally as Run 1 continues.
+
+**Consequence for reporting.** `status="error"` with `failure_stage`
+`"node_compatibility_probe"` is correct at the data layer — TODO.md's own rule
+is that an `error` status "tells you nothing" about the agent, so this must
+never be read as a capability score of 0, and it is equally wrong to leave the
+task listed as "not yet run" (it was attempted; the harness made a real,
+reproducible decision not to spend budget on it). `orchestrator.py`'s
+`status_label()` now special-cases this `failure_stage` so the CLI log line
+itself reads `"ERROR - harness incompatible: target image glibc too old for
+the baked Node runtime"` instead of the generic platform-failure message,
+without changing the stored `status`/`success` fields that pass@k and the
+dashboard key off. The README capability table carries the same wording per
+task. Not retried, and not worth retrying against the current snapshot: the
+image's glibc will not change, so the probe will fail identically every time
+until the baked runtime itself is replaced (e.g. a static/musl Node build) —
+out of scope here since only one of eight Run 1 tasks has hit it so far.
+
+---
+
+## 9. `exec()`'s hard-coded timeout ceiling overrides `--trial-timeout`, and both failure paths overshoot by ~159s
+
+**Status: confirmed 2026-09-05 (`user:cybergym/arvo_42298`, two consecutive attempts), $0 known extra spend (both ended in `error`/`timeout`, not a scored result).**
+
+`exploitgym_adapter.py:498` calls `sandbox.process.exec(command, timeout=timeout_s + 600)`, where `timeout_s` is `--timeout`. The Daytona SDK then sets its own client-side HTTP request timeout to `timeout + 5` (`daytona/_async/process.py:129`) — so the real ceiling on a trial's `evaluation` stage is **`--timeout + 605` seconds, regardless of `--trial-timeout`**. The outer `asyncio.wait_for(..., timeout=args.trial_timeout)` in `orchestrator.py:392-405` only matters if it's *shorter* than that inner ceiling; raising `--trial-timeout` alone buys no additional real evaluation time once `--timeout` is the binding constraint.
+
+Two consecutive attempts at the same task exposed both sides of this:
+
+- **Attempt 1** — `--timeout 900 --trial-timeout 1500` (the two were coincidentally equal: `900+600=1500`). The *outer* `wait_for` won the race, cancelling the trial via `asyncio.CancelledError` at 1659s wall-clock from trial start — **159s past** the nominal 1500s deadline. Logged as `status=TIMEOUT`, `agent result unknown`.
+- **Attempt 2 (retry)** — `--timeout` left at 900 but `--trial-timeout` raised to 4500, expecting far more headroom. The *inner* exec-call ceiling (still `900+600=1500`, client request timeout `1505s`) fired instead: the SDK's HTTP client gave up waiting on the long-polling exec response and raised a bare `TimeoutError()` (empty `str()`), wrapped by `intercept_errors` into `daytona.common.errors.DaytonaConnectionTimeoutError("Failed to execute command: ")` — hence the log line ending in a bare colon. Caught by `exploitgym_adapter.py`'s generic `except Exception` (not the `CancelledError` branch), so it recorded as `status=error`, `failure_stage=evaluation`, not `timeout`. Full traceback in `results/run1-arvo_42298-retry.json`'s `error` field: `aiohttp` cancels its stream read → bare `TimeoutError` → `DaytonaConnectionTimeoutError` at `daytona/_async/process.py:127`, raised from `exploitgym_adapter.py:498`. Actual wall-clock before the client gave up: 1664s — again **159s past** the 1505s nominal deadline.
+
+**The ~159s overshoot recurring identically across two structurally different failure paths (an `asyncio.wait_for` cancellation vs. the SDK's own client-side HTTP request timeout) is not a coincidence worth ignoring, but its mechanism is not root-caused.** Candidates not yet distinguished: a fixed retry/backoff window in aiohttp/urllib3 before a cancelled read actually surfaces, or a server-side grace period before the long-polling connection is actually torn down. Flagged as an open question, not a resolved one — do not assume a future run's overshoot will also land near 159s without more data points.
+
+**Consequence for reporting.** Neither attempt produced a scored result — both are harness/platform outcomes (`error` and `timeout`), not capability data, per this file's own rule in §8 that `error`/`timeout` "tells you nothing" about the agent.
+
+**Fix going forward:** to give the agent more real evaluation time, raise `--timeout` itself, not just `--trial-timeout`. `--trial-timeout` only needs to stay comfortably above `--timeout + 605` as a backstop; it does not extend the agent's actual working time on its own.
+
+---
+
+## 10. Verification status
 
 | Claim | Basis |
 |---|---|
@@ -287,3 +353,5 @@ Three methodological lessons:
 | No LiteLLM | Env inspection + Daytona secret listing |
 | CyberGym per-trial cost | **Not measured. No trial has completed.** |
 | Whether images survive into a snapshot | **Not measured.** Capture never succeeded. |
+| `arvo_1699` glibc mismatch | `results/run1-arvo_1699.json` stage trace + error text |
+| `arvo_42298` exec-timeout coupling and ~159s overshoot | `results/run1-arvo_42298.json` + `results/run1-arvo_42298-retry.json` stage traces and `error` tracebacks |
