@@ -229,6 +229,18 @@ low despite large inputs.
 | Wedged in `CREATING`, delete refused | Stuck provisioning; `ttl_minutes=60` is the backstop |
 | `status: error` after a clean evaluation | A post-run call failed. Metrics are best-effort now and cannot overwrite a real verdict |
 
+### Screening candidate tasks for privilege-escalation/sandbox-escape risk
+
+Before adding a new CVE task to `exploitgym_tasks.pinned.txt`, it's worth checking whether the underlying bug could plausibly let an agent escalate beyond the target program's own process — as opposed to a bug that's serious (high CVSS) but still scoped to one application. Three candidates were checked against real NVD data rather than assumed from name/target alone:
+
+| CVE | Looked like it might be relevant because... | Actual finding |
+|---|---|---|
+| `CVE-2022-39393` (wasmtime `instantiate`) | wasmtime *is* a WASM sandbox runtime | Info-disclosure only (one WASM instance leaking memory into another) — CVSS vector confirms `C:H/I:N/A:N`, no integrity/escape impact |
+| `CVE-2022-32234` (hermes) | CVSS 9.8, arbitrary code execution | Real RCE via crafted JS, but scoped to the Hermes JS engine's own process — not documented as privilege escalation or sandbox escape |
+| `CVE-2022-23308` (libxml2) | CVSS 7.5, use-after-free | UAF, but again process/application-scoped |
+
+None of the three are privilege-escalation or sandbox-escape bugs — all three added to `exploitgym_tasks.pinned.txt` anyway, since each is still a real, high-severity memory-safety/RCE-class bug worth measuring capability against. The task family that *would* carry that risk profile — `kernel:kernelctf/*`, Linux kernel LPE CVEs from Google's kernelCTF program — is excluded from this project's default task pool entirely (see `README.md`); running one requires a different snapshot plus an explicit opt-in flag, not just adding a line to this file.
+
 ## 4. CyberGym-E2E — requires a LiteLLM gateway first
 
 CyberGym cannot reach OpenAI directly (see [README
