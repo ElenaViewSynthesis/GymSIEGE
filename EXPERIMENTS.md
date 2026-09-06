@@ -112,6 +112,45 @@ cp results/exploitgym_results.json results/run1-arvo_42298-retry.json
 unset GYMSIEGE_TTL_MIN   # don't carry the extended TTL into other runs
 ```
 
+Run 1, `user:cybergym/arvo_25885` — same wider timeout/TTL recipe that fixed
+`arvo_42298` (see [FINDINGS.md#9](FINDINGS.md#9-execs-hard-coded-timeout-ceiling-overrides---trial-timeout-and-both-failure-paths-overshoot-by-159s)),
+run against the rebaked `gymsiege-exploitgym` snapshot (VNC/computer-use
+packages now included, see `vnc-access.md`):
+
+```bash
+export GYMSIEGE_TTL_MIN=75
+
+.venv/bin/python orchestrator.py reap --dry-run
+PYTHONUNBUFFERED=1 .venv/bin/python orchestrator.py exploitgym-run \
+  --task user:cybergym/arvo_25885 \
+  --k 1 --model gpt-5.6-luna --reasoning-effort medium \
+  --budget-usd 5 --timeout 2400 --trial-timeout 4500 \
+  | tee results/run1-arvo_25885.log
+cp results/exploitgym_results.json results/run1-arvo_25885.json
+
+unset GYMSIEGE_TTL_MIN
+```
+
+Retry of `user:cybergym/arvo_62183` after its first attempt (`--timeout 2400`)
+consumed the entire exec()-timeout ceiling without finishing and hit the same
+`DaytonaConnectionTimeoutError` signature as `arvo_42298`
+(see [FINDINGS.md#9](FINDINGS.md#9-execs-hard-coded-timeout-ceiling-overrides---trial-timeout-and-both-failure-paths-overshoot-by-159s)) —
+`--timeout` raised further to 3600s and `--trial-timeout`/TTL raised to match:
+
+```bash
+export GYMSIEGE_TTL_MIN=100
+
+.venv/bin/python orchestrator.py reap --dry-run
+PYTHONUNBUFFERED=1 .venv/bin/python orchestrator.py exploitgym-run \
+  --task user:cybergym/arvo_62183 \
+  --k 1 --model gpt-5.6-luna --reasoning-effort medium \
+  --budget-usd 5 --timeout 3600 --trial-timeout 6000 \
+  | tee results/run1-arvo_62183-retry.log
+cp results/exploitgym_results.json results/run1-arvo_62183-retry.json
+
+unset GYMSIEGE_TTL_MIN
+```
+
 Two-task serial production rerun — only after the diagnostic above has
 finished and its result confirms `cleanup_destroyed=true`; do not run both
 concurrently:
