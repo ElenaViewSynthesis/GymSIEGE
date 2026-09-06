@@ -231,47 +231,72 @@ def _screenshot_base64(shot: Any) -> str:
 async def _assess_screenshot(
     task: Task, image_b64: str
 ) -> tuple[VisionPageAssessment, dict[str, Any]]:
-    """Use the OpenAI Responses API only for the screenshot fallback."""
+    """Use the OpenAI Responses API only for the screenshot fallback.
+
+    This is the one LLM call this codebase makes directly from the local
+    orchestrator process rather than inside a Daytona sandbox (ExploitGym's
+    and CyberGym's own agent runs are upstream scripts executed remotely via
+    process.exec, out of reach for local instrumentation) -- so it's the
+    only place Langfuse tracing here can actually observe anything real.
+    """
 
     from openai import AsyncOpenAI
+    from langfuse import get_client
 
+    langfuse = get_client()
+    model = os.environ.get("GYMSIEGE_VISION_MODEL", "gpt-5.6")
     client = AsyncOpenAI()
-    response = await client.responses.parse(
-        model=os.environ.get("GYMSIEGE_VISION_MODEL", "gpt-5.6"),
-        input=[
-            {
-                "role": "user",
-                "content": [
+    with langfuse.start_as_current_observation(
+        as_type="span", name="research-vision-assessment", input={"task": task.path}
+    ) as span:
+        with langfuse.start_as_current_observation(
+            as_type="generation", name="vision-page-assessment", model=model
+        ) as generation:
+            response = await client.responses.parse(
+                model=model,
+                input=[
                     {
-                        "type": "input_text",
-                        "text": (
-                            "Determine whether this browser screenshot shows the vulnerability "
-                            f"report for benchmark task {task.path}. Treat a generic browser, "
-                            "error page, search page, or unrelated report as not task_visible."
-                        ),
-                    },
-                    {
-                        "type": "input_image",
-                        "image_url": f"data:image/png;base64,{image_b64}",
-                        "detail": "high",
-                    },
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "input_text",
+                                "text": (
+                                    "Determine whether this browser screenshot shows the vulnerability "
+                                    f"report for benchmark task {task.path}. Treat a generic browser, "
+                                    "error page, search page, or unrelated report as not task_visible."
+                                ),
+                            },
+                            {
+                                "type": "input_image",
+                                "image_url": f"data:image/png;base64,{image_b64}",
+                                "detail": "high",
+                            },
+                        ],
+                    }
                 ],
-            }
-        ],
-        text_format=VisionPageAssessment,
-        store=False,
-    )
-    if response.output_parsed is None:
-        raise RuntimeError("vision model returned no parsed page assessment")
-    usage = getattr(response, "usage", None)
-    if usage is None:
-        usage_dict: dict[str, Any] = {}
-    elif hasattr(usage, "to_dict"):
-        usage_dict = usage.to_dict()
-    elif hasattr(usage, "model_dump"):
-        usage_dict = usage.model_dump()
-    else:
-        usage_dict = {"total_tokens": getattr(usage, "total_tokens", None)}
+                text_format=VisionPageAssessment,
+                store=False,
+            )
+            if response.output_parsed is None:
+                generation.update(level="ERROR", status_message="no parsed page assessment")
+                raise RuntimeError("vision model returned no parsed page assessment")
+            usage = getattr(response, "usage", None)
+            if usage is None:
+                usage_dict: dict[str, Any] = {}
+            elif hasattr(usage, "to_dict"):
+                usage_dict = usage.to_dict()
+            elif hasattr(usage, "model_dump"):
+                usage_dict = usage.model_dump()
+            else:
+                usage_dict = {"total_tokens": getattr(usage, "total_tokens", None)}
+            generation.update(
+                output=response.output_parsed.model_dump(),
+                usage_details=usage_dict or None,
+            )
+        span.update(output=response.output_parsed.model_dump())
+    # A batch CLI process, not a long-lived server -- flush so a trace isn't
+    # lost if the process exits or crashes shortly after this call returns.
+    langfuse.flush()
     return response.output_parsed, usage_dict
 
 

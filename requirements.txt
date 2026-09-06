@@ -18,6 +18,13 @@ pydantic>=2.8.0
 rich>=13.7.0
 python-dotenv>=1.0.1
 
+# Observability for the one LLM call this repo makes directly from the local
+# process (solver_agent.py's vision-screenshot fallback) -- everything else
+# runs as an upstream script inside a Daytona sandbox, out of reach here.
+# Pinned like the sandbox-mirrored set below: a tracing-library version
+# change should never silently alter what gets recorded.
+langfuse==4.15.1
+
 # --- sandbox-mirrored set -------------------------------------------------
 # These eight are installed *inside every bake sandbox* by snapshot_build.py's
 # BOOTSTRAP_SH, and are listed here so `pip install -r requirements.txt` is
