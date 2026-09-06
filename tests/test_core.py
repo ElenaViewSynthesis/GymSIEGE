@@ -438,6 +438,24 @@ class ExploitGymCommandTests(unittest.TestCase):
         self.assertIn("auto_stop_interval=BAKE_TTL_MINUTES", source)
         self.assertIn("set_autostop_interval(BAKE_TTL_MINUTES)", source)
 
+    def test_trial_sandboxes_disable_platform_autostop(self) -> None:
+        """The bake sandbox fix above has a trial-sandbox twin, added later.
+
+        A live ExploitGym trial (`user:cybergym/arvo_62183`, 2026-09-06) was
+        stopped by Daytona mid-`evaluation` -- the same "long-running exec()
+        issues no Sandbox events, so the platform's 15-minute auto-stop
+        default fires" bug as the bake incident above, just never applied to
+        trial sandboxes. Both `exploitgym_adapter.py` (ExploitGym) and
+        `sandbox_runner.py` (CyberGym) create their trial sandbox with
+        `auto_stop_interval=0`, and re-apply `set_autostop_interval(0)` after
+        their post-secret-attach stop/start cycle, since a restart does not
+        necessarily preserve the creation-time value -- see FINDINGS.md#9.
+        """
+        for filename in ("exploitgym_adapter.py", "sandbox_runner.py"):
+            source = Path(filename).read_text(encoding="utf-8")
+            self.assertIn("auto_stop_interval=0", source, filename)
+            self.assertIn("set_autostop_interval(0)", source, filename)
+
     def test_production_batch_is_userspace_only(self) -> None:
         tasks = load_exploitgym_tasks(Path("exploitgym_tasks.production.txt"))
         self.assertEqual(len(tasks), 2)

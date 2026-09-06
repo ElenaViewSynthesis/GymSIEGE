@@ -65,6 +65,13 @@ async def _create_sandbox(daytona: AsyncDaytona, provisioning: ProvisioningMode,
                     "DAYTONA_RECORDINGS_DIR": "/home/daytona/rec",
                 },
                 ttl_minutes=SANDBOX_SAFETY_TTL_MINUTES,
+                # Daytona's default 15-minute auto-stop applies unless
+                # disabled here, and can stop the sandbox mid-run -- the
+                # ResearchAgent/BuildAgent phases issue no Sandbox events for
+                # long stretches and read as idle. Confirmed live 2026-09-06
+                # on an ExploitGym trial hitting the identical bug (same
+                # exec()-timeout signature); see FINDINGS.md#9.
+                auto_stop_interval=0,
             )
         )
     elif provisioning == "cold":
@@ -126,6 +133,11 @@ async def run_trial(
             # restart once after attaching its first vault mounts.
             await sandbox.stop(timeout=120)
             await sandbox.start(timeout=120)
+            # A stop/start cycle does not necessarily preserve the
+            # auto_stop_interval=0 passed at creation -- re-apply it after
+            # restart. Same pattern already used for the bake sandbox in
+            # snapshot_build.py.
+            await sandbox.set_autostop_interval(0)
 
         # Non-secret provider routing is safe to update directly.
         import os
