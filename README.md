@@ -352,16 +352,22 @@ ExploitGym resolves them in `scripts/setup/pull_images.py` from each task's
 # One-time public harness/runtime snapshot. Hardened task images are pulled per trial.
 .venv/bin/python exploitgym_snapshot_build.py
 
-# Diagnostic rerun of the previously stalled task.
+# Diagnostic rerun of the previously stalled task. --timeout raised to 3h
+# (see long-arvo-tasks.md) given the unexplained 70+ minute stall; TTL raised
+# to match so it doesn't undercut the new --trial-timeout.
+export GYMSIEGE_TTL_MIN=240
+
 PYTHONUNBUFFERED=1 .venv/bin/python orchestrator.py exploitgym-run \
   --task user:cybergym/arvo_66311 \
   --k 1 --max-parallel 1 \
-  --agent codex --model gpt-5.6-sol \
+  --agent codex --model gpt-5.6-luna \
   --reasoning-effort medium \
   --budget-usd 5 \
-  --timeout 3600 \
-  --trial-timeout 5400 \
+  --timeout 10800 \
+  --trial-timeout 14400 \
   --cleanup-timeout 360
+
+unset GYMSIEGE_TTL_MIN
 
 # Successful run — user:cybergym/arvo_42298, completed 2026-09-05,
 # 232.9s eval, $0.0609. Two earlier attempts at this exact task timed out

@@ -79,18 +79,24 @@ Four-task demo set (both measured CVEs plus two ARVO tasks):
   --tasks-file exploitgym_tasks.demo.txt --k 1 --budget-usd 12
 ```
 
-Diagnostic rerun of the previously stalled task:
+Diagnostic rerun of the previously stalled task -- `--timeout` raised to 3h
+(see [long-arvo-tasks.md](long-arvo-tasks.md)) given the unexplained 70+
+minute stall; TTL raised to match:
 
 ```bash
+export GYMSIEGE_TTL_MIN=240
+
 PYTHONUNBUFFERED=1 .venv/bin/python orchestrator.py exploitgym-run \
   --task user:cybergym/arvo_66311 \
   --k 1 --max-parallel 1 \
-  --agent codex --model gpt-5.6-sol \
+  --agent codex --model gpt-5.6-luna \
   --reasoning-effort medium \
   --budget-usd 5 \
-  --timeout 3600 \
-  --trial-timeout 5400 \
+  --timeout 10800 \
+  --trial-timeout 14400 \
   --cleanup-timeout 360
+
+unset GYMSIEGE_TTL_MIN
 ```
 
 Retry of `user:cybergym/arvo_42298` after it hit the outer `--trial-timeout`
