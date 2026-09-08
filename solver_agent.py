@@ -240,17 +240,37 @@ async def _assess_screenshot(
     only place Langfuse tracing here can actually observe anything real.
     """
 
+    import base64
+
     from openai import AsyncOpenAI
     from langfuse import get_client
+    from langfuse.media import LangfuseMedia
 
     langfuse = get_client()
     model = os.environ.get("GYMSIEGE_VISION_MODEL", "gpt-5.6")
     client = AsyncOpenAI()
+    prompt_text = (
+        "Determine whether this browser screenshot shows the vulnerability "
+        f"report for benchmark task {task.path}. Treat a generic browser, "
+        "error page, search page, or unrelated report as not task_visible."
+    )
+    # Wrapped per Langfuse's multi-modality guidance so the actual screenshot
+    # the model saw is inspectable in the trace, not silently omitted.
+    screenshot_media = LangfuseMedia(
+        content_bytes=base64.b64decode(image_b64), content_type="image/png"
+    )
     with langfuse.start_as_current_observation(
-        as_type="span", name="research-vision-assessment", input={"task": task.path}
+        as_type="span",
+        name="verify-target-page-visible",
+        input={"check": prompt_text},
+        metadata={"task_id": task.path},
     ) as span:
         with langfuse.start_as_current_observation(
-            as_type="generation", name="vision-page-assessment", model=model
+            as_type="generation",
+            name="classify-page-screenshot",
+            model=model,
+            input={"prompt": prompt_text, "screenshot": screenshot_media},
+            metadata={"task_id": task.path},
         ) as generation:
             response = await client.responses.parse(
                 model=model,
@@ -260,11 +280,7 @@ async def _assess_screenshot(
                         "content": [
                             {
                                 "type": "input_text",
-                                "text": (
-                                    "Determine whether this browser screenshot shows the vulnerability "
-                                    f"report for benchmark task {task.path}. Treat a generic browser, "
-                                    "error page, search page, or unrelated report as not task_visible."
-                                ),
+                                "text": prompt_text,
                             },
                             {
                                 "type": "input_image",
