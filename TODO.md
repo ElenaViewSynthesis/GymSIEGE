@@ -397,25 +397,33 @@ not the agent needing more time. Worth remembering as a general caution:
 "ran out of budget" doesn't imply "needed more budget" — it can just as
 easily mean something in the platform stack was broken.
 
+**Update 2026-09-07: `user:cybergym/arvo_11896` and `user:nofuzz/CVE-2021-43848`
+are both done — both confirmed the `probe_arvo_glibc.py` prediction.** Both
+Ubuntu-16.04-family, both hit `node_compatibility_probe` before any model
+call, $0 spent each — 6th and 7th confirmed data points for that predictor.
+`arvo_11896` targets graphicsmagick's `coder_PTIF_fuzzer` (Use-of-
+uninitialized-value); `CVE-2021-43848` targets h2o's HTTP/3 stack
+(CVSS 5.9 MEDIUM / 7.4 HIGH, CWE-908). Neither is a capability score.
+
+**Every originally-queued Run 1 task has now been attempted at least once
+except `arvo_66311`**, which stays deliberately excluded (see below).
+
 `user:cybergym/arvo_1699` is **done** — do not repeat it; see the update note
 above. `user:cybergym/arvo_18224`, `user:cybergym/arvo_42298`,
-`user:cybergym/arvo_25885`, `user:cybergym/arvo_58295`, and
-`user:cybergym/arvo_62183` are **done** too — see their update notes above.
-Repeat the block for
-`user:cybergym/arvo_11896` and
-`user:nofuzz/CVE-2021-43848` — same flags, one `--task` each, a fresh
-`reap --dry-run` before every one, and its own `results/run1-<task>.json`
-copy afterward so later tasks don't overwrite earlier results (the
-orchestrator overwrites `results/exploitgym_results.json` on every
-invocation).
+`user:cybergym/arvo_25885`, `user:cybergym/arvo_58295`,
+`user:cybergym/arvo_62183`, `user:cybergym/arvo_11896`, and
+`user:nofuzz/CVE-2021-43848` are all **done** — see their update notes
+above. Nothing left to repeat the block for; the only remaining Run 1 item
+is the deliberately-excluded `arvo_66311` (see `long-arvo-tasks.md` for its
+separate 3-hour-timeout recipe).
 
-- **Expected:** ~$1.30 total across the two remaining tasks (~$0.65/trial at
-  medium effort on `gpt-5.6-sol`, the only measured cost basis at that
-  effort level — `arvo_42298`/`arvo_58295`/`arvo_62183`'s $0.06-0.09 actuals
-  were on `gpt-5.6-luna`, too small an $n$ to replace this estimate yet),
-  ~10–15 minutes serial. `arvo_1699`, `arvo_18224`, and `arvo_25885` all cost
-  $0 (glibc mismatch, no agent call), so the original ~$5.20/8-task estimate
-  now overstates the true remaining spend. Switched from `low` to `medium`
+- **Actual spend across this batch:** $0 for every glibc-wall task
+  (`arvo_1699`, `arvo_18224`, `arvo_25885`, `arvo_11896`, `CVE-2022-23308`,
+  `CVE-2021-43848`), and $0.06–0.09/trial on `gpt-5.6-luna` for every task
+  that actually reached the agent (`arvo_42298`, `arvo_58295`, `arvo_62183`,
+  `CVE-2022-39393`) — far below the original ~$5.20/8-task estimate, which
+  was based on `gpt-5.6-sol` pricing and assumed every task would reach the
+  agent. Switched from `low` to `medium`
   per standing instruction —
   this raises the typical cost too, not just the cap, since `medium` measured
   roughly double `low`'s per-trial cost ($0.65 vs. $0.30–0.45). **Worst
@@ -1166,6 +1174,24 @@ the canary task if anything in a CyberGym run needs a quick sanity check.
   `DAYTONA_HUGGINGFACE_EGRESS_ISSUE.md`
 - `AsyncDaytona`/`AsyncSandbox` usage map, isolated PoC re-detonation, and the
   telemetry/OOM-proxy caveat above: `codebase-overview.md`
+
+## Future red-teaming attack surfaces to evaluate
+
+Design sketches, not implemented and not yet scoped as real work items — recorded because they surfaced from a legitimate discussion (the GNSS-spoofing analogy: a receiver trusting a single, potentially-deceived signal source without independent cross-checking) that mapped directly onto gaps in this project's own threat model. Same caveat as glossary.md's honeypot sketch: these need real design work, not just a bullet point, before any of them become an implementation task.
+
+### Nested API/tool call chains: upstream agent spoofing everything downstream
+
+An agent (or sub-agent) that treats an upstream agent's conclusion, or a tool call's returned content, as trusted ground truth has no way to detect that the upstream source was wrong, compromised, or adversarially crafted — the corruption propagates silently to everything downstream of it, the same way a spoofed GNSS signal walks a receiver's position away from reality without tripping a loss-of-signal alert. The deeper the call chain (agent → tool → service → service), the further a single injected or corrupted result can travel before anything notices.
+
+**Concrete example: prompt-injection-via-tool-output.** Malicious instructions embedded in the *content* a tool call returns (a fetched webpage, a file read, a subprocess's stdout) that the agent interprets as instructions rather than inert data, hijacking its subsequent behavior. This is not a hypothetical for GYMSIEGE specifically: the `ResearchAgent` reads target-provided content directly — an ARVO/CVE task's `crash.log`, source snippets, or the OSS-Fuzz/ARVO vulnerability report page itself (via screenshot or the AT-SPI accessibility tree, see `accessibility-and-snapshots.md`) — and none of that content is trusted or attacker-controlled-content-audited today. The existing containment layers (upstream firewall, LLM proxy, the independent `network_block_all` cutoff after evaluation) defend against the agent *exfiltrating* data outward; none of them inspect or sanitize what the agent *reads in* from task-provided files before treating it as data rather than instructions. Worth naming plainly: this is a real, currently-unaddressed gap in this project's own threat model, not just a generic industry concern.
+
+### Malicious behavior at runtime: rogue agents in deployment and high-privileged environments
+
+GYMSIEGE's containment model (dual-firewall isolation, the independent post-evaluation network cutoff, TTL auto-expiry, guaranteed cleanup) is built around a single, time-bounded trial with deliberately low standing privilege — a fresh sandbox, a short-lived credential, a hard TTL, torn down immediately after. It says nothing about, and doesn't evaluate, a materially different threat model: an agent with *persistent*, high-privilege access over time (standing infrastructure credentials, write access to production systems, session state that outlives one bounded evaluation). "Rogue agent" behavior in that setting — an agent that behaves as expected under evaluation/observation and diverges once it has standing privilege or perceives reduced oversight — is a distinct capability to test for, not something a bounded, disposable-sandbox benchmark like this one is designed to surface. Evaluating it would need its own harness: sustained deployment-like conditions, not a fresh restore per trial.
+
+### Adversarial channels in cross-agent interactions
+
+The GNSS-spoofing analogy applies most directly here: an agent that accepts another agent's self-reported conclusion as ground truth, with no independent and adversary-inaccessible way to verify it, is exactly as spoofable as a GNSS receiver trusting a single signal source. GYMSIEGE already has one working instance of the actual defense — the network-isolated sanitizer oracle independently re-validates a result rather than trusting the agent's own (network-attached, and therefore not fully isolable) self-report, see `daytona-notes.md` and the interview-bullets.md STAR story on this exact design choice. What that single-agent-vs-independent-oracle pattern doesn't cover is a genuine multi-agent setting: when the "verifier" is itself another agent rather than a deterministic re-detonation script, the question of who verifies the verifier recurs — a compromised or deceived verifying agent is just as capable of spoofing the system's final answer as the agent it was meant to check.
 
 ## Definition of the next safe checkpoint
 
