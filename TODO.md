@@ -1199,6 +1199,78 @@ GYMSIEGE's containment model (dual-firewall isolation, the independent post-eval
 
 The GNSS-spoofing analogy applies most directly here: an agent that accepts another agent's self-reported conclusion as ground truth, with no independent and adversary-inaccessible way to verify it, is exactly as spoofable as a GNSS receiver trusting a single signal source. GYMSIEGE already has one working instance of the actual defense — the network-isolated sanitizer oracle independently re-validates a result rather than trusting the agent's own (network-attached, and therefore not fully isolable) self-report, see `daytona-notes.md` and the interview-bullets.md STAR story on this exact design choice. What that single-agent-vs-independent-oracle pattern doesn't cover is a genuine multi-agent setting: when the "verifier" is itself another agent rather than a deterministic re-detonation script, the question of who verifies the verifier recurs — a compromised or deceived verifying agent is just as capable of spoofing the system's final answer as the agent it was meant to check.
 
+### Scoping: kernel-compatible sandbox support (target `CVE-2026-23111_cos`)
+
+Full plan: [`modal-virtualization.md`](modal-virtualization.md). Summary
+here so this section stands on its own:
+
+**Target chosen**: `CVE-2026-23111_cos` — `nf_tables` (the subsystem behind
+12 of 27 kernelCTF tasks, see [`kernelctf-tasks.md`](kernelctf-tasks.md)),
+reachable from an unprivileged user namespace. Representative bug class,
+cleanest attack surface of the set — the reasoning for picking this one
+specifically over the highest-CVSS option is in `modal-virtualization.md`.
+
+**Not built yet, and one real blocker found while scoping it**: Modal
+(the intended platform for KVM/virtualization support per current planning)
+documents its own sandboxes as gVisor-based. gVisor is a userspace syscall
+reimplementation that, by default and by well-documented design, does not
+expose `/dev/kvm` — the same limitation that blocks Docker-in-Docker on
+Google Cloud Run (also gVisor-based). kernelCTF exploits boot a specific
+pinned kernel build via QEMU (confirmed via a real challenge's
+`metadata.json`: `"environment": "lts-6.1.36"`), which needs either KVM
+acceleration or, at minimum, permission to run QEMU in software (TCG) mode.
+**This has not been verified either way on Modal specifically** — it's a
+real risk surfaced by reading Modal's own docs, not yet confirmed by
+actually testing on the platform.
+
+**Before any integration work**: run the three-command verification spike
+in `modal-virtualization.md` on an actual Modal sandbox. Its result
+branches the plan three ways (full KVM support / TCG-only-so-much-slower /
+genuinely blocked, needing a split architecture with a separate
+KVM-capable provider for just the boot step) — don't write integration
+code before this comes back.
+
+**Correction after reading ExploitGym's own kernel-task source**: the
+"new snapshot family / new compile-run harness / new success oracle"
+framing above was wrong. ExploitGym already ships a complete `kernel:`
+evaluator (`src/cybergym/evaluation/kernel.py`) — real image resolution
+(`KERNEL_TASK_METADATA[task_id].image_name`), a working flag-file success
+oracle (`/workspace/flag.txt` vs. an `expected_flag`, same
+`CheckResult` shape GYMSIEGE already reads today), and a separate
+"challenge controller" process that manages the QEMU VM
+(`src/cybergym/server/controller.py`) — which **GYMSIEGE's own
+`exploitgym_adapter.py` already starts on every single trial**
+(`--controller-port`/`--controller-url`, currently just idle for
+`user:`-only runs). `pre_run.py` already runs a KVM-readiness check
+gated specifically on kernel tasks being present, with a documented TCG
+fallback. None of that needs to be built.
+
+What GYMSIEGE's own code actually needs, once a KVM-capable sandbox
+exists: skip the two `user:`-only pre-flight stages
+(`challenge_image_pull`'s `--user-modes exp.hardened`,
+`node_compatibility_probe`'s Node-runtime check) for `kernel:` tasks;
+drop `--user-modes exp.hardened` from the pull call for non-`user` task
+lists (`pull_images.py` already dispatches kernel images correctly on its
+own); add `--kernel-defense <profile>` to `_run_script()`'s flags; verify
+real kernelCTF target image sizes against sandbox disk budget before
+picking bake-vs-pull-per-trial (upstream publishes no size numbers; the
+existing 10 GiB Daytona disk cap that already forced `user:` images to
+pull-per-trial-not-bake is a GYMSIEGE-chosen parameter, not a platform
+limit, so this is a fresh measurement either way); and confirm `/dev/kvm`
+is real specifically at the point inside the sandbox where
+ExploitGym's own tooling runs (`KernelEvaluator` forwards it into the
+agent container automatically once it's visible there — GYMSIEGE doesn't
+need to write that passthrough itself). Time/cost budgeting per trial is
+still real work — kernelCTF's own `stability_notes` (e.g. "7~8 times
+success per 10 times run") imply multiple boot/exploit cycles per
+attempt, and the controller has its own real constants to plan against
+(`CREATION_WAIT_TIMEOUT=180s`, `HEALTH_CHECK_RETRIES=3`,
+`DEFAULT_SERVER_TTL=3600s`). `--allow-non-userspace` in
+`exploitgym_adapter.py`'s `load_exploitgym_tasks()` (already threaded
+through from `orchestrator.py`'s existing `--allow-non-userspace` flag)
+remains the correct hook point — no new CLI surface needed. Full
+breakdown with file/line references: `modal-virtualization.md`.
+
 ## Definition of the next safe checkpoint
 
 The next checkpoint is complete when all of the following are true:
