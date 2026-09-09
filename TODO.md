@@ -1,5 +1,11 @@
 # GYMSIEGE continuation TODO
 
+**On the CNA 9.8**: that's `CVE-2025-39682` (kernel TLS/ktls) — NVD's own
+primary assessment is 7.1 HIGH (local attack vector), but the reporting CNA
+scored it 9.8 CRITICAL on a network attack vector instead — the largest
+NVD/CNA disagreement found across all 27 kernelCTF CVEs (see
+[`kernelctf-tasks.md`](kernelctf-tasks.md)).
+
 Last updated: 2026-09-02 (Europe/London)
 
 This is the restart/handoff document for a new terminal or Codex session. Read

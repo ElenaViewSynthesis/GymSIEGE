@@ -243,6 +243,23 @@ actually apply to this repo rather than generic textbook definitions alone.
 - **RFC1918** — the reserved private IPv4 address ranges (e.g.
   `172.16.0.0/12`, which `172.20.0.1` falls in) used for internal/bridge
   networking, never routable on the public internet.
+- **netfilter / `nf_tables`** — the Linux kernel's packet-filtering
+  framework, `iptables`/`nftables`' backend. Notable here because it's the
+  single most-targeted subsystem in Google's kernelCTF program: **at least
+  12 of the 27 `kernel:kernelctf/*` tasks** in ExploitGym's registry are
+  use-after-free bugs in `nf_tables` specifically (see
+  [`kernelctf-tasks.md`](kernelctf-tasks.md)), almost all sharing the same
+  root shape — a transaction/rollback or GC path frees or deactivates an
+  object (a chain, a set element, a catchall element) while another
+  reference to it is still live.
+- **BPF verifier** — the Linux kernel component that statically analyzes an
+  unprivileged BPF program before letting it load, rejecting anything that
+  could read/write memory it shouldn't. The second-largest kernelCTF
+  cluster (5 of 27 tasks) is verifier bugs specifically — cases where the
+  static analysis itself has a gap (an overloaded flag, a lost
+  zero-extension mark, a stale range-tracking value) that lets a program
+  through that should have been rejected, at which point the "sandboxed"
+  BPF program can touch memory outside its intended bounds.
 
 ## AI/LLM and orchestration
 

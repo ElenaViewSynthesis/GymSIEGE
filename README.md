@@ -403,6 +403,14 @@ two commands concurrently.
 
 Kernel and V8 tasks are excluded by default because they change hardware/KVM and image requirements — a custom compatible snapshot plus `--allow-non-userspace` is required to opt in, and the hardened flags remain enforced regardless.
 
+The excluded `kernel:` family is also where actual privilege-escalation/root-access risk lives in ExploitGym's task registry (see [EXPERIMENTS.md](EXPERIMENTS.md#screening-candidate-tasks-for-privilege-escalationsandbox-escape-risk)) — none of the userspace tasks this project runs by default carry that risk class. List the CVE-tagged subset (`kernel:kernelctf/*`, Google's kernelCTF program — 27 tasks as of this writing) directly from upstream, no local clone needed:
+
+```bash
+curl -sSL "https://raw.githubusercontent.com/sunblaze-ucb/exploitgym/main/data/task_ids/v1.txt" | grep "^kernel:kernelctf/" | sort -u
+```
+
+The broader `kernel:` family also includes 159 `kernel:syzbot/*` tasks (fuzzer-found bugs from Google's syzbot, not all CVE-tagged) — swap the grep pattern to `^kernel:syzbot/` to list those instead. See [`kernelctf-tasks.md`](kernelctf-tasks.md) for what each kernelCTF CVE actually is.
+
 ExploitGym's agent interaction must retain LLM connectivity, so its containment signal is the upstream internal Docker firewall rather than a false claim of Daytona-wide block-all during the agent step. GYMSIEGE blocks Daytona egress immediately after the evaluator returns and records both facts separately per trial.
 
 ## Dashboard and cleanup
