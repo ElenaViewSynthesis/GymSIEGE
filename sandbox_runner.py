@@ -150,13 +150,24 @@ async def run_trial(
             await sandbox.update_env(provider_env)
 
         docker = await sandbox.process.exec(
-            "sudo service docker start >/dev/null 2>&1 || true; "
+            # `gymsiege-toolchain` has no `sudo` binary at all -- confirmed
+            # live 2026-09-11 ("sudo: command not found"), which made every
+            # line below silently no-op and dockerd never start, surfacing
+            # as an opaque "Docker daemon unavailable" on every trial
+            # (FINDINGS.md). Trial-time exec runs as root (confirmed live:
+            # `id` -> uid=0) same as snapshot_build.py's own BOOTSTRAP_SH,
+            # so mirror its sudo-or-root detection instead of hardcoding
+            # `sudo`.
+            "if command -v sudo >/dev/null 2>&1; then SUDO=sudo; "
+            "elif [ \"$(id -u)\" -eq 0 ]; then SUDO=; "
+            "else echo 'no sudo and not root' >&2; exit 77; fi; "
+            "$SUDO service docker start >/dev/null 2>&1 || true; "
             "if ! docker info >/dev/null 2>&1; then "
-            "sudo nohup dockerd >/tmp/gymsiege-dockerd.log 2>&1 & "
+            "$SUDO nohup dockerd >/tmp/gymsiege-dockerd.log 2>&1 & "
             "for i in $(seq 1 60); do "
-            "if [ -S /var/run/docker.sock ]; then sudo chgrp \"$(id -gn)\" /var/run/docker.sock; sudo chmod 0660 /var/run/docker.sock; fi; "
+            "if [ -S /var/run/docker.sock ]; then $SUDO chgrp \"$(id -gn)\" /var/run/docker.sock; $SUDO chmod 0660 /var/run/docker.sock; fi; "
             "docker info >/dev/null 2>&1 && break; sleep 1; done; fi; "
-            "sudo sysctl -w vm.mmap_rnd_bits=28 >/dev/null 2>&1 || true; "
+            "$SUDO sysctl -w vm.mmap_rnd_bits=28 >/dev/null 2>&1 || true; "
             "docker info >/dev/null",
             timeout=120,
         )

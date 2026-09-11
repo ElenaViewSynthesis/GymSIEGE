@@ -94,7 +94,9 @@ Piping straight to `docker compose -f - up -d` also works, but downloading the f
 > **Set a real `LITELLM_SALT_KEY` before adding any model you intend to keep.**
 > It encrypts the provider API keys stored in the UI, and the quickstart compose file ships a placeholder. Use a long random value and **never change it afterwards** — credentials encrypted with the old salt cannot be decrypted with a new one.
 
-Then add your OpenAI key as the upstream credential in the LiteLLM UI, define a route named to match `--litellm-model-id` (default `openai/gpt-5.6-luna`), and wire the gateway into GYMSIEGE:
+**Default credentials for the UI itself** (`http://localhost:4000/ui`, or your tunnel host + `/ui`): username `admin`, password is whatever you set as the proxy's `MASTER_KEY` (the same value as `LITELLM_MASTER_KEY` below) — not `LITELLM_SALT_KEY` above, which only encrypts stored credentials and is never a login password.
+
+Then add your OpenAI key as the upstream credential in the LiteLLM UI, define a route named to match `--litellm-model-id` (default `gpt-5.6-luna` — **no** `openai/` prefix; a prefixed name 400s with "Invalid model name", confirmed live against a real gateway, see [`FINDINGS.md`](FINDINGS.md)), and wire the gateway into GYMSIEGE:
 
 ```bash
 # Copy the LiteLLM master key into the Daytona vault (never printed, never committed)
@@ -105,6 +107,25 @@ LITELLM_BASE_URL=https://<your-gateway-host>:4000
 ```
 
 **`http://localhost:4000` will not work.** `sandbox_runner.py` copies `LITELLM_BASE_URL` verbatim into the sandbox, where `localhost` is the sandbox's own loopback. The gateway must be on a host the sandbox can reach — a public deployment, or a tunnel (`cloudflared`, `ngrok`) in front of your local container.
+
+The gateway is OpenAI-compatible, so any OpenAI SDK works against it directly — a cheap way to confirm the whole path (tunnel, LiteLLM, upstream OpenAI credential) actually round-trips *before* spending real money on a full CyberGym trial:
+
+```python
+import os
+from openai import OpenAI
+
+client = OpenAI(
+    base_url=os.environ["LITELLM_BASE_URL"],
+    api_key=os.environ["LITELLM_MASTER_KEY"],  # or a scoped virtual key from the LiteLLM UI
+)
+response = client.chat.completions.create(
+    model="gpt-5.6-luna",  # bare name, no "openai/" prefix -- match whatever --litellm-model-id you're routing
+    messages=[{"role": "user", "content": "Say hello in five words."}],
+)
+print(response.choices[0].message.content)
+```
+
+Both values come from `.env.local` — never hardcode the key.
 
 Once that resolves:
 
@@ -419,6 +440,43 @@ two commands concurrently.
 `--model` accepts `gpt-5.6-luna` (default), `gpt-5.6-sol`, and
 `gpt-daybreak-blue-latest`. The latter is an approved-project alias for
 `gpt-5.6-sol`; the model string does not itself grant Daybreak access.
+
+### Option: `gpt-daybreak-blue-latest`
+
+**Not currently usable — access-gated, not a benchmark result.** The one
+real attempt returned `HTTP 404 model_not_found`: the model string alone
+does not grant access, and identity verification alone does not select the
+specific OpenAI organization/project Daybreak is provisioned under (see
+[`TODO.md`](TODO.md#priority-5--configure-the-approved-gpt-56-cyber-project)
+for the exact access-probe checklist to clear first). Do not retry it, and
+do not read a repeat `404` as a capability result, until that checklist
+passes.
+
+**Published rate card, for budgeting once access is confirmed:**
+
+| | Per 1M tokens |
+|---|---|
+| Input | $12 |
+| Output | $75 |
+
+This is substantially more expensive than the two models actually in use
+today — `gpt-5.6-luna` (this project's cost-default) and `gpt-5.6-sol` — so
+treat it as an opt-in, deliberately-chosen cost, not a drop-in replacement.
+The one real completed trial in this project spent $0.645996 on `gpt-5.6-sol`
+across 20 requests (686,672 input / 633,320 cached input / 8,963 output
+tokens); at Daybreak's rate, the same input volume alone (ignoring the
+cache discount `gpt-5.6-sol` got) would already run well past $8. Always
+pass `--budget-usd` with an explicit cap before pointing a real run at it.
+
+Once access is confirmed, it's selectable the same way as the other two
+models:
+- ExploitGym: `exploitgym-run --agent codex --model gpt-daybreak-blue-latest`
+- CyberGym: `orchestrator.py run --litellm-model-id gpt-daybreak-blue-latest`
+  — bare name, no `openai/` prefix, matching the fix for `gpt-5.6-luna`/
+  `gpt-5.6-sol` (see [`FINDINGS.md`](FINDINGS.md)). This specific route has
+  never actually been registered on a live gateway, though, so confirm its
+  exact configured name before relying on this rather than assuming the
+  convention holds for a route nobody has created yet.
 
 Kernel and V8 tasks are excluded by default because they change hardware/KVM and image requirements — a custom compatible snapshot plus `--allow-non-userspace` is required to opt in, and the hardened flags remain enforced regardless.
 

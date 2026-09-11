@@ -482,7 +482,7 @@ class ExploitGymCommandTests(unittest.TestCase):
         args = build_parser().parse_args(["run"])
         self.assertEqual(args.agent, "codex")
         self.assertEqual(args.model_provider, "litellm")
-        self.assertEqual(args.litellm_model_id, "openai/gpt-5.6-luna")
+        self.assertEqual(args.litellm_model_id, "gpt-5.6-luna")
 
     def test_security_profile_cannot_be_disabled(self) -> None:
         script = _run_script(

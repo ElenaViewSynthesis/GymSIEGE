@@ -65,7 +65,9 @@ def report_url(task: Task) -> str:
 @dataclasses.dataclass
 class ModelConfig:
     provider: str = "litellm"
-    litellm_model_id: str = "openai/gpt-5.6-luna"
+    # Bare name, no "openai/" prefix -- confirmed live 2026-09-11 against the
+    # actual gateway's /v1/models; a prefixed name 400s (FINDINGS.md).
+    litellm_model_id: str = "gpt-5.6-luna"
     agent: str = "codex"
 
 

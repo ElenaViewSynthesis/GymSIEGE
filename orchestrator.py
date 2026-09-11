@@ -884,11 +884,17 @@ def build_parser() -> argparse.ArgumentParser:
     common_model_args.add_argument("--model-provider", default="litellm", choices=["litellm"])
     common_model_args.add_argument(
         "--litellm-model-id",
-        default="openai/gpt-5.6-luna",
+        # Bare model names, no "openai/" prefix: confirmed live 2026-09-11
+        # against the actual gymsiege-litellm gateway's /v1/models -- only
+        # "gpt-5.6-luna" and "gpt-5.6-sol" are registered, and a prefixed
+        # request 400s with "Invalid model name" (FINDINGS.md). The prefix
+        # was this project's own assumption about how the route would be
+        # named, not something the gateway or upstream CyberGym requires.
+        default="gpt-5.6-luna",
         choices=[
-            "openai/gpt-5.6-luna",
-            "openai/gpt-5.6-sol",
-            "openai/gpt-daybreak-blue-latest",
+            "gpt-5.6-luna",
+            "gpt-5.6-sol",
+            "gpt-daybreak-blue-latest",
         ],
     )
 
