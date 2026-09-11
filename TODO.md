@@ -1201,8 +1201,10 @@ The GNSS-spoofing analogy applies most directly here: an agent that accepts anot
 
 ### Scoping: kernel-compatible sandbox support (target `CVE-2026-23111_cos`)
 
-Full plan: [`modal-virtualization.md`](modal-virtualization.md). Summary
-here so this section stands on its own:
+Full plan: [`modal-virtualization.md`](modal-virtualization.md), which
+scopes the integration work against Modal's own Sandbox SDK reference
+([`modal-sandboxes.md`](modal-sandboxes.md)). Summary here so this section
+stands on its own:
 
 **Target chosen**: `CVE-2026-23111_cos` — `nf_tables` (the subsystem behind
 12 of 27 kernelCTF tasks, see [`kernelctf-tasks.md`](kernelctf-tasks.md)),

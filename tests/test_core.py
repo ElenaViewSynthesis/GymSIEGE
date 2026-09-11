@@ -11,7 +11,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from common import SNAPSHOT_NAME, Task, TrialResult, sandbox_secret_refs
-from configure_secrets import HUGGINGFACE_SECRET_HOSTS, credential_value
+from configure_secrets import HUGGINGFACE_SECRET_HOSTS, credential_value, litellm_hosts
 from exploitgym_adapter import (
     EXPLOITGYM_CONTROLLER_PORT,
     EXPLOITGYM_PROXY_PORT,
@@ -74,6 +74,23 @@ class TaskParsingTests(unittest.TestCase):
         self.assertIn("us.gcp.cdn.hf.co", HUGGINGFACE_SECRET_HOSTS)
         self.assertIn("cas-server.xethub.hf.co", HUGGINGFACE_SECRET_HOSTS)
         self.assertIn("transfer.xethub-eu.hf.co", HUGGINGFACE_SECRET_HOSTS)
+
+    def test_litellm_hosts_derives_from_base_url_not_hardcoded(self) -> None:
+        # Unlike Hugging Face/OpenAI's fixed FQDNs, the LiteLLM gateway's host
+        # is whatever the developer is currently running (a Cloudflare quick
+        # tunnel today) -- hosts=[] here was the real, confirmed-live bug that
+        # left the org Secret unscoped, so this must come from the env, not a
+        # literal.
+        with patch.dict(
+            os.environ,
+            {"LITELLM_BASE_URL": "https://some-tunnel.trycloudflare.com/v1"},
+        ):
+            self.assertEqual(litellm_hosts(), ["some-tunnel.trycloudflare.com"])
+
+    def test_litellm_hosts_requires_base_url(self) -> None:
+        with patch.dict(os.environ, {"LITELLM_BASE_URL": ""}):
+            with self.assertRaises(RuntimeError):
+                litellm_hosts()
 
     def test_exploitgym_defaults_to_userspace(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

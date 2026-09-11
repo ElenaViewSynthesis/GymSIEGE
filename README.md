@@ -262,12 +262,24 @@ upstream as
 per-sandbox disk quota is raised or the bake is redesigned to capture only
 the toolchain and dataset (~4 GiB, comfortable) and pull images per trial
 instead — the same pattern `gymsiege-exploitgym` already uses successfully.
-In the meantime, `tasks.demo.txt` (three tasks, ~5.7 GB of images) is sized
-to fit and is the only pinned-style set that can currently be baked; see
+In the meantime, `tasks.demo.txt` — `freetype2/arvo_368`,
+`libtpms/oss-fuzz_42537128`, `unit/oss-fuzz_42536363`, no two sharing a
+build image — is sized to fit and is the only pinned-style set that can
+currently be baked: ~5.7 GB of images plus ~1 GB OS/toolchain and ~0.5 GB
+dataset, ~8.7 GB of the 10 GiB total, leaving a ~1.5 GiB free-space floor.
+This is the set to actually bake `gymsiege-toolchain` from:
+
+```bash
+.venv/bin/python snapshot_build.py --tasks-file tasks.demo.txt
+```
+
+**Do not run `snapshot_build.py` with no `--tasks-file`** — it defaults to
+`tasks.pinned.txt`, the full set documented above as unable to fit, and
+will walk into the same `rsync ENOSPC` failure this section describes. See
 [`TODO.md`](TODO.md#current-experiments) for the full per-task cost/size
 ranking and [`FINDINGS.md`](FINDINGS.md) for the complete investigation.
 
-To validate a bootstrap change without a full 20-task run:
+To validate a bootstrap change without spending time on a real bake:
 
 ```bash
 .venv/bin/python snapshot_build.py --limit 3 --no-snapshot
@@ -302,14 +314,21 @@ LITELLM_MASTER_KEY=...
 ## CyberGym-E2E protocol
 
 ```bash
-# One-time toolchain/data/image snapshot.
-.venv/bin/python snapshot_build.py
+# One-time toolchain/data/image snapshot. --tasks-file is required: the
+# default tasks.pinned.txt (20 tasks, 74.76 GB of images) cannot fit the
+# 10 GiB per-sandbox disk ceiling -- see the storage-ceiling note above.
+.venv/bin/python snapshot_build.py --tasks-file tasks.demo.txt
+
+# orchestrator.py run defaults --tasks-file to tasks.pinned.txt (the full
+# set, not baked -- see above), so pass tasks.demo.txt explicitly until the
+# storage ceiling is resolved.
 
 # Small real-oracle smoke run.
-.venv/bin/python orchestrator.py run \
+.venv/bin/python orchestrator.py run --tasks-file tasks.demo.txt \
   --limit 2 --k 1 --modes patch-only --max-parallel 2
 
-# Publication run: 20 tasks x k=3 x both modes.
+# Publication run, target shape once the storage ceiling is resolved
+# (full 20-task pinned set x k=3 x both modes) -- not runnable today.
 .venv/bin/python orchestrator.py run \
   --k 3 --modes e2e patch-only --max-parallel 8
 

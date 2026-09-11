@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
+from urllib.parse import urlparse
 
 from daytona import AsyncDaytona, CreateSecretParams, UpdateSecretParams
 from huggingface_hub import get_token
@@ -41,12 +42,32 @@ PROVIDERS = {
         HUGGINGFACE_SECRET_HOSTS,
     ),
     "openai": ("OPENAI_API_KEY", "GYMSIEGE_OPENAI_SECRET_NAME", ["api.openai.com"]),
-    "litellm": (
-        "LITELLM_MASTER_KEY",
-        "GYMSIEGE_LITELLM_SECRET_NAME",
-        [],
-    ),
+    # `hosts` is `None` here, not `[]`: unlike OpenAI/Hugging Face's fixed
+    # FQDNs, the LiteLLM gateway is developer-run and its host isn't known
+    # until LITELLM_BASE_URL is read (today a trycloudflare.com quick tunnel,
+    # which also means the host can change on tunnel restart). Resolved by
+    # litellm_hosts() below instead of hardcoded. An empty list here was the
+    # bug: Daytona's secret-substitution proxy has no host to match against,
+    # so LITELLM_MASTER_KEY silently never reaches the gateway -- confirmed
+    # live 2026-09-10 (`gymsiege-litellm` existed with hosts=[]).
+    "litellm": ("LITELLM_MASTER_KEY", "GYMSIEGE_LITELLM_SECRET_NAME", None),
 }
+
+
+def litellm_hosts() -> list[str]:
+    """The LiteLLM gateway's own host, derived from LITELLM_BASE_URL.
+
+    Not a fixed list like HUGGINGFACE_SECRET_HOSTS or api.openai.com: this
+    points at whatever gateway the developer is currently running (a
+    Cloudflare quick tunnel today), so it has to be read at call time rather
+    than hardcoded.
+    """
+
+    base_url = common.require_env("LITELLM_BASE_URL")
+    host = urlparse(base_url).hostname
+    if not host:
+        raise RuntimeError(f"LITELLM_BASE_URL={base_url!r} has no parseable host")
+    return [host]
 
 
 def credential_value(provider: str, key_env: str) -> str:
@@ -66,6 +87,8 @@ def credential_value(provider: str, key_env: str) -> str:
 async def configure(provider: str, replace: bool) -> None:
     common.require_env("DAYTONA_API_KEY")
     key_env, name_env, hosts = PROVIDERS[provider]
+    if hosts is None:
+        hosts = litellm_hosts()
     value = credential_value(provider, key_env)
     name = common.require_env(name_env)
 

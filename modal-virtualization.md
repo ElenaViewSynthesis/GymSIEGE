@@ -5,6 +5,9 @@ to scope what running `kernel:kernelctf/*` tasks (see
 [`kernelctf-tasks.md`](kernelctf-tasks.md)) would actually require if Modal
 becomes the platform for it, and to record one real, verified blocker found
 while scoping this — not glossed over just because it complicates the plan.
+See [`modal-sandboxes.md`](modal-sandboxes.md) for Modal's own Sandbox SDK
+reference (lifecycle, config, custom images) — the actual API surface any
+of this would be built against.
 
 ## The blocker, found and verified before writing the rest of this plan
 
@@ -38,10 +41,23 @@ premise as a plug-and-play assumption.** It doesn't mean Modal is wrong to
 use — it means the plan needs an explicit verification step and a fallback,
 not blind confidence it'll just work.
 
+A second, independent data point pointing the same direction:
+[`modal-sandboxes.md`](modal-sandboxes.md) is Modal's own `Sandbox.create`
+API reference, and its full "Configuration" section (Images, Volumes,
+secrets, custom images, readiness probes, tagging) documents no
+`devices=`-style parameter or any other device-passthrough mechanism for a
+Sandbox. That's not proof `/dev/kvm` is unreachable — the SDK reference
+for creating a Sandbox simply not mentioning device passthrough is weaker
+evidence than the security page's explicit gVisor statement above — but it
+doesn't contradict the blocker either, and it's one more reason this needs
+the verification spike below rather than being assumed away either
+direction.
+
 ## Required verification spike, before any real integration work
 
 Before committing engineering time to a Modal-based kernelCTF harness, run
-this cheaply:
+this cheaply, using `Sandbox.create` + `sb.exec` exactly as documented in
+[`modal-sandboxes.md`](modal-sandboxes.md):
 
 ```bash
 # Inside an actual Modal sandbox/container:
