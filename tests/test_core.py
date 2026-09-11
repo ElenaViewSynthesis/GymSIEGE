@@ -1024,6 +1024,41 @@ class SnapshotCaptureTests(unittest.IsolatedAsyncioTestCase):
             )
         self.assertIn("did not reach a terminal state", str(ctx.exception))
 
+    async def test_recognizes_the_real_sdks_enum_shaped_state(self) -> None:
+        # Every fake above uses a plain str for `.state`, which is why this
+        # slipped past the suite: the real daytona_api_client.SnapshotState
+        # is a `(str, Enum)` mixin whose str() returns the qualified name
+        # ("SnapshotState.ACTIVE"), not the bare value ("active") -- so
+        # `str(raw_state).lower()` produced "snapshotstate.active", which
+        # never matched `terminal`, and every bake polled to the full
+        # timeout and raised a false "did not reach a terminal state" --
+        # confirmed live 2026-09-11 against a bake that had, in fact,
+        # already reached ACTIVE.
+        from snapshot_build import wait_for_snapshot_active
+
+        class FakeEnumState:
+            def __init__(self, value: str, qualname: str) -> None:
+                self.value = value
+                self._qualname = qualname
+
+            def __str__(self) -> str:  # matches Enum.__str__, not str.__str__
+                return self._qualname
+
+        class FakeSnapshot:
+            state = FakeEnumState("active", "SnapshotState.ACTIVE")
+            error_reason = None
+
+        class FakeDaytona:
+            class snapshot:
+                @staticmethod
+                async def get(name):
+                    return FakeSnapshot()
+
+        result = await wait_for_snapshot_active(
+            FakeDaytona(), "gymsiege-toolchain", timeout=5, interval=0.01
+        )
+        self.assertEqual(result, "active")
+
 
 class BudgetGuardTests(unittest.IsolatedAsyncioTestCase):
     """CyberGym run/sweep had no spend cap at all before this.

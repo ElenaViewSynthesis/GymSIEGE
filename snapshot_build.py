@@ -565,7 +565,18 @@ async def wait_for_snapshot_active(
     error_reason = None
     while True:
         snap = await daytona.snapshot.get(name)
-        state = str(getattr(snap, "state", "unknown")).lower()
+        raw_state = getattr(snap, "state", "unknown")
+        # The real SDK returns `daytona_api_client.SnapshotState`, a
+        # `(str, Enum)` mixin -- `str(SnapshotState.ACTIVE)` calls Enum's own
+        # __str__ and returns "SnapshotState.ACTIVE", not "active", so the
+        # naive `str(raw_state).lower()` this used to be never matched
+        # `terminal` at all: every bake, successful or not, polled to the
+        # full timeout and then raised a false "did not reach a terminal
+        # state" -- confirmed live on a bake that had actually reached
+        # ACTIVE. `.value` gives the real "active"/"error"/etc string; the
+        # `getattr` fallback keeps this working for a plain string too (as
+        # every existing test double in SnapshotCaptureTests passes).
+        state = str(getattr(raw_state, "value", raw_state)).lower()
         error_reason = getattr(snap, "error_reason", None)
         if state in terminal:
             break
