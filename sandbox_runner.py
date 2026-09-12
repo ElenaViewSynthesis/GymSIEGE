@@ -357,6 +357,15 @@ def _looks_oracle_unavailable(message: str) -> bool:
             "cannot connect to the docker daemon",
             "failed to copy",
             "compile failed",
+            # Confirmed live 2026-09-11/12, reproduced on 6/6 trials across
+            # two separate runs: this Daytona account tier now rejects
+            # update_network_settings() outright, so the isolated-oracle
+            # reconfirmation build in solver_agent.py never runs and no
+            # stage/agent_success/gt_success is ever produced. Without this
+            # needle every one of those trials fell through to "failed",
+            # displayed as the benign "completed - no exploitation" --
+            # $0 solver spend and all-null stage fields say otherwise.
+            "network access is restricted",
         )
     )
 
