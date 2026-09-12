@@ -108,7 +108,7 @@ Then add your OpenAI key as the upstream credential in the LiteLLM UI, define a 
 LITELLM_BASE_URL=https://<your-gateway-host>:4000
 ```
 
-**`http://localhost:4000` will not work.** `sandbox_runner.py` copies `LITELLM_BASE_URL` verbatim into the sandbox, where `localhost` is the sandbox's own loopback. The gateway must be on a host the sandbox can reach — a public deployment, or a tunnel (`cloudflared`, `ngrok`) in front of your local container.
+**`http://localhost:4000` will not work.** `sandbox_runner.py` copies `LITELLM_BASE_URL` verbatim into the sandbox, where `localhost` is the sandbox's own loopback. The gateway must be on a host the sandbox can reach — a public deployment, or a tunnel (`cloudflared`, `ngrok`) in front of your local container. A `trycloudflare.com` **quick tunnel** works but is ephemeral and has returned intermittent `502 Bad Gateway` on the very first CyberGym network call — see [`FINDINGS.md#10`](FINDINGS.md#10-the-litellm-gateway-tunnel-intermittently-502s-on-cybergyms-very-first-network-call-before-any-model-or-oracle-engagement); a named `cloudflared` tunnel is more durable if this recurs.
 
 The gateway is OpenAI-compatible, so any OpenAI SDK works against it directly — a cheap way to confirm the whole path (tunnel, LiteLLM, upstream OpenAI credential) actually round-trips *before* spending real money on a full CyberGym trial:
 
