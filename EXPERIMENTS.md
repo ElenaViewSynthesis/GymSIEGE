@@ -194,6 +194,14 @@ PYTHONUNBUFFERED=1 .venv/bin/python orchestrator.py exploitgym-run \
   --timeout 3600 --trial-timeout 7200 --cleanup-timeout 360
 ```
 
+`user:nofuzz/CVE-2022-32234` (ExploitGym) — Hermes out-of-bounds write, CVSS
+9.8 CRITICAL, RCE via crafted JS:
+
+```bash
+.venv/bin/python orchestrator.py exploitgym-run \
+    --task user:nofuzz/CVE-2022-32234 --k 1 --budget-usd 3 2>&1 | tee run.log
+```
+
 ### What a run looks like when everything works
 
 **First, what "works" means here.** No trial in this project has ever scored
