@@ -350,7 +350,51 @@ This most likely *is* the real mechanism behind the ~159s/~133s overshoots above
 
 ---
 
-## 10. Verification status
+## 10. The LiteLLM gateway tunnel intermittently 502s on CyberGym's very first network call, before any model or oracle engagement
+
+**Status: confirmed 2026-09-12 (`tasks.demo.txt`, patch-only, all 3 trials), $0 spent.**
+
+Ran the same `orchestrator.py run --tasks-file tasks.demo.txt --k 1 --modes patch-only --max-parallel 1 --budget-usd 12` command used to trigger and then verify the Docker/LiteLLM-model-id fixes in `7fdc1df` and the `oracle_unavailable` classification fix in `42b01cc`. All 3 trials failed identically and near-instantly (`t_build_s` 0.35-0.78s):
+
+```
+httpx.ProxyError: 502 Bad Gateway
+```
+
+traced to `artifacts/*/patch-only/trial-1/run_agent.log`: upstream CyberGym's own `scripts/run_agent.py:1137` calls `litellm_generate_api_key()` (`scripts/utils.py:527`) as its very first action, POSTing to `LITELLM_BASE_URL` to provision a scoped virtual key for the trial. That POST bounced off a `502 Bad Gateway` from an intermediate proxy — this environment's `LITELLM_BASE_URL` is a `trycloudflare.com` **quick tunnel** (ephemeral, not a named/persistent Cloudflare tunnel), and quick tunnels are known to return intermittent 502s, particularly after any idle period.
+
+This is distinct from every other classified CyberGym failure mode so far:
+- Not the Docker-daemon bug (`7fdc1df`) — Docker never gets a chance to start; the trial dies before `sandbox_runner.py`'s own docker-start step.
+- Not the isolated-oracle network restriction (`42b01cc`'s `oracle_unavailable` classification) — the build/PoC/patch loop never starts either, so `_reconfirm_isolated()` is never reached. **This run does not confirm or contradict that fix; it never got far enough to test it.**
+- Not this file's §4 ("CyberGym cannot run without a LiteLLM gateway") — a gateway exists and is reachable in general (a direct OpenAI-SDK round-trip through it succeeded minutes earlier, per the README quick-start check); this is about the *reliability* of the tunnel fronting it, not its existence.
+
+**Consequence for reporting.** Upstream `run_agent.py` caught this exception itself and simply exited without a parseable summary, so `sandbox_runner.py` never saw a Python exception either (`result.error` stayed `null`) — `status` fell through to the generic `elif not build.ok: result.status = "error"` branch. Correct at the data layer (`"ERROR - harness/platform failure, not an agent result"`), but with no specific detail surfaced in `results.json` itself; all the actual diagnosis came from `run_agent.log`, which the harness does download per trial (`log_local_path`).
+
+All 3 sandboxes cleaned up correctly this time (`cleanup_destroyed: true` for all three, confirmed via `reap --dry-run`) — no leak, unlike the stop/start-hang incidents in §9's update log.
+
+**Not yet resolved.** Whether this clears on a simple retry (consistent with ordinary `trycloudflare.com` quick-tunnel flakiness) or needs a more durable tunnel (a named `cloudflared` tunnel, or a persistent deployment) is untested.
+
+---
+
+## 11. A task ID can exist in ExploitGym's `v1.txt` with no corresponding challenge-image metadata
+
+**Status: confirmed 2026-09-12 (`user:nofuzz/CVE-2021-21841`), $0 spent.**
+
+Three new candidates were added to `exploitgym_tasks.production.txt` after screening ExploitGym's broader upstream task pool (`sunblaze-ucb/exploitgym`, `data/task_ids/v1.txt` — 502 `user:` tasks, versus the 20-task official `sample.txt` every other task in this project was drawn from) on real NVD/CWE data — see `EXPERIMENTS.md`'s "Three new candidates..." section. Launched all three (`--task` repeated, `--k 1 --max-parallel 1 --budget-usd 9`); 2 of 3 completed cleanly. The third, `CVE-2021-21841` (GPAC MP4Box, CVSS 8.8 HIGH — the highest severity of the batch and the strongest interview-worthy pick), failed at `challenge_image_pull`:
+
+```
+Building cybergym @ file:///home/daytona/exploitgym
+   Built cybergym @ file:///home/daytona/exploitgym
+[warn] user task not in metadata: user:nofuzz/CVE-2021-21841
+No images resolved; nothing to pull.
+```
+
+The task ID parses cleanly and is genuinely listed in upstream's `v1.txt` (confirmed via a live fetch from GitHub before selecting it), but ExploitGym's own challenge-image metadata — whatever internal table `cybergym`'s task loader consults to resolve a task ID to a pullable Docker image — has no entry for it. This is an upstream data-completeness gap, not a GYMSIEGE bug: nothing in `exploitgym_adapter.py` or `orchestrator.py` is involved before this point, and the failure happened entirely inside upstream's own `cybergym` package (rebuilt fresh at trial start, per the "Building cybergym... Built cybergym" lines). Correctly classified `status=error`, "ERROR - harness/platform failure, not an agent result" — this is not a capability score of 0, same rule as every other harness-level failure in this file. Cleanup was clean (`cleanup_destroyed: true`, confirmed via `reap --dry-run` afterward — 0 sandboxes remained across the whole 3-task run).
+
+**Consequence for future task selection.** Being listed in `v1.txt` is necessary but not sufficient for a task to actually be runnable. Unlike the glibc/Node-runtime incompatibility (`§8`), which `node_compatibility_probe` predicts cheaply and offline via `probe_arvo_glibc.py` before ever touching a real trial, there is currently no equivalent pre-flight check for this failure mode — the challenge-image metadata lookup only happens live, inside a provisioned sandbox's `challenge_image_pull` stage, after `docker_start` has already succeeded. `exploitgym_tasks.production.txt` now flags `CVE-2021-21841` as confirmed broken rather than merely untested, so it isn't retried against this same gap.
+
+---
+
+## 12. Verification status
 
 | Claim | Basis |
 |---|---|
@@ -364,3 +408,5 @@ This most likely *is* the real mechanism behind the ~159s/~133s overshoots above
 | `arvo_1699` glibc mismatch | `results/run1-arvo_1699.json` stage trace + error text |
 | `arvo_42298` exec-timeout coupling and ~159s overshoot | `results/run1-arvo_42298.json` + `results/run1-arvo_42298-retry.json` stage traces and `error` tracebacks |
 | Trial sandboxes never disabled Daytona's platform auto-stop | `arvo_62183` sandbox directly observed as `stopped` on the Daytona dashboard mid-`exec()`; `grep auto_stop_interval exploitgym_adapter.py sandbox_runner.py` (absent before the fix) |
+| LiteLLM gateway tunnel 502 on CyberGym's first network call | `artifacts/{freetype2_arvo_368,unit_oss-fuzz_42536363,libtpms_oss-fuzz_42537128}/patch-only/trial-1/run_agent.log` — identical `httpx.ProxyError: 502 Bad Gateway` traceback in all 3 |
+| `CVE-2021-21841` missing from ExploitGym's challenge-image metadata | `run.log` (2026-09-12 exploitgym-run, all 3 new candidates) — `[warn] user task not in metadata: user:nofuzz/CVE-2021-21841` / `No images resolved; nothing to pull.`; `results/exploitgym_results.json` shows `status: error`, `score: None` |
