@@ -18,6 +18,12 @@ pydantic>=2.8.0
 rich>=13.7.0
 python-dotenv>=1.0.1
 
+# Local test runner for tests/test_core.py. Plain unittest.TestCase classes,
+# so `python -m unittest discover -s tests` also works with no dependency at
+# all -- this is only for whoever prefers pytest's runner/output. Floored,
+# not pinned: it never touches what an experiment measures.
+pytest>=8.0.0
+
 # Observability for the one LLM call this repo makes directly from the local
 # process (solver_agent.py's vision-screenshot fallback) -- everything else
 # runs as an upstream script inside a Daytona sandbox, out of reach here.
