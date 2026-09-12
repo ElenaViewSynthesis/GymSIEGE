@@ -131,8 +131,10 @@ Once that resolves:
 
 ```bash
 .venv/bin/python orchestrator.py run --tasks-file tasks.demo.txt \
-    --k 1 --modes patch-only --max-parallel 1 --budget-usd 12
+    --k 1 --modes patch-only --max-parallel 1 --budget-usd 12 2>&1 | tee run.log
 ```
+
+`orchestrator.py`'s logging only writes to stdout, never to a file on its own (`common.py`'s `get_logger` wires a bare `StreamHandler(sys.stdout)`) — pipe through `tee` if you want the run's log lines to survive past your terminal scrollback.
 
 `--k 1 --modes patch-only` is deliberate: the defaults are `--k 3` over both modes, i.e. six trials per task. `--budget-usd` caps cumulative solver spend as a launch gate — in-flight trials still finish, so with `--max-parallel N` the total can overshoot by up to ~N trials.
 
