@@ -43,7 +43,7 @@ try:
 except ImportError:  # pragma: no cover - python-dotenv is in requirements.txt
     pass
 
-RESULTS_JSON = ROOT / "results.json"
+RESULTS_JSON = RESULTS_DIR / "exploitgym-runs" / "results.json"
 EVENTS_NDJSON = RESULTS_DIR / "events.ndjson"
 CONCURRENCY_SWEEP_JSON = RESULTS_DIR / "concurrency_sweep.json"
 PROVISIONING_BENCH_JSON = RESULTS_DIR / "provisioning_bench.json"
@@ -51,7 +51,7 @@ TELEMETRY_DIR = RESULTS_DIR / "telemetry"
 REAP_LOG_JSON = RESULTS_DIR / "reap_log.json"
 EXPLOITGYM_RESULTS_JSON = RESULTS_DIR / "exploitgym_results.json"
 
-for _d in (RESULTS_DIR, RECORDINGS_DIR, ARTIFACTS_DIR, DATA_DIR, TELEMETRY_DIR):
+for _d in (RESULTS_DIR, RECORDINGS_DIR, ARTIFACTS_DIR, DATA_DIR, TELEMETRY_DIR, RESULTS_JSON.parent):
     _d.mkdir(parents=True, exist_ok=True)
 
 # --------------------------------------------------------------------------

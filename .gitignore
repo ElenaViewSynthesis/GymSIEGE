@@ -16,12 +16,18 @@ results/*.json
 # Nested run output too: common.py writes per-sandbox telemetry to
 # results/telemetry/, which `results/*.json` does not reach.
 results/**/*.json
+# Event-log telemetry (e.g. results/events.ndjson) isn't caught by the
+# *.json patterns above -- same "local-only" treatment as everything else
+# under results/ except the one tracked schema template.
+results/*.ndjson
+results/**/*.ndjson
 !results/.gitkeep
 snapshot_build.metrics.json
 *.log
 
 # keep the honest schema template, ignore live run output
-!results.json
+!results/exploitgym-runs/
+!results/exploitgym-runs/results.json
 
 # personal resume/interview notes, not project documentation
 interview-bullets.md

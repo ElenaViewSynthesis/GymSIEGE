@@ -7,7 +7,7 @@ GYMSIEGE runs two public security-agent benchmarks as a **Daytona fleet evaluati
 
 It measures both **agent capability** (pass@k, oracle stages, research navigation success, tokens/cost) and **infrastructure behavior** (provisioning latency, a concurrency failure curve, CPU/memory/disk telemetry, recordings, cleanup reliability).
 
-Every trial runs inside a real, disposable Daytona sandbox — nothing here is simulated. `results.json` stays a not-yet-run schema template until an actual trial has completed against the live Daytona and provider APIs.
+Every trial runs inside a real, disposable Daytona sandbox — nothing here is simulated. `results/exploitgym-runs/results.json` stays a not-yet-run schema template until an actual trial has completed against the live Daytona and provider APIs.
 
 ## Quick start
 
@@ -178,7 +178,7 @@ orchestrator.py  ──asyncio.Semaphore(MAX_PARALLEL)──►  sandbox_runner.
    reap                                                     → artifacts → TTL → delete
         │
         ▼
-results.json + results/*.json/*.ndjson + recordings/*.mp4
+results/exploitgym-runs/results.json + results/*.json/*.ndjson + recordings/*.mp4
         │
         ▼
 dashboard.py  (local uvicorn, or --publish to a live Daytona preview link)
@@ -211,7 +211,7 @@ dashboard.py  (local uvicorn, or --publish to a live Daytona preview link)
 | `tests/` | Unit tests for task parsing, pass@k/oracle aggregation, ExploitGym score parsing, and the non-disableable hardened command profile. |
 | `demo.sh` | End-to-end reproduction script: bake → smoke run → concurrency probe → dashboard publish. |
 
-Generated/ignored at runtime (not committed): `.venv/`, `data/`, `artifacts/`, `recordings/*.mp4`, `results/*.json`, `results.json` (template only is tracked).
+Generated/ignored at runtime (not committed): `.venv/`, `data/`, `artifacts/`, `recordings/*.mp4`, `results/*.json`, `results/exploitgym-runs/results.json` (template only is tracked).
 
 ## Requirements
 
