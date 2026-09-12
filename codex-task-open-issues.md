@@ -1,8 +1,9 @@
-# GYMSIEGE — three open infrastructure issues
+# GYMSIEGE — four open infrastructure issues
 
 GYMSIEGE (this repo) runs CyberGym-E2E and ExploitGym as a Daytona-sandbox
-fleet benchmark. Three issues are open. Priority order below; #1 is the one
-actually worth solving, #2 is an investigation, #3 is a small resilience fix.
+fleet benchmark. Four issues are open. Priority order below; #1 is the one
+actually worth solving, #2 and #4 are investigations, #3 is a small
+resilience fix.
 
 ## 1. (Primary) ExploitGym's baked Node runtime can't run on older-glibc targets
 
@@ -118,6 +119,49 @@ this specific stop/start cycle in both files (e.g. 2-3 attempts, exponential
 backoff) so a transient hang doesn't burn an entire trial's budget allocation
 and a leaked sandbox. Do not paper over a *real* hang — still surface it as
 an error after retries are exhausted.
+
+## 4. (Investigate) A task ID can be listed in ExploitGym's `v1.txt` with no corresponding challenge-image metadata, and there's no cheap pre-flight check for it
+
+Confirmed live 2026-09-12: `user:nofuzz/CVE-2021-21841` (GPAC MP4Box, CVSS
+8.8 HIGH — chosen specifically as the highest-severity candidate from a
+screening pass over ExploitGym's full upstream `v1.txt`, see `FINDINGS.md#11`
+and `EXPERIMENTS.md`'s "Three new candidates..." section for the full
+methodology) parses fine as a task ID and is genuinely present in upstream's
+task-ID list, but fails at the `challenge_image_pull` stage:
+
+    [warn] user task not in metadata: user:nofuzz/CVE-2021-21841
+    No images resolved; nothing to pull.
+
+Unlike the glibc/Node-runtime incompatibility in issue #1, which
+`probe_arvo_glibc.py` predicts cheaply and offline *before* provisioning a
+sandbox, this failure mode has no equivalent pre-flight check — the lookup
+that resolves a task ID to a pullable Docker image only happens live, inside
+`exploitgym_adapter.py`'s `challenge_image_pull` stage, after
+`docker_start` has already succeeded (i.e. after most of a sandbox's
+lifecycle cost has already been paid, even though this specific failure is
+$0 in solver spend since it's caught before any model call).
+
+**Task:** Investigate what "task not in metadata" actually means inside
+upstream ExploitGym's own `cybergym` package (rebuilt fresh at trial start
+from `/home/daytona/exploitgym` — read its actual task-loading code, not
+just `v1.txt`, to find the real metadata source it consults and why this ID
+is missing from it despite being listed as a valid task ID elsewhere).
+Two possible outcomes, either is useful:
+1. If there's a way to check metadata existence for a task ID *before*
+   provisioning a sandbox (a local file, an API call, anything offline or
+   cheap), add it as a `node_compatibility_probe`-style pre-flight check —
+   this would let future candidate screening from `v1.txt` filter out dead
+   task IDs before ever spending provisioning time/cost on them, the same
+   way glibc incompatibility is already caught for free.
+2. If no such check is possible without actually reaching
+   `challenge_image_pull`, document that limitation explicitly (in
+   `FINDINGS.md`, next to entry #11) so future task-selection work doesn't
+   assume `v1.txt` membership implies runnability, and treat this as a
+   closed, understood limitation rather than something to keep re-solving.
+
+Do not spend solver budget "confirming" this task is broken again — it
+already is, and retrying it wastes provisioning time (the trial does reach
+`docker_start` before failing) for a result we already have.
 
 ## Constraints for all of the above
 
