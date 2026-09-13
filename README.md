@@ -93,6 +93,20 @@ docker compose up -d
 
 Piping straight to `docker compose -f - up -d` also works, but downloading the file first lets you pin a release tag instead of `latest` and change credentials.
 
+The quickstart compose file's own `litellm-database` image (Postgres) ships with known CVEs — worth knowing before treating this stack as more than a local dev gateway. Docker Scout found 13 (2 high, 7 medium, 1 low) on `docker.litellm.ai/berriai/litellm-database:latest`:
+
+![Docker Scout CVE scan of the litellm-database container image](assets/Docker_CVEs_LiteLLM_DB_container.png)
+
+Highest-severity finding, drilled into: [`CVE-2026-85091`](assets/Docker_2026-CVE-8CVSS_score.png) (CVSS 8.3 HIGH, `apk/wolfi/zlib` 1.3.2-r5, fixed in 1.3.3-r0).
+
+#### Docker Scout image analysis: NIST
+
+[`CVE-2026-85091`](https://scout.docker.com/vulnerabilities/id/CVE-2026-85091) — **CWE-787, Out-of-bounds Write.**
+
+> zlib versions 1.3.1.2 through 1.3.2 contain a heap buffer overflow vulnerability in the `gz_vacate()` function when processing non-blocking `gzwrite()` operations with stale external buffer pointers. Attackers can trigger the overflow by calling `gzprintf()` or `gzvprintf()` after a write stall, causing an unchecked `memmove()` to write beyond the internal input buffer boundary. — NIST advisory
+
+![NIST advisory cross-references for CVE-2026-85091 (CWE-787)](assets/CWE-787-NIST.png)
+
 > **Set a real `LITELLM_SALT_KEY` before adding any model you intend to keep.**
 > It encrypts the provider API keys stored in the UI, and the quickstart compose file ships a placeholder. Use a long random value and **never change it afterwards** — credentials encrypted with the old salt cannot be decrypted with a new one.
 
