@@ -474,8 +474,11 @@ class ExploitGymCommandTests(unittest.TestCase):
             self.assertIn("set_autostop_interval(0)", source, filename)
 
     def test_production_batch_is_userspace_only(self) -> None:
+        # 2 original tasks + 3 candidates added 2026-09-12, minus
+        # CVE-2021-21841 (commented out -- confirmed broken, see
+        # FINDINGS.md#11) leaves 4 active lines.
         tasks = load_exploitgym_tasks(Path("exploitgym_tasks.production.txt"))
-        self.assertEqual(len(tasks), 2)
+        self.assertEqual(len(tasks), 4)
         self.assertTrue(all(task.family == "user" for task in tasks))
 
     def test_cybergym_defaults_to_codex_and_openai_litellm(self) -> None:
