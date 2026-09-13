@@ -43,6 +43,7 @@ from common import (
     TrialResult,
     append_event,
     get_logger,
+    restart_after_secret_attach,
     sandbox_secret_refs,
 )
 from solver_agent import ModelConfig, Solver
@@ -129,10 +130,7 @@ async def run_trial(
         secrets = sandbox_secret_refs(("LITELLM_MASTER_KEY",))
         if secrets:
             await sandbox.update_secrets(secrets)
-            # Daytona documents that a sandbox created without secrets must
-            # restart once after attaching its first vault mounts.
-            await sandbox.stop(timeout=120)
-            await sandbox.start(timeout=120)
+            await restart_after_secret_attach(sandbox, task.path)
             # A stop/start cycle does not necessarily preserve the
             # auto_stop_interval=0 passed at creation -- re-apply it after
             # restart. Same pattern already used for the bake sandbox in

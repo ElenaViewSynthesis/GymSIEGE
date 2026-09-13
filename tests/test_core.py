@@ -8,9 +8,17 @@ import re
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
-from common import SNAPSHOT_NAME, Task, TrialResult, sandbox_secret_refs
+from daytona.common.errors import DaytonaTimeoutError
+
+from common import (
+    SNAPSHOT_NAME,
+    Task,
+    TrialResult,
+    restart_after_secret_attach,
+    sandbox_secret_refs,
+)
 from configure_secrets import HUGGINGFACE_SECRET_HOSTS, credential_value, litellm_hosts
 from exploitgym_adapter import (
     EXPLOITGYM_CONTROLLER_PORT,
@@ -100,6 +108,36 @@ class TaskParsingTests(unittest.TestCase):
                 load_exploitgym_tasks(path)
             tasks = load_exploitgym_tasks(path, allow_non_userspace=True)
             self.assertEqual([task.family for task in tasks], ["user", "kernel"])
+
+
+class SecretAttachRestartTests(unittest.IsolatedAsyncioTestCase):
+    async def test_retries_complete_cycle_after_start_timeout(self) -> None:
+        sandbox = AsyncMock()
+        sandbox.start.side_effect = [DaytonaTimeoutError("timed out"), None]
+
+        with patch("common.asyncio.sleep", new_callable=AsyncMock) as sleep:
+            await restart_after_secret_attach(sandbox, "task/example")
+
+        self.assertEqual(sandbox.stop.await_count, 2)
+        self.assertEqual(sandbox.start.await_count, 2)
+        sleep.assert_awaited_once_with(5.0)
+
+    async def test_raises_last_timeout_after_bounded_retries(self) -> None:
+        sandbox = AsyncMock()
+        timeout = DaytonaTimeoutError("still transitioning")
+        sandbox.stop.side_effect = timeout
+
+        with patch("common.asyncio.sleep", new_callable=AsyncMock) as sleep:
+            with self.assertRaises(DaytonaTimeoutError) as raised:
+                await restart_after_secret_attach(sandbox, "task/example")
+
+        self.assertIs(raised.exception, timeout)
+        self.assertEqual(sandbox.stop.await_count, 3)
+        self.assertEqual(sandbox.start.await_count, 0)
+        self.assertEqual(
+            [call.args for call in sleep.await_args_list],
+            [(5.0,), (10.0,)],
+        )
 
 
 class ExploitGymCommandTests(unittest.TestCase):

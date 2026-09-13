@@ -11,6 +11,7 @@ results: it only defines shapes and I/O helpers.
 
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import json
 import logging
@@ -19,6 +20,8 @@ import sys
 import time
 from pathlib import Path
 from typing import Any, Literal, Optional
+
+from daytona.common.errors import DaytonaTimeoutError
 
 # --------------------------------------------------------------------------
 # Paths
@@ -131,6 +134,40 @@ def get_logger(name: str) -> logging.Logger:
         logger.addHandler(handler)
         logger.setLevel(os.environ.get("GYMSIEGE_LOG_LEVEL", "INFO"))
     return logger
+
+
+RESTART_AFTER_SECRET_ATTACH_MAX_ATTEMPTS = 3
+RESTART_AFTER_SECRET_ATTACH_BASE_DELAY_S = 5.0
+RESTART_AFTER_SECRET_ATTACH_TIMEOUT_S = 120
+
+
+async def restart_after_secret_attach(sandbox, label: str) -> None:
+    """Restart after attaching vault secrets, retrying transient timeouts.
+
+    Daytona requires a stop/start after the first secret attachment. Retry
+    the complete cycle because either transition can time out and leave the
+    observed sandbox state uncertain. The final timeout is deliberately
+    re-raised so a persistent platform failure still fails the trial.
+    """
+    delay_s = RESTART_AFTER_SECRET_ATTACH_BASE_DELAY_S
+    for attempt in range(1, RESTART_AFTER_SECRET_ATTACH_MAX_ATTEMPTS + 1):
+        try:
+            await sandbox.stop(timeout=RESTART_AFTER_SECRET_ATTACH_TIMEOUT_S)
+            await sandbox.start(timeout=RESTART_AFTER_SECRET_ATTACH_TIMEOUT_S)
+            return
+        except DaytonaTimeoutError:
+            if attempt == RESTART_AFTER_SECRET_ATTACH_MAX_ATTEMPTS:
+                raise
+            get_logger("sandbox_restart").warning(
+                "[%s] secret-attach restart timed out (attempt %d/%d); "
+                "retrying in %.0fs",
+                label,
+                attempt,
+                RESTART_AFTER_SECRET_ATTACH_MAX_ATTEMPTS,
+                delay_s,
+            )
+            await asyncio.sleep(delay_s)
+            delay_s *= 2
 
 
 # --------------------------------------------------------------------------
