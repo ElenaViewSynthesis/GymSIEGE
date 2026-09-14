@@ -69,6 +69,7 @@ from exploitgym_adapter import (
     ExploitGymTrialResult,
     load_exploitgym_tasks,
     run_exploitgym_trial,
+    validate_exploitgym_task_metadata,
     validate_exploitgym_credentials,
 )
 from sandbox_runner import run_trial
@@ -440,6 +441,7 @@ def _selected_exploitgym_tasks(args: argparse.Namespace) -> list[ExploitGymTask]
                 "kernel/V8 tasks require --allow-non-userspace and a compatible custom "
                 f"snapshot: {non_user[:3]}"
             )
+        validate_exploitgym_task_metadata(tasks)
         return tasks
     return load_exploitgym_tasks(
         common.ROOT / args.tasks_file,

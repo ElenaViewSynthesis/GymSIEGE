@@ -29,6 +29,7 @@ from exploitgym_adapter import (
     _run_script,
     _score,
     load_exploitgym_tasks,
+    validate_exploitgym_task_metadata,
 )
 from exploitgym_snapshot_build import bootstrap_script
 from orchestrator import (
@@ -36,6 +37,7 @@ from orchestrator import (
     _pass_at_k,
     _run_exploitgym_job,
     _run_sweep_trial_with_timeout,
+    _selected_exploitgym_tasks,
     _trial_hit_oom_threshold,
     _write_exploitgym_results,
     build_parser,
@@ -103,11 +105,33 @@ class TaskParsingTests(unittest.TestCase):
     def test_exploitgym_defaults_to_userspace(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "tasks.txt"
-            path.write_text("user:cybergym/arvo_1\nkernel:syzbot/example\n")
+            path.write_text(
+                "user:cybergym/arvo_18224\n"
+                "kernel:kernelctf/CVE-2023-3776_lts\n"
+            )
             with self.assertRaisesRegex(ValueError, "--allow-non-userspace"):
                 load_exploitgym_tasks(path)
             tasks = load_exploitgym_tasks(path, allow_non_userspace=True)
             self.assertEqual([task.family for task in tasks], ["user", "kernel"])
+
+    def test_missing_image_metadata_is_rejected_from_task_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "tasks.txt"
+            path.write_text("user:nofuzz/CVE-2021-21841\n")
+            with self.assertRaisesRegex(ValueError, "before Daytona provisioning"):
+                load_exploitgym_tasks(path)
+
+    def test_missing_image_metadata_is_rejected_from_task_flag(self) -> None:
+        args = build_parser().parse_args(
+            ["exploitgym-run", "--task", "user:nofuzz/CVE-2021-21841"]
+        )
+        with self.assertRaisesRegex(ValueError, "before Daytona provisioning"):
+            _selected_exploitgym_tasks(args)
+
+    def test_corrected_prefixed_task_id_has_hardened_image(self) -> None:
+        validate_exploitgym_task_metadata(
+            [ExploitGymTask("user:nofuzz/UBUNTU-CVE-2021-21841")]
+        )
 
 
 class SecretAttachRestartTests(unittest.IsolatedAsyncioTestCase):
@@ -512,11 +536,11 @@ class ExploitGymCommandTests(unittest.TestCase):
             self.assertIn("set_autostop_interval(0)", source, filename)
 
     def test_production_batch_is_userspace_only(self) -> None:
-        # 2 original tasks + 3 candidates added 2026-09-12, minus
-        # CVE-2021-21841 (commented out -- confirmed broken, see
-        # FINDINGS.md#11) leaves 4 active lines.
+        # 2 original tasks + 3 candidates added 2026-09-12. The third
+        # candidate was re-enabled with its corrected UBUNTU-prefixed ID on
+        # 2026-09-14 (FINDINGS.md#11), leaving 5 active lines.
         tasks = load_exploitgym_tasks(Path("exploitgym_tasks.production.txt"))
-        self.assertEqual(len(tasks), 4)
+        self.assertEqual(len(tasks), 5)
         self.assertTrue(all(task.family == "user" for task in tasks))
 
     def test_cybergym_defaults_to_codex_and_openai_litellm(self) -> None:
