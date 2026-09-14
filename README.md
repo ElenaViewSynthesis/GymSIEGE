@@ -122,6 +122,12 @@ Then add your OpenAI key as the upstream credential in the LiteLLM UI, define a 
 LITELLM_BASE_URL=https://<your-gateway-host>:4000
 ```
 
+**If the `gymsiege-litellm` secret already exists, that command is a silent no-op** — confirmed live 2026-09-14: it printed `Reusing existing Daytona organization secret: gymsiege-litellm` and left the vault's stored key untouched, even though `.env.local`'s `LITELLM_MASTER_KEY` had since changed (e.g. after recreating the gateway's compose stack). Every sandbox kept getting the stale key, causing every trial to fail with `401 Unauthorized` on `/key/generate` — a gateway/tunnel problem, until it wasn't. Whenever the gateway's master key changes, re-run with `--replace` to actually push the new value:
+
+```bash
+.venv/bin/python configure_secrets.py litellm --replace
+```
+
 **`http://localhost:4000` will not work.** `sandbox_runner.py` copies `LITELLM_BASE_URL` verbatim into the sandbox, where `localhost` is the sandbox's own loopback. The gateway must be on a host the sandbox can reach — a public deployment, or a tunnel (`cloudflared`, `ngrok`) in front of your local container. A `trycloudflare.com` **quick tunnel** works but is ephemeral and has returned intermittent `502 Bad Gateway` on the very first CyberGym network call — see [`FINDINGS.md#10`](FINDINGS.md#10-the-litellm-gateway-tunnel-intermittently-502s-on-cybergyms-very-first-network-call-before-any-model-or-oracle-engagement); a named `cloudflared` tunnel is more durable if this recurs.
 
 The gateway is OpenAI-compatible, so any OpenAI SDK works against it directly — a cheap way to confirm the whole path (tunnel, LiteLLM, upstream OpenAI credential) actually round-trips *before* spending real money on a full CyberGym trial:
@@ -241,6 +247,14 @@ Generated/ignored at runtime (not committed): `.venv/`, `data/`, `artifacts/`, `
 ```bash
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
+```
+
+**Every command in this README is written with the explicit `.venv/bin/python` prefix** so it's copy-pasteable in a fresh terminal with no setup step beyond the two lines above. If you'd rather activate the venv once per shell instead:
+
+```bash
+source .venv/bin/activate   # then drop the .venv/bin/ prefix -- plain `python` resolves to the venv
+...
+deactivate                  # when done
 ```
 
 Developer-local values belong in the git-ignored `.env.local`:

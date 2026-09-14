@@ -5,6 +5,9 @@
 # Local LiteLLM gateway stack: docker-compose.yml holds the real
 # LITELLM_MASTER_KEY/LITELLM_SALT_KEY/DB password once configured.
 litellm-gateway/
+# Personal convenience wrapper hardcoding this machine's absolute path to
+# the directory above -- not portable project tooling like demo.sh.
+start-litellm-gateway.sh
 __pycache__/
 *.pyc
 

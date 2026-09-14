@@ -260,6 +260,34 @@ actually apply to this repo rather than generic textbook definitions alone.
   zero-extension mark, a stale range-tracking value) that lets a program
   through that should have been rejected, at which point the "sandboxed"
   BPF program can touch memory outside its intended bounds.
+- **QUIC** — a UDP-based transport protocol (the foundation of HTTP/3)
+  that multiplexes independent streams with TLS 1.3 baked in, avoiding
+  TCP's head-of-line blocking. `cloudflared`'s preferred protocol for
+  tunnel connections; this project's `LITELLM_BASE_URL` tunnel picks it
+  automatically (`suggested_protocol=quic` in its own startup log) after
+  its connectivity pre-checks pass.
+- **`cloudflared` connectivity pre-checks** — the DNS/UDP/TCP/API
+  reachability checks `cloudflared` runs against Cloudflare's own edge
+  (`region1`/`region2.v2.argotunnel.com`, `api.cloudflare.com`) before
+  registering a tunnel connection. All four passing — DNS resolution,
+  QUIC/UDP, HTTP/2/TCP, Cloudflare API — is what "environment is healthy"
+  means in its own log output. This only confirms the path *to*
+  Cloudflare's network is clear; it says nothing about the tunnel's
+  actual target (here, the LiteLLM gateway container behind it) or
+  whether the tunnel itself will be accepted — see tunnel registration
+  below for the step that can still fail after every pre-check passes.
+- **Tunnel registration** — the step after pre-checks where `cloudflared`
+  establishes and confirms its outbound connection to Cloudflare's edge
+  for a given tunnel ID; "Registered tunnel connection" in the logs means
+  the tunnel is live and traffic can route through it. A
+  `trycloudflare.com` **quick tunnel** re-registers — and gets a brand-new
+  random hostname — on every restart; it does not resume the previous
+  session's identity. Confirmed live 2026-09-12/13: when Cloudflare's edge
+  no longer recognizes a quick tunnel's prior session, registration itself
+  fails here with `Unauthorized: Tunnel not found` even though every
+  pre-check above still passes — pre-checks and registration are
+  independent failure points. See
+  [`FINDINGS.md#10`](FINDINGS.md#10-the-litellm-gateway-tunnel-intermittently-502s-on-cybergyms-very-first-network-call-before-any-model-or-oracle-engagement).
 
 ## AI/LLM and orchestration
 
