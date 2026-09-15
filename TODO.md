@@ -1201,16 +1201,16 @@ The GNSS-spoofing analogy applies most directly here: an agent that accepts anot
 
 ### Scoping: kernel-compatible sandbox support (target `CVE-2026-23111_cos`)
 
-Full plan: [`modal-virtualization.md`](modal-virtualization.md), which
+Full plan: [`modal/modal-virtualization.md`](modal/modal-virtualization.md), which
 scopes the integration work against Modal's own Sandbox SDK reference
-([`modal-sandboxes.md`](modal-sandboxes.md)). Summary here so this section
+([`modal/modal-sandboxes.md`](modal/modal-sandboxes.md)). Summary here so this section
 stands on its own:
 
 **Target chosen**: `CVE-2026-23111_cos` — `nf_tables` (the subsystem behind
 12 of 27 kernelCTF tasks, see [`kernelctf-tasks.md`](kernelctf-tasks.md)),
 reachable from an unprivileged user namespace. Representative bug class,
 cleanest attack surface of the set — the reasoning for picking this one
-specifically over the highest-CVSS option is in `modal-virtualization.md`.
+specifically over the highest-CVSS option is in `modal/modal-virtualization.md`.
 
 **Not built yet, and one real blocker found while scoping it**: Modal
 (the intended platform for KVM/virtualization support per current planning)
@@ -1226,7 +1226,7 @@ real risk surfaced by reading Modal's own docs, not yet confirmed by
 actually testing on the platform.
 
 **Before any integration work**: run the three-command verification spike
-in `modal-virtualization.md` on an actual Modal sandbox. Its result
+in `modal/modal-virtualization.md` on an actual Modal sandbox. Its result
 branches the plan three ways (full KVM support / TCG-only-so-much-slower /
 genuinely blocked, needing a split architecture with a separate
 KVM-capable provider for just the boot step) — don't write integration
@@ -1271,7 +1271,7 @@ attempt, and the controller has its own real constants to plan against
 `exploitgym_adapter.py`'s `load_exploitgym_tasks()` (already threaded
 through from `orchestrator.py`'s existing `--allow-non-userspace` flag)
 remains the correct hook point — no new CLI surface needed. Full
-breakdown with file/line references: `modal-virtualization.md`.
+breakdown with file/line references: `modal/modal-virtualization.md`.
 
 ## Definition of the next safe checkpoint
 
