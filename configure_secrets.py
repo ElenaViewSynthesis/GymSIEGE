@@ -48,9 +48,18 @@ PROVIDERS = {
     # which also means the host can change on tunnel restart). Resolved by
     # litellm_hosts() below instead of hardcoded. An empty list here was the
     # bug: Daytona's secret-substitution proxy has no host to match against,
-    # so LITELLM_MASTER_KEY silently never reaches the gateway -- confirmed
-    # live 2026-09-10 (`gymsiege-litellm` existed with hosts=[]).
-    "litellm": ("LITELLM_MASTER_KEY", "GYMSIEGE_LITELLM_SECRET_NAME", None),
+    # so the sandbox's LITELLM_MASTER_KEY env var silently never reaches the
+    # gateway -- confirmed live 2026-09-10 (`gymsiege-litellm` existed with
+    # hosts=[]).
+    #
+    # Sourced from LITELLM_SECRET_KEY, not LITELLM_MASTER_KEY: the value
+    # this pushes into the Daytona vault is still exposed to every sandbox
+    # under the env var name run_agent.py itself expects
+    # (LITELLM_MASTER_KEY, via sandbox_secret_refs in common.py) -- only the
+    # *source* of that value changes, to the scoped virtual-key-minting
+    # credential rather than the true gateway admin key. Same reasoning as
+    # modal_sandbox_runner.py's gymsiege-litellm Modal Secret.
+    "litellm": ("LITELLM_SECRET_KEY", "GYMSIEGE_LITELLM_SECRET_NAME", None),
 }
 
 

@@ -123,14 +123,18 @@ Highest-severity finding, drilled into: [`CVE-2026-85091`](assets/Docker_2026-CV
 Then add your OpenAI key as the upstream credential in the LiteLLM UI, define a route named to match `--litellm-model-id` (default `gpt-5.6-luna` — **no** `openai/` prefix; a prefixed name 400s with "Invalid model name", confirmed live against a real gateway, see [`FINDINGS.md`](FINDINGS.md)), and wire the gateway into GYMSIEGE:
 
 ```bash
-# Copy the LiteLLM master key into the Daytona vault (never printed, never committed)
+# Copy LITELLM_SECRET_KEY into the Daytona vault (never printed, never
+# committed) -- NOT LITELLM_MASTER_KEY. Every sandbox still receives it
+# under the env var name run_agent.py expects (LITELLM_MASTER_KEY), but the
+# vault's stored *value* is sourced from the scoped secret key, not the
+# true gateway admin key -- see configure_secrets.py's PROVIDERS comment.
 python configure_secrets.py litellm
 
 # In .env.local — must be reachable FROM A SANDBOX, not just from your laptop
 LITELLM_BASE_URL=https://<your-gateway-host>:4000
 ```
 
-**If the `gymsiege-litellm` secret already exists, that command is a silent no-op** — confirmed live 2026-09-14: it printed `Reusing existing Daytona organization secret: gymsiege-litellm` and left the vault's stored key untouched, even though `.env.local`'s `LITELLM_MASTER_KEY` had since changed (e.g. after recreating the gateway's compose stack). Every sandbox kept getting the stale key, causing every trial to fail with `401 Unauthorized` on `/key/generate` — a gateway/tunnel problem, until it wasn't. Whenever the gateway's master key changes, re-run with `--replace` to actually push the new value:
+**If the `gymsiege-litellm` secret already exists, that command is a silent no-op** — confirmed live 2026-09-14: it printed `Reusing existing Daytona organization secret: gymsiege-litellm` and left the vault's stored key untouched, even though `.env.local`'s key had since changed (e.g. after recreating the gateway's compose stack). Every sandbox kept getting the stale key, causing every trial to fail with `401 Unauthorized` on `/key/generate` — a gateway/tunnel problem, until it wasn't. Whenever `LITELLM_SECRET_KEY` changes, re-run with `--replace` to actually push the new value:
 
 ```bash
 python configure_secrets.py litellm --replace
@@ -384,10 +388,17 @@ thin shim giving a raw `modal.Sandbox` the `.process.exec()` /
 a small boundary" directive rather than forking `solver_agent.py` wholesale.
 It needs its own named Modal Secret supplying `LITELLM_MASTER_KEY` (same
 name, `gymsiege-litellm`, as the Daytona secret below — a separate secret
-store, same naming convention already used for `gymsiege-huggingface`):
+store, same naming convention already used for `gymsiege-huggingface`).
+**Source the value from `LITELLM_SECRET_KEY`, never `LITELLM_MASTER_KEY`**
+— same policy as `configure_secrets.py litellm` uses for the Daytona
+secret (see its `PROVIDERS` comment): the sandbox still receives it under
+the env var name `run_agent.py` expects, just sourced from the scoped
+secret key instead of the true gateway admin key:
 
 ```bash
-python -m modal secret create gymsiege-litellm --from-dotenv <path-to-a-file-containing-only-LITELLM_MASTER_KEY=...>
+(umask 177; printf 'LITELLM_MASTER_KEY=%s\n' "$(grep '^LITELLM_SECRET_KEY=' .env.local | cut -d= -f2-)" > /tmp/gymsiege-litellm.env)
+python -m modal secret create gymsiege-litellm --from-dotenv /tmp/gymsiege-litellm.env
+rm -f /tmp/gymsiege-litellm.env
 ```
 
 Then run one trial directly. Sample production run, confirmed live
@@ -469,6 +480,12 @@ CyberGym upstream doesn't currently accept a direct OpenAI provider the way Expl
 LITELLM_BASE_URL=https://your-litellm.example
 GYMSIEGE_LITELLM_SECRET_NAME=gymsiege-litellm
 LITELLM_MASTER_KEY=...
+# What configure_secrets.py litellm and the Modal gymsiege-litellm Secret
+# actually push into every sandbox (as LITELLM_MASTER_KEY, above) is THIS
+# value, not the real master key -- a scoped virtual key/self-serve-key-gen
+# credential from the LiteLLM UI, so a compromised sandbox never holds
+# gateway admin access.
+LITELLM_SECRET_KEY=...
 ```
 
 ## CyberGym-E2E protocol
@@ -488,7 +505,8 @@ python snapshot_build.py --tasks-file txt/tasks.demo.txt
 python orchestrator.py run --tasks-file txt/tasks.demo.txt \
   --limit 2 --k 1 --modes patch-only --max-parallel 2
 
-# Full pinned-set (22-task/18-image) toolchain+image bake on Modal instead
+# Full pinned-set (22-task/19-image: 18 task images plus the Squid firewall
+# proxy) toolchain+image bake on Modal instead
 # of Daytona -- no --tasks-file needed, no disk-ceiling workaround. See the
 # "Resolved via Modal" storage-ceiling note above for setup (modal setup,
 # the gymsiege-huggingface Secret). Already run live and verified --
