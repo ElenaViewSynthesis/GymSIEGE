@@ -48,7 +48,7 @@ else
 fi
 
 echo "=== 2/4: two-task smoke run (curl/arvo_66012, k=1, patch-only) ==="
-.venv/bin/python orchestrator.py run --tasks-file tasks.pinned.txt --limit 2 --k 1 --modes patch-only --max-parallel 2
+.venv/bin/python orchestrator.py run --tasks-file txt/tasks.pinned.txt --limit 2 --k 1 --modes patch-only --max-parallel 2
 
 echo "=== 3/4: tiny concurrency probe (levels 1,2) ==="
 .venv/bin/python orchestrator.py sweep --levels 1 2

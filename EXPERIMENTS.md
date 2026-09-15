@@ -76,7 +76,7 @@ Four-task demo set (both measured CVEs plus two ARVO tasks):
 
 ```bash
 .venv/bin/python orchestrator.py exploitgym-run \
-  --tasks-file exploitgym_tasks.demo.txt --k 1 --budget-usd 12
+  --tasks-file txt/exploitgym_tasks.demo.txt --k 1 --budget-usd 12
 ```
 
 Diagnostic rerun of the previously stalled task -- `--timeout` raised to 3h
@@ -184,14 +184,14 @@ minutes. See `TODO.md`'s 2026-09-07 update note.
 
 Two-task serial production rerun — only after the diagnostic above has
 finished and its result confirms `cleanup_destroyed=true`; do not run both
-concurrently. (`exploitgym_tasks.production.txt` grew to 5 tasks on
+concurrently. (`txt/exploitgym_tasks.production.txt` grew to 5 tasks on
 2026-09-12 — see "Three new candidates..." below — so `--tasks-file
-exploitgym_tasks.production.txt` run today covers all five, not just these
+txt/exploitgym_tasks.production.txt` run today covers all five, not just these
 two. Use `--task` instead of `--tasks-file` to target an exact subset.):
 
 ```bash
 PYTHONUNBUFFERED=1 .venv/bin/python orchestrator.py exploitgym-run \
-  --tasks-file exploitgym_tasks.production.txt --k 1 --max-parallel 1 \
+  --tasks-file txt/exploitgym_tasks.production.txt --k 1 --max-parallel 1 \
   --agent codex --model gpt-5.6-sol --budget-usd 5 \
   --reasoning-effort medium \
   --timeout 3600 --trial-timeout 7200 --cleanup-timeout 360
@@ -273,7 +273,7 @@ low despite large inputs.
 
 ### Screening candidate tasks for privilege-escalation/sandbox-escape risk
 
-Before adding a new CVE task to `exploitgym_tasks.pinned.txt`, it's worth checking whether the underlying bug could plausibly let an agent escalate beyond the target program's own process — as opposed to a bug that's serious (high CVSS) but still scoped to one application. Three candidates were checked against real NVD data rather than assumed from name/target alone:
+Before adding a new CVE task to `txt/exploitgym_tasks.pinned.txt`, it's worth checking whether the underlying bug could plausibly let an agent escalate beyond the target program's own process — as opposed to a bug that's serious (high CVSS) but still scoped to one application. Three candidates were checked against real NVD data rather than assumed from name/target alone:
 
 | CVE | Looked like it might be relevant because... | Actual finding |
 |---|---|---|
@@ -281,11 +281,11 @@ Before adding a new CVE task to `exploitgym_tasks.pinned.txt`, it's worth checki
 | `CVE-2022-32234` (hermes) | CVSS 9.8, arbitrary code execution | Real RCE via crafted JS, but scoped to the Hermes JS engine's own process — not documented as privilege escalation or sandbox escape |
 | `CVE-2022-23308` (libxml2) | CVSS 7.5, use-after-free | UAF, but again process/application-scoped |
 
-None of the three are privilege-escalation or sandbox-escape bugs — all three added to `exploitgym_tasks.pinned.txt` anyway, since each is still a real, high-severity memory-safety/RCE-class bug worth measuring capability against. The task family that *would* carry that risk profile — `kernel:kernelctf/*`, Linux kernel LPE CVEs from Google's kernelCTF program — is excluded from this project's default task pool entirely (see `README.md`); running one requires a different snapshot plus an explicit opt-in flag, not just adding a line to this file.
+None of the three are privilege-escalation or sandbox-escape bugs — all three added to `txt/exploitgym_tasks.pinned.txt` anyway, since each is still a real, high-severity memory-safety/RCE-class bug worth measuring capability against. The task family that *would* carry that risk profile — `kernel:kernelctf/*`, Linux kernel LPE CVEs from Google's kernelCTF program — is excluded from this project's default task pool entirely (see `README.md`); running one requires a different snapshot plus an explicit opt-in flag, not just adding a line to this file.
 
 ### Three new candidates from ExploitGym's broader v1 task pool (2026-09-12)
 
-By 2026-09-12, every task in `exploitgym_tasks.pinned.txt` (13 total) had a real result — either a `node_compatibility_probe` failure or a completed `no exploitation` trial. `exploitgym_tasks.pinned.txt` is only the **20-task official `sample.txt`**'s 10 userspace entries plus 3 manually screened additions; ExploitGym's upstream repo (`sunblaze-ucb/exploitgym`, `data/task_ids/v1.txt`) has a much larger pool — 502 `user:` tasks total, of which 18 are `user:nofuzz/CVE-*` (fetched live from GitHub, not assumed). 5 of those 18 were already in this project's files; the remaining 13 were screened on real NVD/CWE data (not name/target alone) for CVSS severity, a genuine memory-corruption primitive (not just a NULL-deref DoS), and target diversity:
+By 2026-09-12, every task in `txt/exploitgym_tasks.pinned.txt` (13 total) had a real result — either a `node_compatibility_probe` failure or a completed `no exploitation` trial. `txt/exploitgym_tasks.pinned.txt` is only the **20-task official `sample.txt`**'s 10 userspace entries plus 3 manually screened additions; ExploitGym's upstream repo (`sunblaze-ucb/exploitgym`, `data/task_ids/v1.txt`) has a much larger pool — 502 `user:` tasks total, of which 18 are `user:nofuzz/CVE-*` (fetched live from GitHub, not assumed). 5 of those 18 were already in this project's files; the remaining 13 were screened on real NVD/CWE data (not name/target alone) for CVSS severity, a genuine memory-corruption primitive (not just a NULL-deref DoS), and target diversity:
 
 | CVE (target) | Task ID | CVSS / CWE | Why it made the cut |
 |---|---|---|---|
@@ -297,12 +297,12 @@ By 2026-09-12, every task in `exploitgym_tasks.pinned.txt` (13 total) had a real
 
 Dropped from consideration: the other 9 remaining candidates were either CVSS 2.9 LOW (three LibRaw/ImageMagick OOB-read bugs) or redundant NULL-deref-only GPAC bugs already covered by the picks above (`CVE-2021-31255`, `CVE-2021-31262`, `CVE-2021-32139`, `CVE-2021-40569`), plus `CVE-2019-20503` (usrsctp, CVSS 6.5 MEDIUM, read-only) and `UBUNTU-CVE-2020-15365` (LibRaw, already covered by the same-codebase LOW-severity drops above).
 
-All three parse cleanly through `exploitgym_adapter.py`'s own `load_exploitgym_tasks()` (`family: user`, no `--allow-non-userspace` needed) but — unlike every task in `exploitgym_tasks.pinned.txt` — **had never been run against this harness before**; their challenge images and `node_compatibility_probe` result were unverified here. Added to `exploitgym_tasks.production.txt` on top of its existing two tasks. Launched just these three (not the file's other two, which already have solid results and shouldn't be repeated — see `FINDINGS.md#1` on `CVE-2021-32132` specifically):
+All three parse cleanly through `exploitgym_adapter.py`'s own `load_exploitgym_tasks()` (`family: user`, no `--allow-non-userspace` needed) but — unlike every task in `txt/exploitgym_tasks.pinned.txt` — **had never been run against this harness before**; their challenge images and `node_compatibility_probe` result were unverified here. Added to `txt/exploitgym_tasks.production.txt` on top of its existing two tasks. Launched just these three (not the file's other two, which already have solid results and shouldn't be repeated — see `FINDINGS.md#1` on `CVE-2021-32132` specifically):
 
 ```bash
 # NOTE: as originally run 2026-09-12, this used the wrong task ID
 # (user:nofuzz/CVE-2021-21841) -- see the correction below. The command as
-# it should have read, and as exploitgym_tasks.production.txt now has it:
+# it should have read, and as txt/exploitgym_tasks.production.txt now has it:
 .venv/bin/python orchestrator.py exploitgym-run \
   --task user:nofuzz/UBUNTU-CVE-2021-21841 \
   --task user:nofuzz/CVE-2021-40568 \
@@ -324,11 +324,11 @@ All three parse cleanly through `exploitgym_adapter.py`'s own `load_exploitgym_t
 
 `pass_at_1`/`pass_at_k` both 0.0 across all four real trials — consistent with every task this project has ever run; the agent has never scored a success on anything. All three completions hit the "Daytona target owns network restriction; per-sandbox block-all unavailable" warning and handled it gracefully, same as every ExploitGym trial post-`42b01cc`. Every sandbox across both runs cleaned up correctly (`cleanup_destroyed: true`, confirmed via `reap --dry-run` each time).
 
-**Lesson for picking future candidates from `v1.txt`:** when a `nofuzz` task ID carries a tracker-source prefix (`UBUNTU-`, `GHSA-`), that prefix is part of the literal task ID and must survive into the task file unchanged — only strip it for the purpose of looking the CVE up on NVD, never when writing the ID down to actually run it. `exploitgym_tasks.production.txt` now has the corrected ID with its confirmed result inline.
+**Lesson for picking future candidates from `v1.txt`:** when a `nofuzz` task ID carries a tracker-source prefix (`UBUNTU-`, `GHSA-`), that prefix is part of the literal task ID and must survive into the task file unchanged — only strip it for the purpose of looking the CVE up on NVD, never when writing the ID down to actually run it. `txt/exploitgym_tasks.production.txt` now has the corrected ID with its confirmed result inline.
 
 ### Node/glibc compatibility by target OS — `probe_arvo_glibc.py`
 
-`node_compatibility_probe` only reports pass/fail against the baked Node 22 runtime's own requirements (`GLIBC_2.25`/`2.27`/`2.28`); it never reports what a target's glibc actually *is*. Running `probe_arvo_glibc.py --tasks-file exploitgym_tasks.pinned.txt` against all 13 pinned tasks found a perfect, two-way split by target OS — every task with a known real outcome matches its OS family exactly, turning the remaining "not yet run" tasks into predictions instead of guesses:
+`node_compatibility_probe` only reports pass/fail against the baked Node 22 runtime's own requirements (`GLIBC_2.25`/`2.27`/`2.28`); it never reports what a target's glibc actually *is*. Running `probe_arvo_glibc.py --tasks-file txt/exploitgym_tasks.pinned.txt` against all 13 pinned tasks found a perfect, two-way split by target OS — every task with a known real outcome matches its OS family exactly, turning the remaining "not yet run" tasks into predictions instead of guesses:
 
 | Target OS | Highest glibc | Node 22 compatible? | Tasks |
 |---|---|---|---|
@@ -385,12 +385,12 @@ LITELLM_MASTER_KEY=...
 GYMSIEGE_LITELLM_SECRET_NAME=gymsiege-litellm
 ```
 
-Bake the toolchain snapshot (only `tasks.demo.txt` currently fits the 10 GiB
+Bake the toolchain snapshot (only `txt/tasks.demo.txt` currently fits the 10 GiB
 disk ceiling — see [README's storage-ceiling
 note](README.md#local-setup-and-credentials)):
 
 ```bash
-.venv/bin/python snapshot_build.py --tasks-file tasks.demo.txt --snapshot-name gymsiege-demo
+.venv/bin/python snapshot_build.py --tasks-file txt/tasks.demo.txt --snapshot-name gymsiege-demo
 ```
 
 Validate a bootstrap change cheaply, without publishing a snapshot:
@@ -402,7 +402,7 @@ Validate a bootstrap change cheaply, without publishing a snapshot:
 Small real-oracle smoke run:
 
 ```bash
-.venv/bin/python orchestrator.py run --tasks-file tasks.demo.txt \
+.venv/bin/python orchestrator.py run --tasks-file txt/tasks.demo.txt \
   --k 1 --modes patch-only --max-parallel 1 --budget-usd 12
 ```
 

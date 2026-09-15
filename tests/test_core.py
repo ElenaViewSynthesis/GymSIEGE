@@ -382,7 +382,7 @@ class ExploitGymCommandTests(unittest.TestCase):
 
         tasks, name, _ = resolve_options(
             bake_parser().parse_args(
-                ["--tasks-file", "tasks.demo.txt", "--snapshot-name", "gymsiege-demo"]
+                ["--tasks-file", "txt/tasks.demo.txt", "--snapshot-name", "gymsiege-demo"]
             )
         )
         self.assertEqual(len(tasks), 3, "demo set must stay at three tasks to fit 10 GiB")
@@ -539,7 +539,7 @@ class ExploitGymCommandTests(unittest.TestCase):
         # 2 original tasks + 3 candidates added 2026-09-12. The third
         # candidate was re-enabled with its corrected UBUNTU-prefixed ID on
         # 2026-09-14 (FINDINGS.md#11), leaving 5 active lines.
-        tasks = load_exploitgym_tasks(Path("exploitgym_tasks.production.txt"))
+        tasks = load_exploitgym_tasks(Path("txt/exploitgym_tasks.production.txt"))
         self.assertEqual(len(tasks), 5)
         self.assertTrue(all(task.family == "user" for task in tasks))
 

@@ -901,7 +901,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     p_run = sub.add_parser("run", parents=[common_model_args], help="run tasks x k trials x modes")
-    p_run.add_argument("--tasks-file", default="tasks.pinned.txt")
+    p_run.add_argument("--tasks-file", default="txt/tasks.pinned.txt")
     p_run.add_argument("--k", type=int, default=3, help="trials per task (pass@k)")
     p_run.add_argument("--modes", nargs="+", default=["e2e", "patch-only"], choices=["e2e", "patch-only"])
     p_run.add_argument("--max-parallel", type=int, default=4)
@@ -915,7 +915,7 @@ def build_parser() -> argparse.ArgumentParser:
         "exploitgym-run",
         help="run the public ExploitGym userspace smoke set with mandatory firewalling",
     )
-    p_eg.add_argument("--tasks-file", default="exploitgym_tasks.pinned.txt")
+    p_eg.add_argument("--tasks-file", default="txt/exploitgym_tasks.pinned.txt")
     p_eg.add_argument(
         "--task",
         action="append",
@@ -977,7 +977,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_eg.set_defaults(func=cmd_exploitgym_run)
 
     p_sweep = sub.add_parser("sweep", parents=[common_model_args], help="concurrency ramp / failure curve")
-    p_sweep.add_argument("--tasks-file", default="tasks.pinned.txt")
+    p_sweep.add_argument("--tasks-file", default="txt/tasks.pinned.txt")
     p_sweep.add_argument("--levels", type=int, nargs="+", default=None, help="override CONCURRENCY_LADDER")
     p_sweep.add_argument("--trial-timeout", type=int, default=1800)
     p_sweep.add_argument("--stop-on-knee", action=argparse.BooleanOptionalAction, default=True)

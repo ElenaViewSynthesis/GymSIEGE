@@ -192,7 +192,7 @@ def _selected_paths(limit: int) -> list[str]:
     """
     from huggingface_hub import HfApi
 
-    tasks = [t.path for t in load_tasks(common.ROOT / "tasks.pinned.txt")]
+    tasks = [t.path for t in load_tasks(common.ROOT / "txt" / "tasks.pinned.txt")]
     repo_files = HfApi(token=True).list_repo_files(
         common.HF_DATASET, repo_type="dataset"
     )

@@ -424,7 +424,7 @@ fi
 """
 
 
-def pinned_task_paths(tasks_file: str = "tasks.pinned.txt") -> list[str]:
+def pinned_task_paths(tasks_file: str = "txt/tasks.pinned.txt") -> list[str]:
     return [task.path for task in load_tasks(common.ROOT / tasks_file)]
 
 
@@ -460,12 +460,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--tasks-file",
-        default="tasks.pinned.txt",
+        default="txt/tasks.pinned.txt",
         metavar="FILE",
         help=(
-            "Task set to bake (default tasks.pinned.txt). Use tasks.demo.txt for "
-            "the three-task set sized to fit the 10 GiB snapshot ceiling; the "
-            "full pinned set needs 74.76 GB of images and cannot be captured."
+            "Task set to bake (default txt/tasks.pinned.txt). Use "
+            "txt/tasks.demo.txt for the three-task set sized to fit the 10 GiB "
+            "snapshot ceiling; the full pinned set needs 74.76 GB of images and "
+            "cannot be captured."
         ),
     )
     return parser
@@ -480,7 +481,7 @@ def resolve_options(args: argparse.Namespace) -> tuple[list[str], str | None, bo
     a snapshot of that name is ACTIVE, so the truncated one would be treated
     as complete. Refuse the combination outright rather than warn.
     """
-    tasks = pinned_task_paths(getattr(args, "tasks_file", "tasks.pinned.txt"))
+    tasks = pinned_task_paths(getattr(args, "tasks_file", "txt/tasks.pinned.txt"))
     if args.limit is not None:
         if args.limit < 1:
             raise SystemExit("--limit must be >= 1")

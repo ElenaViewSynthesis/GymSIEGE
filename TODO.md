@@ -42,7 +42,7 @@ Do not assume any terminal process from the previous session is still alive.
   files are unsizable, excludes them via `ignore_patterns`, and fetches them
   directly with git-blob-SHA-1 verification against the ETag. Full write-up in
   `DAYTONA_HUGGINGFACE_EGRESS_ISSUE.md` and
-  `daytona-content-length-bug-report.txt`.
+  `txt/daytona-content-length-bug-report.txt`.
 - Validated at `--limit 1` and `--limit 3` (`written == verified == expected`).
   **The full 20-task bake has not yet been re-run since the fix**, so
   `gymsiege-toolchain` is still absent and the CyberGym smoke run and
@@ -78,7 +78,7 @@ Do not assume any terminal process from the previous session is still alive.
   gymsiege-openai` (exists) and gets budget enforcement from its own in-sandbox
   proxy, which is how the one completed trial minted a `cgym-*` key with
   `max_budget: 5.0` without any external LiteLLM. `gymsiege-exploitgym` is
-  ACTIVE. Demo set: `exploitgym_tasks.demo.txt`.
+  ACTIVE. Demo set: `txt/exploitgym_tasks.demo.txt`.
 - Per-sandbox resource ceilings on this account, confirmed 2026-09-04 by a
   rejected create (`Disk request 90GB exceeds maximum allowed per sandbox
   (10GB)`) and by the dashboard: **4 vCPU / 8 GiB memory / 10 GiB storage /
@@ -304,7 +304,7 @@ undocumented for a day (the run's own log was never reviewed here) until
 cross-checking `results/run1-arvo_18224.json` directly surfaced it — worth
 noting as a process gap: a result file existing is not the same as a result
 being recorded. Target: **binutils**'s `fuzz_disassemble`, a
-Global-buffer-overflow READ. Also in `exploitgym_tasks.demo.txt`, alongside
+Global-buffer-overflow READ. Also in `txt/exploitgym_tasks.demo.txt`, alongside
 `arvo_1699` — both of that file's ARVO tasks now hit this same glibc wall,
 so `CVE-2021-32132` is the only demo-set task that still demonstrates a full
 agent run.
@@ -661,12 +661,12 @@ result and cleanup boundary in order:
 ```bash
 # 1. One task, serial, patch-only.
 PYTHONUNBUFFERED=1 .venv/bin/python orchestrator.py run \
-  --tasks-file tasks.pinned.txt --limit 1 --k 1 \
+  --tasks-file txt/tasks.pinned.txt --limit 1 --k 1 \
   --modes patch-only --max-parallel 1
 
 # 2. Original two-task smoke batch.
 PYTHONUNBUFFERED=1 .venv/bin/python orchestrator.py run \
-  --tasks-file tasks.pinned.txt --limit 2 --k 1 \
+  --tasks-file txt/tasks.pinned.txt --limit 2 --k 1 \
   --modes patch-only --max-parallel 2
 
 # 3. Concurrency level 1. Inspect output and cleanup before level 2.
@@ -1131,7 +1131,7 @@ tracker requires sign-in; `arvo.sbs`, the domain `solver_agent.py:58` builds
 report URLs against, did not resolve from here). Rather than invent bug
 details, this records what's actually confirmable: what the project is.
 Task IDs and their source-line comments are copied verbatim from
-`tasks.pinned.txt`.
+`txt/tasks.pinned.txt`.
 
 | Risk | Task | Why | Project |
 |---|---|---|---|
@@ -1149,7 +1149,7 @@ Task IDs and their source-line comments are copied verbatim from
 | Low | `freetype2/arvo_368` | Focused codebase — one of the demo three | Font-rendering library used across Linux, Android, and many applications |
 | Low | `libtpms/oss-fuzz_42537128` | Focused codebase — one of the demo three | Software emulation of a Trusted Platform Module (TPM) |
 | Low | `unit/oss-fuzz_42536363` | Focused codebase — one of the demo three | NGINX Unit — dynamic, multi-language application server |
-| Low | `curl/arvo_66012` | `tasks.pinned.txt`'s own comment: `"guaranteed-green demo task (spec §3)"` | Command-line tool and library for transferring data with URLs |
+| Low | `curl/arvo_66012` | `txt/tasks.pinned.txt`'s own comment: `"guaranteed-green demo task (spec §3)"` | Command-line tool and library for transferring data with URLs |
 | Low | `mruby/arvo_19902` | Lightweight, embeddable codebase | Lightweight, embeddable implementation of the Ruby language |
 | Low | `mruby/arvo_53183` | Lightweight, embeddable codebase | Lightweight, embeddable implementation of the Ruby language |
 | Low | `libxaac/arvo_62261` | Single-purpose codec library | Android's xHE-AAC audio codec (encoder/decoder) |
@@ -1169,8 +1169,8 @@ the canary task if anything in a CyberGym run needs a quick sanity check.
 - Solver boundary: `solver_agent.py`
 - Dashboard: `dashboard.py`
 - Secret installer: `configure_secrets.py`
-- Current serial ExploitGym tasks: `exploitgym_tasks.production.txt`
-- Official sample-derived image list: `exploitgym_images.pinned.txt`
+- Current serial ExploitGym tasks: `txt/exploitgym_tasks.production.txt`
+- Official sample-derived image list: `txt/exploitgym_images.pinned.txt`
 - Interrupted Sol result: `results/exploitgym_results.json` (ignored by Git)
 - Completed task artifact:
   `artifacts/exploitgym/user_nofuzz_CVE-2021-32132/trial-1/` (ignored by Git)
