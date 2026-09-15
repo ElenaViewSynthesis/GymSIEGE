@@ -42,6 +42,7 @@ from daytona import (
     Image,
     Resources,
 )
+from daytona.common.errors import DaytonaNotFoundError
 
 import common
 from common import (
@@ -731,6 +732,34 @@ async def build_snapshot(args: argparse.Namespace | None = None) -> None:
             if snapshot_name is None:
                 log.warning("--no-snapshot: bootstrap validated, capturing nothing")
             else:
+                # Snapshot creation has no upsert semantics. Delay removal of
+                # the current snapshot until the replacement source has passed
+                # every bootstrap, image, and disk gate, then wait until its
+                # name is actually released before capturing the replacement.
+                try:
+                    await daytona.snapshot.get(snapshot_name)
+                except DaytonaNotFoundError:
+                    pass
+                else:
+                    log.info(
+                        "deleting existing snapshot %r before capturing its replacement",
+                        snapshot_name,
+                    )
+                    await daytona.snapshot.delete(snapshot_name)
+                    deadline = time.monotonic() + 120
+                    while True:
+                        try:
+                            await daytona.snapshot.get(snapshot_name)
+                        except DaytonaNotFoundError:
+                            break
+                        if time.monotonic() >= deadline:
+                            raise RuntimeError(
+                                f"snapshot {snapshot_name!r} still exists 120s "
+                                "after delete; refusing to capture into a name "
+                                "that is still taken"
+                            )
+                        await asyncio.sleep(3)
+
                 t_snap0 = time.monotonic()
                 await sandbox.create_snapshot(snapshot_name, timeout=3600)
                 # create_snapshot() only confirms the sandbox left
@@ -794,8 +823,12 @@ async def build_snapshot(args: argparse.Namespace | None = None) -> None:
     if not limited:
         bench["bake"] = bake_steps
         if t_restore is not None:
-            bench["snapshot_create"].append({"ts": time.time(), "duration_s": t_restore})
-        bench["cold_create"].append({"ts": time.time(), "duration_s": t_create})
+            bench.setdefault("snapshot_create", []).append(
+                {"ts": time.time(), "duration_s": t_restore}
+            )
+        bench.setdefault("cold_create", []).append(
+            {"ts": time.time(), "duration_s": t_create}
+        )
         atomic_write_json(PROVISIONING_BENCH_JSON, bench)
 
     total = sum(s["duration_s"] for s in bake_steps)
