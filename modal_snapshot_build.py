@@ -134,6 +134,7 @@ import tomli
 tasks = json.loads({expected!r})
 default_image = "gcr.io/oss-fuzz-base/base-builder@sha256:8eda74a11e800aead5a041ee479a65b33dab3150d6e89e5694e2b6eb27be98fc"
 wanted = set()
+firewall_proxy_image = "ubuntu/squid:latest"
 for task in tasks:
     project, task_id = task.split("/", 1)
     project_toml = Path({REMOTE_REPO_DIR!r}) / "projects" / project / "project.toml"
@@ -143,6 +144,7 @@ for task in tasks:
     cfg = tomli.loads(project_toml.read_text())
     cfg.update(tomli.loads(task_toml.read_text()))
     wanted.add(cfg.get("build_image", default_image))
+wanted.add(firewall_proxy_image)
 
 import docker
 client = docker.from_env()

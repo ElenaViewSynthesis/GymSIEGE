@@ -9,8 +9,9 @@ One-time (well: once per toolchain revision) job that:
   3. clones sunblaze-ucb/cybergym-e2e into the sandbox,
   4. sets the ASLR entropy sysctl the sanitizer oracle needs,
   5. pre-pulls the Docker build images for every project referenced by
-     tasks.pinned.txt (not all 139 projects — that would blow the time/
-     quota budget for a bounded run; see README "Snapshot scope"),
+     tasks.pinned.txt plus CyberGym's mandatory Squid firewall image (not all
+     139 projects — that would blow the time/quota budget for a bounded run;
+     see README "Snapshot scope"),
   6. snapshots the sandbox as `gymsiege-toolchain`,
   7. records every step's wall-clock time to results/provisioning_bench.json
      under the "bake" key, and does one immediate cold-vs-snapshot sample
@@ -372,6 +373,7 @@ import tomli
 
 wanted = set()
 default_image = "gcr.io/oss-fuzz-base/base-builder@sha256:8eda74a11e800aead5a041ee479a65b33dab3150d6e89e5694e2b6eb27be98fc"
+firewall_proxy_image = "ubuntu/squid:latest"
 for task in tasks:
     project, task_id = task.split("/", 1)
     project_toml = Path("projects") / project / "project.toml"
@@ -381,6 +383,11 @@ for task in tasks:
     cfg = tomli.loads(project_toml.read_text())
     cfg.update(tomli.loads(task_toml.read_text()))
     wanted.add(cfg.get("build_image", default_image))
+
+# run_agent.py's mandatory firewall creates this container through docker-py's
+# containers.create(), which does not pull a missing image. Keep it in the
+# shared image-pull phase so both Daytona and Modal snapshots are self-contained.
+wanted.add(firewall_proxy_image)
 
 print(f"[pull_images] pulling {{len(wanted)}} images for {{len(tasks)}} pinned tasks")
 for img in sorted(wanted):
