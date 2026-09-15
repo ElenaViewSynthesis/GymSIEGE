@@ -12,7 +12,7 @@ actually apply to this repo rather than generic textbook definitions alone.
   scored against real OSS-Fuzz sanitizer builds. The full upstream dataset
   covers **920 real-world vulnerabilities across 139 open-source projects**
   (matches `snapshot_build.py`'s own "not all 139 projects" comment);
-  GYMSIEGE's default protocol runs a pinned 20-task subset
+  GYMSIEGE's default protocol runs a pinned 22-task subset
   (`txt/tasks.pinned.txt`), not the full 920. Distinct from the broader,
   non-gated **`sunblaze-ucb/cybergym`** framework (1,507 tasks) — see the
   gated-dataset note below.

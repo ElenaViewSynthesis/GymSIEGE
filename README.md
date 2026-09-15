@@ -344,21 +344,27 @@ Sandbox runtime (`experimental_options={"vm_runtime": True}`) caps sandbox
 disk at 512 GiB instead of Daytona's 10 GiB, and documents that VM Sandbox
 filesystem snapshots include Docker state — see
 [`modal-docs/modal-virtualization.md`](modal-docs/modal-virtualization.md).
-`modal_snapshot_build.py` bakes the toolchain, pulls all 16 pinned images,
-and captures a non-expiring filesystem snapshot (`ttl=None`), verified
-against an independent fork restored from it before the Image ID is ever
-written out — so a bake that merely *looked* like it captured isn't trusted
-blind. Validated live at `--limit 2` and `--limit 8` (up to 83 GB of baked
-`/var/lib/docker` state; the full 20-task set is 74.76 GB, comfortably
-inside the 512 GiB ceiling):
+`modal_snapshot_build.py` bakes the toolchain, pulls all pinned images, and
+captures a non-expiring filesystem snapshot (`ttl=None`), verified against
+an independent fork restored from it before the Image ID is ever written
+out — so a bake that merely *looked* like it captured isn't trusted blind.
+Validated live at `--limit 2`, `--limit 8` (up to 83 GB of baked
+`/var/lib/docker` state), and — confirmed live 2026-09-15 — the full,
+un-limited pinned set: `txt/tasks.pinned.txt` currently holds **22** tasks
+across **18** images (not the 20-task/74.76 GB figure still quoted
+elsewhere in this file and in TODO.md — that predates the task list's
+growth to 22 and hasn't been swept yet), baking to 111.2 GB of Docker state
+plus 4.2 GB of dataset, comfortably inside the 512 GiB ceiling with ~400 GB
+still free:
 
 ```bash
 python modal_snapshot_build.py
 ```
 
 This is a separate, one-time bake from `snapshot_build.py` above and can
-take a while (the full image pull dominates; the 8-task/83 GB validation
-run alone took ~5.5 minutes just to pull). It needs `python -m modal setup`
+take a while (the full image pull dominates; the full 22-task run above
+took ~12 minutes end to end, ~7.3 of it just pulling images). It needs
+`python -m modal setup`
 (see [Modal auth](#local-setup-and-credentials) above) and a named Modal
 Secret `gymsiege-huggingface` supplying `HF_TOKEN`:
 
@@ -367,11 +373,65 @@ python -m modal secret create gymsiege-huggingface --from-dotenv <path-to-a-file
 ```
 
 Writes the verified snapshot Image ID to `results/modal_snapshot.json`.
-**This bakes the toolchain/image set — it does not yet run trials against
-it.** The Modal trial adapter (creating one per-trial Sandbox forked from
-this snapshot, applying secrets/lifetime/network policy, and running the
-actual CyberGym protocol against it) is not yet built; see
-[`TODO.md`](TODO.md#scoping-kernel-compatible-sandbox-support-target-cve-2026-23111_cos).
+
+**Trial adapter: `modal_sandbox_runner.py`.** Creates one per-trial
+`modal.Sandbox` restored from that Image ID, attaches secrets/network
+policy at creation, and runs the same `BuildAgent`/`Solver` from
+`solver_agent.py` that Daytona trials use — via `ModalSandboxAdapter`, a
+thin shim giving a raw `modal.Sandbox` the `.process.exec()` /
+`.update_network_settings()` shape `BuildAgent` expects, per
+`modal-docs/modal-virtualization.md`'s own "keep provider operations behind
+a small boundary" directive rather than forking `solver_agent.py` wholesale.
+It needs its own named Modal Secret supplying `LITELLM_MASTER_KEY` (same
+name, `gymsiege-litellm`, as the Daytona secret below — a separate secret
+store, same naming convention already used for `gymsiege-huggingface`):
+
+```bash
+python -m modal secret create gymsiege-litellm --from-dotenv <path-to-a-file-containing-only-LITELLM_MASTER_KEY=...>
+```
+
+Then run one trial directly. Sample production run, confirmed live
+2026-09-15 (~20s in `patch-only` mode for this task): `--output` saves the
+structured `TrialResult` JSON (not written by default otherwise), and `tee`
+keeps the full `INFO`/`WARNING` log lines that would otherwise only print
+to the terminal:
+
+```bash
+python modal_sandbox_runner.py --task freetype2/arvo_368 --mode patch-only \
+  --output results/modal_trial_freetype2_arvo_368.json \
+  2>&1 | tee results/modal_trial_freetype2_arvo_368.log
+```
+
+Not yet true of this adapter, unlike the Daytona path:
+- **Not wired into `orchestrator.py run`/`sweep`** — no `--provider modal`
+  flag exists yet; it's a standalone script today, the same relationship
+  `modal_snapshot_build.py` has to `snapshot_build.py`.
+- **No computer-use/research phase, no recording** — Modal Sandboxes expose
+  no GUI/VNC/accessibility-tree API, so every Modal trial reports
+  `research_mode="skipped"`.
+- **Telemetry is a best-effort cgroup/`df` probe, not `get_metrics()`** —
+  the Modal SDK exposes no resource-usage-history API, so `mem_used`/
+  `mem_total`/`disk_used` come from one in-sandbox shell probe rather than
+  Daytona's real time series. `orchestrator.py`'s OOM-threshold check still
+  works against it (same dict keys), just off a single sample instead of a
+  history.
+- **The network-isolated PoC re-detonation rides an alpha Modal API** —
+  `sandbox._experimental_set_outbound_network_policy(...)`, per
+  `modal-docs/modal-networking-security.md`'s "Dynamic policy limitations"
+  (Modal's `block_network=True` is create-time-only and can't be reopened,
+  so the trial sandbox is instead created with wide-open allowlists that
+  this private/underscore API narrows to `[]` and back). **Confirmed live
+  2026-09-15** for the block direction: a real trial's isolated
+  re-detonation container had its own `apt-get` calls hit a genuine network
+  wall (`Failed to fetch ... connection timed out`) — the cut is real, not
+  a no-op. The reopen call didn't raise either (the reported
+  `detonation_error` was the original apt-get failure, not some masking
+  exception from the `finally` block). Not yet proven across every
+  failure/success path, and this exposed a real gap it doesn't paper over:
+  some pinned tasks' build/test scripts assume network access mid-compile
+  (e.g. an `apt-get install` not baked into the pinned image), which the
+  isolation correctly refuses to allow — now classified as
+  `oracle_unavailable` rather than a misleading `failed`.
 
 **Do not run `snapshot_build.py` with no `--tasks-file`** — it defaults to
 `txt/tasks.pinned.txt`, the full set documented above as unable to fit, and
@@ -428,17 +488,21 @@ python snapshot_build.py --tasks-file txt/tasks.demo.txt
 python orchestrator.py run --tasks-file txt/tasks.demo.txt \
   --limit 2 --k 1 --modes patch-only --max-parallel 2
 
-# Full 20-task/74.76 GB toolchain+image bake on Modal instead of Daytona --
-# no --tasks-file needed, no disk-ceiling workaround. See the "Resolved via
-# Modal" storage-ceiling note above for setup (modal setup, the
-# gymsiege-huggingface Secret). This bakes the snapshot only; orchestrator.py
-# does not yet drive trials against Modal sandboxes (no trial adapter yet).
+# Full pinned-set (22-task/18-image) toolchain+image bake on Modal instead
+# of Daytona -- no --tasks-file needed, no disk-ceiling workaround. See the
+# "Resolved via Modal" storage-ceiling note above for setup (modal setup,
+# the gymsiege-huggingface Secret). Already run live and verified --
+# results/modal_snapshot.json holds a real Image ID; re-run only to rebake.
 python modal_snapshot_build.py
 
-# Publication run, target shape once the Modal trial adapter exists
-# (full 20-task pinned set x k=3 x both modes) -- not runnable today; the
-# image/toolchain side of the storage ceiling is resolved (via Modal, above),
-# but orchestrator.py still only drives Daytona trials.
+# One real trial against that Modal snapshot (needs the gymsiege-litellm
+# Modal Secret too -- see above). Standalone today, not yet wired into
+# orchestrator.py run/sweep.
+python modal_sandbox_runner.py --task freetype2/arvo_368 --mode patch-only
+
+# Publication run, target shape once orchestrator.py gains a Modal provider
+# path (full 22-task pinned set x k=3 x both modes) -- not runnable today;
+# orchestrator.py still only drives Daytona trials.
 python orchestrator.py run \
   --k 3 --modes e2e patch-only --max-parallel 8
 

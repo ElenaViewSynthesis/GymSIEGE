@@ -1233,8 +1233,14 @@ bugs the live runs surfaced: an apt-shipped `python3-pip` (and transitively
 let it fall back to gVisor and made the restored `dockerd` entrypoint die
 within seconds; and `snapshot_filesystem()` silently inheriting the SDK's 55s
 default timeout, which is fine at 10 GB but raises `ServiceError: Timeout
-expired` at 83 GB — now given an explicit 1800s budget. The full 20-task/
-74.76 GB bake and the trial adapter remain to be run/built.
+expired` at 83 GB — now given an explicit 1800s budget. **Confirmed live
+2026-09-15**: the full, un-limited pinned-set bake ran and passed too —
+`txt/tasks.pinned.txt` is actually **22** tasks across **18** images today
+(the "20-task/74.76 GB" figure above and elsewhere in this file predates
+the task list's growth to 22 and hasn't been swept), baking to 111.2 GB of
+Docker state plus 4.2 GB of dataset in ~12 minutes end to end, verified
+Image ID `im-01M2JYZ8F084H9CD0Q1CXVHF4S` in `results/modal_snapshot.json`.
+The trial adapter itself is now built (see below).
 
 **Blocker resolved, unfavorably**: Modal VM Sandboxes do not pass `/dev/kvm`
 into the guest. `modal_vm_kvm_probe.py`'s live run confirmed a real Linux
@@ -1248,6 +1254,45 @@ row: Modal remains usable, but any `kernel:`/kernelCTF task work must budget
 for TCG-only boot/exploit cycles (documented there as 10-50x slower than
 KVM-accelerated), not assume hardware acceleration, unless a
 higher-entitlement Modal tier exposes the device differently.
+
+**Trial adapter built and live-run**: `modal_sandbox_runner.py`
+implements the `Sandbox.create(image=Image.from_id(...))` restore step
+above, wraps the resulting `modal.Sandbox` in `ModalSandboxAdapter` (giving
+it the `.process.exec()`/`.update_network_settings()` shape
+`solver_agent.BuildAgent` already expects), and reuses that same
+`BuildAgent`/`Solver` unmodified for the actual build/PoC/patch/oracle work
+— `solver_agent.py` gained a `remote_dir` parameter (default unchanged for
+Daytona) specifically so this didn't require a second copy of that logic.
+`common.classify_trial_status` was likewise pulled out of
+`sandbox_runner.py` into a shared helper so both providers apply the same
+status cascade. Live-run 2026-09-15 against `freetype2/arvo_368`
+(patch-only): got through sandbox restore, docker readiness, the real
+`run_agent.py` S1-S4 loop (a real per-trial LiteLLM virtual key was
+self-generated, confirming `LITELLM_SECRET_KEY` — not the true master
+key — has `/key/generate` permission), and into the isolated
+re-detonation, which confirmed the network cut is real (the re-detonation
+container's own `apt-get` hit a genuine network wall) before failing on a
+task-specific gap: some pinned tasks' build/test scripts assume network
+access mid-compile, which the isolation correctly refuses rather than
+silently allowing — now classified `oracle_unavailable`, not a misleading
+`failed` (`common.looks_oracle_unavailable` gained the matching needles).
+Live testing also surfaced and fixed two real bugs: `BuildAgent.run` never
+created its own `--agent-output` directory (Daytona masked this by
+accident — `ResearchAgent.run`'s own `mkdir -p` always ran first and
+happened to create it; Modal has no research phase), and both runners'
+artifact downloads shared one `try/except`, so a missing patch silently
+skipped the log download that would explain why. Remaining gaps, in order
+of risk: (1) the network-isolated re-detonation's alpha
+`_experimental_set_outbound_network_policy` API
+(`modal-docs/modal-networking-security.md`'s "Dynamic policy
+limitations") is live-confirmed for this one failure path, not proven
+across every one; (2) telemetry is a best-effort cgroup/`df` probe run
+once over exec, not Daytona's real `get_metrics()` history, since the
+Modal SDK exposes no equivalent; (3) it's a standalone script (`python
+modal_sandbox_runner.py --task ... --mode ...`), not wired into
+`orchestrator.py run`/`sweep` — no `--provider` flag exists yet. Unit
+tests cover the adapter's exec/network/telemetry plumbing against fakes
+(`tests/test_core.py`); none of it has run against a real Modal sandbox.
 
 **Correction after reading ExploitGym's own kernel-task source**: the
 "new snapshot family / new compile-run harness / new success oracle"

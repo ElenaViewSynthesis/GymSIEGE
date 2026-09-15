@@ -1,9 +1,15 @@
 # Modal sandboxes and virtualization — infrastructure plan for kernelCTF support
 
 **Status: bake/fork pipeline implemented and live-verified against real
-Modal infrastructure (2- and 8-task runs, up to 83 GB baked Docker state);
-the full 20-task/74.76 GB bake and the trial adapter remain open. The
-nested-KVM question below is resolved: `/dev/kvm` is not available.** The
+Modal infrastructure — 2- and 8-task dev runs, then (2026-09-15) the full,
+un-limited pinned set: `txt/tasks.pinned.txt` is actually 22 tasks / 18
+images (not the 20/74.76 GB figure below, which predates the task list's
+growth to 22), baking to 111.2 GB of Docker state plus 4.2 GB of dataset.
+The trial adapter (`modal_sandbox_runner.py`) is now built too, though not
+yet live-run — see its own module docstring for the specific gaps still
+open (alpha network-policy API, best-effort telemetry, no orchestrator.py
+integration). The nested-KVM question below is resolved: `/dev/kvm` is not
+available.** The
 older version of this plan treated Modal's gVisor runtime as the only
 Sandbox foundation. Modal now documents a full VM runtime, enabled with
 `experimental_options={"vm_runtime": True}`, and recommends it for Docker
@@ -17,8 +23,8 @@ workloads. See
 1. **Bake the complete CyberGym toolchain once in a VM Sandbox.** Create a
    Sandbox with `experimental_options={"vm_runtime": True}` and run the
    equivalent of `snapshot_build.py`: install the sanitizer toolchain, clone
-   `cybergym-e2e`, download the pinned dataset payload, and pull all 16 Docker
-   images used by the 20-task set. Modal explicitly documents that VM
+   `cybergym-e2e`, download the pinned dataset payload, and pull all 18 Docker
+   images used by the 22-task pinned set. Modal explicitly documents that VM
    Sandbox filesystem snapshots include Docker state such as
    `/var/lib/docker`. This removes Daytona's 10 GiB capture ceiling from the
    design — confirmed live at 8 tasks/8 images, where `/var/lib/docker`
@@ -72,12 +78,27 @@ bugs the live runs surfaced:
 - `snapshot_filesystem()` was called with only `ttl=None`, silently
   inheriting the SDK's 55s default `timeout`. Fine at 10 GB, but it raised
   `ServiceError: Timeout expired` at 83 GB — now given an explicit 1800s
-  budget, well clear of the 74.76 GB full set.
+  budget, well clear of the real full-set bake (111.2 GB Docker state).
 
-This requires a Modal platform adapter around GYMSIEGE's existing bootstrap
-and trial protocol. Daytona and Modal expose different lifecycle APIs, so the
-implementation should keep provider operations behind a small boundary
-instead of treating their Sandbox objects as interchangeable.
+Confirmed live 2026-09-15 at the full, un-limited pinned set (22 tasks, 18
+images, ~12 minutes end to end) with no further fixes needed beyond the
+three above.
+
+This required a Modal platform adapter around GYMSIEGE's existing bootstrap
+and trial protocol. Daytona and Modal expose different lifecycle APIs, so
+`modal_sandbox_runner.py` keeps provider operations behind a small boundary
+(`ModalSandboxAdapter`) instead of treating their Sandbox objects as
+interchangeable — it reuses `solver_agent.py`'s `BuildAgent`/`Solver`
+unmodified for the actual build/PoC/patch/oracle work rather than forking
+that logic a second time. See its module docstring for what's ported vs.
+not (no computer-use/research phase, no `get_metrics()`, no `--provisioning
+fork`). Live-run 2026-09-15 against `freetype2/arvo_368`: got through
+sandbox restore, the real `run_agent.py` loop, and into the isolated
+re-detonation, which confirmed its alpha network-policy API genuinely cuts
+network (the re-detonation container's own `apt-get` hit a real wall)
+before failing on a task-specific gap — some pinned tasks' build/test
+scripts assume network mid-compile, which the isolation correctly refuses
+rather than silently allowing. Not yet proven across every failure path.
 
 ## Resolved: no nested KVM, but TCG works
 
