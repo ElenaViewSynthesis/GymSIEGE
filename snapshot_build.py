@@ -165,11 +165,17 @@ fi
 /usr/bin/docker info >/dev/null
 
 echo "[bootstrap] pip deps (mirrors cybergym-e2e's own requirements)"
-python3 -m pip install --break-system-packages --upgrade pip
+# --ignore-installed works around apt-shipped Python packages whose dist-info
+# lacks a RECORD file, which makes pip fail trying to uninstall them first
+# ("Cannot uninstall <pkg>, RECORD file not found... installed by debian").
+# Seen on Modal's ubuntu:24.04 registry image for both pip itself and
+# transitively-apt-installed deps like typing_extensions; harmless where the
+# bug isn't present, so applied to both installs below.
+python3 -m pip install --break-system-packages --upgrade --ignore-installed pip
 # Pinned, not floored, so the bake resolves the same versions as the local
 # venv. Must match requirements.txt's sandbox-mirrored block exactly; enforced
 # by tests/test_core.py rather than by this comment.
-python3 -m pip install --break-system-packages \
+python3 -m pip install --break-system-packages --ignore-installed \
     'httpx==0.28.1' 'tomli==2.4.1' 'tomli_w==1.2.0' 'anthropic==1.2.0' \
     'openai==3.6.0' 'boto3==1.43.84' 'huggingface_hub[hf_xet]==1.30.0' \
     'docker==7.2.0'
