@@ -232,19 +232,21 @@ dashboard.py  (local uvicorn, or --publish to a live Daytona preview link)
 | `modal_snapshot_build.py` | Bakes the full pinned CyberGym set in a Modal VM Sandbox, captures a non-expiring filesystem snapshot, verifies an independent fork, and persists the verified Modal Image ID in `results/modal_snapshot.json`. |
 | `exploitgym_snapshot_build.py` | Bakes `gymsiege-exploitgym` for the official userspace smoke tasks (harness, static agent runtimes, firewall/proxy deps). |
 | `solver_agent.py` | Defines `Solver`: separates Computer Use research work from headless CyberGym build/oracle work. |
-| `sandbox_runner.py` | Runs one CyberGym trial end-to-end — provisioning, secrets, recording, solver call, metrics capture, artifact download, TTL arm, and guaranteed deletion. |
-| `orchestrator.py` | CLI entrypoint: `run`, `sweep`, `provision-bench`, `exploitgym-run`, `reap` — owns the concurrency semaphore and fans trials out across the fleet. |
+| `sandbox_runner.py` | Runs one CyberGym trial end-to-end on Daytona — provisioning, secrets, recording, solver call, metrics capture, artifact download, TTL arm, and guaranteed deletion. |
+| `modal_sandbox_runner.py` | The Modal equivalent of `sandbox_runner.py` — restores a per-trial Sandbox from `modal_snapshot_build.py`'s Image ID, runs the same `solver_agent.py` build/oracle work via `ModalSandboxAdapter`, captures cgroup telemetry and artifacts. Standalone (`--task`/`--mode`), not yet wired into `orchestrator.py`. |
+| `orchestrator.py` | CLI entrypoint: `run`, `sweep`, `provision-bench`, `exploitgym-run`, `reap` — owns the concurrency semaphore and fans trials out across the fleet. Daytona only; Modal trials run through `modal_sandbox_runner.py` directly. |
 | `exploitgym_adapter.py` | Runs upstream ExploitGym inside a sandbox with mandatory firewall/proxy/hardened settings; delegates task construction and scoring to ExploitGym itself. |
 | `dashboard.py` | FastAPI app combining the CyberGym/ExploitGym leaderboards, concurrency curve, provisioning latency histogram, per-sandbox telemetry, and recording links. Runs locally or publishes to a live Daytona preview link. |
 | `configure_secrets.py` | Copies a local provider API key into a named Daytona organization Secret, once, without ever printing or committing the value. |
 | `HUGGINGFACE_HOSTS.md` | Records the exact Hugging Face Secret trust boundary and sanitized transfer hosts observed for the pinned dataset slice. |
 | `vnc-access.md` | Daytona VNC reference — dashboard access, `VNC_RESOLUTION`, `computer_use` start/stop/status, and the X11 packages a custom image must install. |
 | `FINDINGS.md` | Consolidated findings: the agent that refused to fabricate a result, the secret-proxy `Content-Length` defect, the 10 GiB image-baking ceiling, cost data, and what was disproven along the way. |
-| `txt/tasks.pinned.txt` | 20 pinned CyberGym tasks used by the main protocol. |
+| `txt/tasks.pinned.txt` | 22 pinned CyberGym tasks used by the main protocol. |
 | `txt/exploitgym_tasks.pinned.txt` | Ten userspace tasks from ExploitGym's official 20-task sample. |
 | `.env.defaults` | Non-secret, committed Daytona Secret *names* (never values). |
 | `tests/` | Unit tests for task parsing, pass@k/oracle aggregation, ExploitGym score parsing, and the non-disableable hardened command profile. |
 | `demo.sh` | End-to-end reproduction script: bake → smoke run → concurrency probe → dashboard publish. |
+| `run_modal_pinned_tasks.sh` | Loops `modal_sandbox_runner.py --mode patch-only` over every task in `txt/tasks.pinned.txt`, sequentially, writing each result/log to `results/modal_trials/`. Real cost per task; one task's failure doesn't stop the rest. |
 
 Generated/ignored at runtime (not committed): `.venv/`, `data/`, `artifacts/`, `recordings/*.mp4`, `results/*.json`, `results/exploitgym-runs/results.json` (template only is tracked).
 
@@ -412,6 +414,11 @@ python modal_sandbox_runner.py --task freetype2/arvo_368 --mode patch-only \
   --output results/modal_trial_freetype2_arvo_368.json \
   2>&1 | tee results/modal_trial_freetype2_arvo_368.log
 ```
+
+To run every task in `txt/tasks.pinned.txt` this way instead of one at a
+time, use `./run_modal_pinned_tasks.sh` — a thin sequential loop over the
+same command above (real cost per task, one task's failure doesn't stop
+the rest); see the [Files](#files) table below.
 
 Not yet true of this adapter, unlike the Daytona path:
 - **Not wired into `orchestrator.py run`/`sweep`** — no `--provider modal`
