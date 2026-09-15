@@ -321,15 +321,29 @@ async def _assess_screenshot(
 class BuildAgent:
     """process.exec layer: real compiles, the real ARVO sanitizer oracle, real PoC detonation."""
 
-    def __init__(self, sandbox, model: ModelConfig):
+    def __init__(self, sandbox, model: ModelConfig, remote_dir: str = CYBERGYM_REMOTE_DIR):
         self.sandbox = sandbox
         self.model = model
+        # Daytona's toolchain snapshot bakes the repo under the `daytona`
+        # user's home; Modal's bake (modal_snapshot_build.py) runs as root
+        # with no such user, so it lands at a different path. Parameterized
+        # rather than forked into a second BuildAgent copy.
+        self.remote_dir = remote_dir
 
     async def run(self, task: Task, mode: Mode, out_dir: str, timeout: int = AGENT_TIMEOUT_S) -> BuildResult:
         t0 = time.monotonic()
         log_path = f"{out_dir}/run_agent.log"
         cmd = (
-            f"cd {shlex.quote(CYBERGYM_REMOTE_DIR)} && "
+            f"cd {shlex.quote(self.remote_dir)} && "
+            # ResearchAgent.run's own `mkdir -p {out_dir}` (writing
+            # research_notes.json) happens to create this directory first on
+            # Daytona, since the research phase always runs before build --
+            # masking the fact that nothing here ever created it. Modal has
+            # no research phase, so `> {log_path}` failed outright (a shell
+            # redirect can't create its own parent dir) before python3 even
+            # started. Make BuildAgent responsible for its own output dir
+            # instead of depending on that ordering.
+            f"mkdir -p {shlex.quote(out_dir)} && "
             f"python3 scripts/run_agent.py {shlex.quote(task.path)} "
             f"--agent {shlex.quote(self.model.agent)} "
             f"--mode {shlex.quote(mode)} "
@@ -370,7 +384,7 @@ class BuildAgent:
         if mode == "e2e":
             poc_path = f"{run_dir}/output/poc.bin" if run_dir else None
         else:
-            poc_path = f"{CYBERGYM_REMOTE_DIR}/data/projects/{task.path}/poc.bin"
+            poc_path = f"{self.remote_dir}/data/projects/{task.path}/poc.bin"
 
         vul_code = fix_code = None
         network_isolated = False
@@ -430,9 +444,9 @@ class BuildAgent:
             await self.sandbox.update_network_settings(network_block_all=True)
             log.info("[%s] network cut — re-detonating PoC in isolation", task.path)
 
-            script = _isolated_oracle_script(task, mode, poc_path, patch_path)
+            script = _isolated_oracle_script(task, mode, poc_path, patch_path, self.remote_dir)
             r = await self.sandbox.process.exec(
-                f"cd {shlex.quote(CYBERGYM_REMOTE_DIR)} && python3 - <<'GYMSIEGE_PY'\n"
+                f"cd {shlex.quote(self.remote_dir)} && python3 - <<'GYMSIEGE_PY'\n"
                 f"{script}\nGYMSIEGE_PY",
                 timeout=7600,
             )
@@ -470,11 +484,13 @@ def _extract_cost_usd(usage: Any) -> Optional[float]:
     return None
 
 
-def _isolated_oracle_script(task: Task, mode: Mode, poc_path: str, patch_path: str) -> str:
+def _isolated_oracle_script(
+    task: Task, mode: Mode, poc_path: str, patch_path: str, remote_dir: str = CYBERGYM_REMOTE_DIR
+) -> str:
     """Build a sandbox-local helper that returns real raw run_poc exit codes.
 
     It reuses CyberGym's own workspace setup and validator, with a fresh nested
-    container per arm.  Because the outer Daytona runner's network is already
+    container per arm.  Because the outer runner's network is already
     blocked, missing images fail closed instead of being pulled during
     detonation.
     """
@@ -486,7 +502,7 @@ import traceback
 from pathlib import Path
 import tomli
 
-ROOT = Path({CYBERGYM_REMOTE_DIR!r})
+ROOT = Path({remote_dir!r})
 sys.path.insert(0, str(ROOT / "scripts"))
 from utils import cleanup_container, copy_to_container, exec_run, setup_workspace, start_container
 
@@ -560,9 +576,14 @@ print("GYMSIEGE_ORACLE_JSON:" + json.dumps(result))
 class Solver:
     """The single interface sandbox_runner.py talks to."""
 
-    def __init__(self, sandbox, model: Optional[ModelConfig] = None):
+    def __init__(
+        self,
+        sandbox,
+        model: Optional[ModelConfig] = None,
+        remote_dir: str = CYBERGYM_REMOTE_DIR,
+    ):
         self.research_agent = ResearchAgent(sandbox)
-        self.build_agent = BuildAgent(sandbox, model or ModelConfig())
+        self.build_agent = BuildAgent(sandbox, model or ModelConfig(), remote_dir=remote_dir)
 
     async def research(self, task: Task, out_dir: str) -> ResearchResult:
         return await self.research_agent.run(task, out_dir)

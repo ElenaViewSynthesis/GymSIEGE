@@ -12,10 +12,13 @@ from unittest.mock import AsyncMock, patch
 
 from daytona.common.errors import DaytonaTimeoutError
 
+import common
+import modal_sandbox_runner
 from common import (
     SNAPSHOT_NAME,
     Task,
     TrialResult,
+    classify_trial_status,
     restart_after_secret_attach,
     sandbox_secret_refs,
 )
@@ -44,6 +47,7 @@ from orchestrator import (
     cmd_reap,
 )
 from snapshot_build import BOOTSTRAP_SH, CLEANUP_AND_DISK_SH, CRASH_LOG_HELPERS_PY
+from solver_agent import BuildResult
 
 
 class TaskParsingTests(unittest.TestCase):
@@ -1203,6 +1207,183 @@ class SweepTimeoutTelemetryTests(unittest.IsolatedAsyncioTestCase):
         assert result is not None
         self.assertEqual(result.status, "timeout")
         self.assertTrue(_trial_hit_oom_threshold(result))
+
+
+def _build_result(**overrides) -> BuildResult:
+    base = dict(
+        ok=True,
+        status="unknown",
+        stage1=None,
+        stage2=None,
+        stage3=None,
+        stage4=None,
+        agent_success=True,
+        gt_success=True,
+        duration_s=1.0,
+        poc_path="/tmp/poc.bin",
+        patch_path="/tmp/fix.patch",
+        log_path="/tmp/run_agent.log",
+        vul_exit_code=1,
+        fix_exit_code=0,
+        network_isolated_detonation=True,
+        detonation_error=None,
+        solver_usage=None,
+        solver_cost_usd=None,
+    )
+    base.update(overrides)
+    return BuildResult(**base)
+
+
+class ClassifyTrialStatusTests(unittest.TestCase):
+    """common.classify_trial_status is the one status cascade both
+    sandbox_runner.py (Daytona) and modal_sandbox_runner.py (Modal) call --
+    covering it here means neither runner needs its own copy tested."""
+
+    def test_success(self) -> None:
+        self.assertEqual(classify_trial_status(_build_result()), "success")
+
+    def test_oracle_unavailable_from_detonation_error_needle(self) -> None:
+        build = _build_result(
+            network_isolated_detonation=False,
+            detonation_error="cannot connect to the docker daemon",
+        )
+        self.assertEqual(classify_trial_status(build), "oracle_unavailable")
+
+    def test_oracle_mismatch_when_isolated_reconfirm_disagrees(self) -> None:
+        build = _build_result(vul_exit_code=0)  # unpatched build didn't crash
+        self.assertEqual(classify_trial_status(build), "oracle_mismatch")
+
+    def test_other_vuln_when_ground_truth_poc_does_not_reproduce(self) -> None:
+        build = _build_result(gt_success=False)
+        self.assertEqual(classify_trial_status(build), "other_vuln")
+
+    def test_error_when_harness_never_produced_a_summary(self) -> None:
+        build = _build_result(agent_success=False, gt_success=False, ok=False)
+        self.assertEqual(classify_trial_status(build), "error")
+
+    def test_failed_when_summary_parsed_but_agent_did_not_succeed(self) -> None:
+        build = _build_result(agent_success=False, gt_success=False, ok=True)
+        self.assertEqual(classify_trial_status(build), "failed")
+
+
+class _Aio:
+    """Fakes Modal SDK's `method.aio()` async-twin convention for tests."""
+
+    def __init__(self, fn):
+        self.aio = fn
+
+
+class _FakeModalStream:
+    def __init__(self, data: str) -> None:
+        async def _read() -> str:
+            return data
+
+        self.read = _Aio(_read)
+
+
+class _FakeModalProcess:
+    def __init__(self, returncode: int, stdout: str = "", stderr: str = "") -> None:
+        self.returncode = returncode
+        self.stdout = _FakeModalStream(stdout)
+        self.stderr = _FakeModalStream(stderr)
+
+        async def _wait() -> int:
+            return returncode
+
+        self.wait = _Aio(_wait)
+
+
+class _FakeModalSandbox:
+    def __init__(self, process: _FakeModalProcess, policy_calls=None, has_policy_method=True) -> None:
+        self.object_id = "sb-fake"
+        self._policy_calls = policy_calls if policy_calls is not None else []
+
+        async def _exec(*args, **kwargs):
+            return process
+
+        self.exec = _Aio(_exec)
+
+        if has_policy_method:
+
+            def _set_policy(**kwargs):
+                self._policy_calls.append(kwargs)
+
+            self._experimental_set_outbound_network_policy = _set_policy
+
+
+class ModalProcessProxyTests(unittest.IsolatedAsyncioTestCase):
+    async def test_exec_combines_stdout_and_stderr_into_result(self) -> None:
+        process = _FakeModalProcess(0, stdout="GYMSIEGE_ORACLE_JSON:{}\n", stderr="warn\n")
+        sandbox = _FakeModalSandbox(process)
+        proxy = modal_sandbox_runner._ModalProcessProxy(sandbox)
+        r = await proxy.exec("true", timeout=5)
+        self.assertEqual(r.exit_code, 0)
+        self.assertIn("GYMSIEGE_ORACLE_JSON", r.result)
+        self.assertIn("warn", r.result)
+
+
+class ModalSandboxAdapterTests(unittest.IsolatedAsyncioTestCase):
+    async def test_update_network_settings_toggles_allowlists(self) -> None:
+        calls: list[dict] = []
+        sandbox = _FakeModalSandbox(_FakeModalProcess(0), policy_calls=calls)
+        adapter = modal_sandbox_runner.ModalSandboxAdapter(sandbox)
+
+        await adapter.update_network_settings(network_block_all=True)
+        self.assertEqual(
+            calls[-1], {"outbound_domain_allowlist": [], "outbound_cidr_allowlist": []}
+        )
+
+        await adapter.update_network_settings(network_block_all=False)
+        self.assertEqual(
+            calls[-1],
+            {"outbound_domain_allowlist": ["*"], "outbound_cidr_allowlist": ["0.0.0.0/0"]},
+        )
+
+    async def test_update_network_settings_fails_closed_without_experimental_api(self) -> None:
+        sandbox = _FakeModalSandbox(_FakeModalProcess(0), has_policy_method=False)
+        adapter = modal_sandbox_runner.ModalSandboxAdapter(sandbox)
+        with self.assertRaises(RuntimeError):
+            await adapter.update_network_settings(network_block_all=True)
+
+
+class ModalTelemetryProbeTests(unittest.IsolatedAsyncioTestCase):
+    async def test_parses_mem_and_disk_key_value_output(self) -> None:
+        process = _FakeModalProcess(0, stdout="mem_total=100\nmem_used=42\ndisk_used=999\n")
+        proxy = modal_sandbox_runner._ModalProcessProxy(_FakeModalSandbox(process))
+        telemetry = await modal_sandbox_runner._probe_telemetry(proxy, "curl/arvo_1")
+        self.assertEqual(telemetry["mem_total"], 100)
+        self.assertEqual(telemetry["mem_used"], 42)
+        self.assertEqual(telemetry["disk_used"], 999)
+        self.assertIn("timestamp", telemetry)
+
+    async def test_returns_empty_dict_on_nonzero_exit(self) -> None:
+        process = _FakeModalProcess(1, stdout="")
+        proxy = modal_sandbox_runner._ModalProcessProxy(_FakeModalSandbox(process))
+        telemetry = await modal_sandbox_runner._probe_telemetry(proxy, "curl/arvo_1")
+        self.assertEqual(telemetry, {})
+
+
+class ModalCreateSandboxTests(unittest.IsolatedAsyncioTestCase):
+    async def test_fork_provisioning_is_rejected(self) -> None:
+        # Modal has no live-sandbox fork API (unlike Daytona) -- this must
+        # fail loudly rather than silently falling back to some other mode.
+        with self.assertRaises(ValueError):
+            await modal_sandbox_runner._create_sandbox(object(), object(), "fork", "im-fake", [])
+
+
+class ModalSnapshotManifestTests(unittest.TestCase):
+    def test_missing_manifest_raises(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            missing = Path(tmp) / "modal_snapshot.json"
+            with self.assertRaises(RuntimeError):
+                modal_sandbox_runner.load_snapshot_manifest(missing)
+
+    def test_manifest_without_snapshot_image_id_raises(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            incomplete = Path(tmp) / "modal_snapshot.json"
+            incomplete.write_text(json.dumps({"provider": "modal"}), encoding="utf-8")
+            with self.assertRaises(RuntimeError):
+                modal_sandbox_runner.load_snapshot_manifest(incomplete)
 
 
 if __name__ == "__main__":
