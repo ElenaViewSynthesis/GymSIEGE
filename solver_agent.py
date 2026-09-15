@@ -101,6 +101,12 @@ class BuildResult:
     detonation_error: Optional[str] = None
     solver_usage: Optional[dict[str, Any]] = None
     solver_cost_usd: Optional[float] = None
+    # The actual agent CLI transcript (e.g. Codex's own stdout/reasoning),
+    # separate from run_agent.log (which only shows run_agent.py's own
+    # driver-level prints). Confirmed live 2026-09-15: a trial exited 1
+    # with "No patch generated!" and $0 spend, and run_agent.log alone gave
+    # no way to tell why -- the real answer only ever lived here.
+    trajectory_log_paths: list[str] = dataclasses.field(default_factory=list)
 
 
 class VisionPageAssessment(BaseModel):
@@ -333,6 +339,41 @@ class BuildAgent:
     async def run(self, task: Task, mode: Mode, out_dir: str, timeout: int = AGENT_TIMEOUT_S) -> BuildResult:
         t0 = time.monotonic()
         log_path = f"{out_dir}/run_agent.log"
+
+        # run_agent.py refuses to run at all without this (confirmed live
+        # 2026-09-15, both providers): --use-firewall defaults to True and it
+        # puts the agent container behind a Squid domain-allowlist proxy on
+        # its own internal Docker network (no direct internet at all) --
+        # cybergym-e2e's own upstream anti-exfiltration boundary, independent
+        # of and in addition to GYMSIEGE's own LiteLLM-only restriction.
+        # Nothing pre-started this before now, so every prior trial (on
+        # either provider) that got far enough to reach it has failed here.
+        # FirewallProxyManager.start() ("ensure the network and proxy
+        # container are running") is explicitly idempotent, so calling it
+        # unconditionally every trial is correct, not just a first-run thing.
+        # It needs `scripts/` on sys.path -- same reason the error message
+        # itself says "cd scripts && python -m firewall start". A failure
+        # here is a real infrastructure error, not a benign capability
+        # result, so it's raised rather than silently falling back to
+        # --no-firewall (which would remove that isolation boundary
+        # invisibly).
+        # FirewallProxyManager._ensure_proxy() calls docker-py's
+        # containers.create(), which never auto-pulls a missing image.
+        # `ubuntu/squid:latest` (proxy.py's PROXY_IMAGE) is therefore pulled
+        # by the shared snapshot bake and verified after restore. Keep this
+        # trial step network-independent so a build cannot silently depend on
+        # registry availability.
+        firewall_start = await self.sandbox.process.exec(
+            f"cd {shlex.quote(self.remote_dir)}/scripts && "
+            "python3 -m firewall start",
+            timeout=300,
+        )
+        if getattr(firewall_start, "exit_code", 1) != 0:
+            raise RuntimeError(
+                "failed to start CyberGym's firewall proxy (python -m firewall "
+                "start): " + (getattr(firewall_start, "result", "") or "")[-2000:]
+            )
+
         cmd = (
             f"cd {shlex.quote(self.remote_dir)} && "
             # ResearchAgent.run's own `mkdir -p {out_dir}` (writing
@@ -380,6 +421,17 @@ class BuildAgent:
         last = attempts[-1] if attempts else {}
 
         run_dir = Path(summary_file).parent if summary_file else None
+
+        trajectory_log_paths: list[str] = []
+        if run_dir:
+            traj_r = await self.sandbox.process.exec(
+                f"find {shlex.quote(str(run_dir))}/trajectory -maxdepth 1 "
+                "-name 'attempt_*.log' 2>/dev/null | sort"
+            )
+            trajectory_log_paths = [
+                line for line in (getattr(traj_r, "result", "") or "").splitlines() if line.strip()
+            ]
+
         patch_path = f"{run_dir}/output/fix.patch" if run_dir else None
         if mode == "e2e":
             poc_path = f"{run_dir}/output/poc.bin" if run_dir else None
@@ -424,6 +476,7 @@ class BuildAgent:
             detonation_error=detonation_error,
             solver_usage=usage if isinstance(usage, dict) else None,
             solver_cost_usd=solver_cost,
+            trajectory_log_paths=trajectory_log_paths,
         )
 
     async def _reconfirm_isolated(

@@ -259,6 +259,7 @@ class TrialResult:
     poc_local_path: Optional[str] = None
     patch_local_path: Optional[str] = None
     log_local_path: Optional[str] = None
+    trajectory_local_paths: Optional[list[str]] = None
 
     metrics_latest: Optional[dict[str, Any]] = None
     metrics_series: Optional[list[dict[str, Any]]] = None

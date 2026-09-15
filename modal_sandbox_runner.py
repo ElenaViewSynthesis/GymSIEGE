@@ -384,6 +384,17 @@ async def run_trial(
             result.log_local_path = str(local)
         except Exception as exc:
             log.warning("[%s] run_agent.log download failed: %s", task.path, exc)
+        if build.trajectory_log_paths:
+            local_traj: list[str] = []
+            for i, remote_traj in enumerate(build.trajectory_log_paths):
+                try:
+                    local = _artifact_path(task, mode, trial, f"trajectory_attempt_{i + 1}.log")
+                    await asyncio.to_thread(sandbox.filesystem.copy_to_local, remote_traj, str(local))
+                    local_traj.append(str(local))
+                except Exception as exc:
+                    log.warning("[%s] trajectory log %s download failed: %s", task.path, remote_traj, exc)
+            if local_traj:
+                result.trajectory_local_paths = local_traj
 
     except Exception as exc:
         result.status = "error"
