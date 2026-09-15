@@ -1212,28 +1212,42 @@ reachable from an unprivileged user namespace. Representative bug class,
 cleanest attack surface of the set — the reasoning for picking this one
 specifically over the highest-CVSS option is in `modal-docs/modal-virtualization.md`.
 
-**Concrete platform architecture, with its bake path implemented**: use Modal's documented VM
-Sandbox runtime (`experimental_options={"vm_runtime": True}`) for the bake,
-run `snapshot_build.py`'s toolchain/data bootstrap and pull all 16 images for
-the full 20-task set, then capture `sb.snapshot_filesystem(ttl=None)`. Modal
+**Concrete platform architecture, bake path implemented and live-verified**:
+use Modal's documented VM Sandbox runtime
+(`experimental_options={"vm_runtime": True}`) for the bake, run
+`snapshot_build.py`'s toolchain/data bootstrap and pull all 16 images for the
+full 20-task set, then capture `sb.snapshot_filesystem(ttl=None)`. Modal
 documents that VM Sandbox filesystem snapshots include Docker state. Each
 trial starts as an independent `Sandbox.create(image=Image.from_id(...))`
 restore from that snapshot; secrets, lifetime, and network policy are applied
 when the trial Sandbox is created. This removes Daytona's 10 GiB snapshot
-capture ceiling from the architecture. `modal_snapshot_build.py` now performs
+capture ceiling from the architecture. `modal_snapshot_build.py` performs
 that bake, verifies Docker and the selected image set in an independent fork,
-and only then writes the Image ID to `results/modal_snapshot.json`. A live
-Modal bake and the trial adapter remain to be completed and measured.
+and only then writes the Image ID to the manifest. Run live at `--limit 2`
+and `--limit 8` against real Modal infrastructure (up to 83 GB of baked
+Docker state) — bootstrap, image pull, content validation, cleanup, snapshot
+capture, and independent fork re-verification all passed, after fixing three
+bugs the live runs surfaced: an apt-shipped `python3-pip` (and transitively
+`typing_extensions`) missing pip's RECORD file, breaking `pip install
+--upgrade`; the fork-verification Sandbox missing `vm_runtime=True`, which
+let it fall back to gVisor and made the restored `dockerd` entrypoint die
+within seconds; and `snapshot_filesystem()` silently inheriting the SDK's 55s
+default timeout, which is fine at 10 GB but raises `ServiceError: Timeout
+expired` at 83 GB — now given an explicit 1800s budget. The full 20-task/
+74.76 GB bake and the trial adapter remain to be run/built.
 
-**One blocker remains unverified**: a real Linux kernel inside Modal's VM
-runtime does not imply nested KVM passthrough. Run the three-command spike in
-`modal-docs/modal-virtualization.md` in a VM Sandbox, then—if `/dev/kvm`
-exists—repeat it inside a Docker child launched with `--device /dev/kvm`.
-That two-layer check matches where ExploitGym's `KernelEvaluator` actually
-needs the device. The result still branches three ways: working KVM, slower
-TCG-only QEMU, or a separate KVM-capable provider for the kernel boot step.
-`modal_vm_kvm_probe.py` now automates this spike and guarantees Sandbox
-termination; its live execution remains unchecked.
+**Blocker resolved, unfavorably**: Modal VM Sandboxes do not pass `/dev/kvm`
+into the guest. `modal_vm_kvm_probe.py`'s live run confirmed a real Linux
+guest kernel (`Linux modal 6.12.8+`) and a working QEMU install, but
+`ls /dev/kvm` fails (`No such file or directory`), `-accel kvm` fails
+(`Could not access KVM kernel module`), and a nested Docker container
+predictably can't receive a device the host doesn't have either. Plain
+software-emulated QEMU (`-accel tcg`) does work. Per the three-way outcome
+table in `modal-docs/modal-virtualization.md`, this lands on the middle
+row: Modal remains usable, but any `kernel:`/kernelCTF task work must budget
+for TCG-only boot/exploit cycles (documented there as 10-50x slower than
+KVM-accelerated), not assume hardware acceleration, unless a
+higher-entitlement Modal tier exposes the device differently.
 
 **Correction after reading ExploitGym's own kernel-task source**: the
 "new snapshot family / new compile-run harness / new success oracle"
@@ -1250,9 +1264,9 @@ oracle (`/workspace/flag.txt` vs. an `expected_flag`, same
 gated specifically on kernel tasks being present, with a documented TCG
 fallback. None of that needs to be built.
 
-What GYMSIEGE's own code actually needs, once a KVM-capable sandbox
-exists: skip the two `user:`-only pre-flight stages
-(`challenge_image_pull`'s `--user-modes exp.hardened`,
+What GYMSIEGE's own code actually needs, now that Modal is confirmed
+TCG-only (no `/dev/kvm`, see above): skip the two `user:`-only pre-flight
+stages (`challenge_image_pull`'s `--user-modes exp.hardened`,
 `node_compatibility_probe`'s Node-runtime check) for `kernel:` tasks;
 drop `--user-modes exp.hardened` from the pull call for non-`user` task
 lists (`pull_images.py` already dispatches kernel images correctly on its
@@ -1261,11 +1275,11 @@ real kernelCTF target image sizes against sandbox disk budget before
 picking bake-vs-pull-per-trial (upstream publishes no size numbers; the
 existing 10 GiB Daytona disk cap that already forced `user:` images to
 pull-per-trial-not-bake is a GYMSIEGE-chosen parameter, not a platform
-limit, so this is a fresh measurement either way); and confirm `/dev/kvm`
-is real specifically at the point inside the sandbox where
-ExploitGym's own tooling runs (`KernelEvaluator` forwards it into the
-agent container automatically once it's visible there — GYMSIEGE doesn't
-need to write that passthrough itself). Time/cost budgeting per trial is
+limit, so this is a fresh measurement either way); and lean on
+`pre_run.py`'s existing documented TCG fallback (`KernelEvaluator` forwards
+whatever device state is visible into the agent container automatically —
+GYMSIEGE doesn't need to write that passthrough itself) rather than assuming
+KVM. Time/cost budgeting per trial is
 still real work — kernelCTF's own `stability_notes` (e.g. "7~8 times
 success per 10 times run") imply multiple boot/exploit cycles per
 attempt, and the controller has its own real constants to plan against

@@ -1,10 +1,13 @@
 # Modal sandboxes and virtualization — infrastructure plan for kernelCTF support
 
-**Status: architecture and bake/fork implementation are in place; live Modal
-verification and the trial adapter remain open.** The older version of this plan treated Modal's
-gVisor runtime as the only Sandbox foundation. Modal now documents a full VM
-runtime, enabled with `experimental_options={"vm_runtime": True}`, and
-recommends it for Docker workloads. See
+**Status: bake/fork pipeline implemented and live-verified against real
+Modal infrastructure (2- and 8-task runs, up to 83 GB baked Docker state);
+the full 20-task/74.76 GB bake and the trial adapter remain open. The
+nested-KVM question below is resolved: `/dev/kvm` is not available.** The
+older version of this plan treated Modal's gVisor runtime as the only
+Sandbox foundation. Modal now documents a full VM runtime, enabled with
+`experimental_options={"vm_runtime": True}`, and recommends it for Docker
+workloads. See
 [`modal-vm-sandboxes.md`](modal-vm-sandboxes.md),
 [`modal-snapshots.md`](modal-snapshots.md), and
 [`modal-sandboxes.md`](modal-sandboxes.md).
@@ -18,7 +21,8 @@ recommends it for Docker workloads. See
    images used by the 20-task set. Modal explicitly documents that VM
    Sandbox filesystem snapshots include Docker state such as
    `/var/lib/docker`. This removes Daytona's 10 GiB capture ceiling from the
-   design, subject to a real Modal bake measuring the resulting image size.
+   design — confirmed live at 8 tasks/8 images, where `/var/lib/docker`
+   alone reached 83 GB with 429 GB still free on the 512 GiB VM disk.
 2. **Capture a persistent filesystem snapshot.** Call
    `sb.snapshot_filesystem(ttl=None)` after the bootstrap and validation
    gates pass, persist the returned Image ID, then terminate the bake
@@ -51,48 +55,65 @@ The named Modal Secret `gymsiege-huggingface` must supply `HF_TOKEN`; select a
 different secret with `--hf-secret`. The manifest records the durable Image ID
 and exact task set for the future trial adapter.
 
+Run live at `--limit 2` and `--limit 8` (up to 83 GB of baked Docker state);
+every step — bootstrap, image pull, content validation, cleanup, snapshot
+capture, and independent fork re-verification — passed, after fixing three
+bugs the live runs surfaced:
+- An apt-shipped `python3-pip` (and transitively `typing_extensions`) on
+  Modal's `ubuntu:24.04` image ships without pip's RECORD file, so
+  `pip install --upgrade` fails trying to uninstall it first ("Cannot
+  uninstall X, RECORD file not found... installed by debian"). Fixed with
+  `--ignore-installed` on both `pip install` calls in `BOOTSTRAP_SH`.
+- The independent fork-verification Sandbox was created without
+  `vm_runtime=True`, so it silently fell back to gVisor; the restored
+  `dockerd` entrypoint couldn't start against the baked Docker state and the
+  whole Sandbox exited within seconds, surfacing only as an opaque
+  `NotFoundError: ...already shut down` on the next `sb.exec` call.
+- `snapshot_filesystem()` was called with only `ttl=None`, silently
+  inheriting the SDK's 55s default `timeout`. Fine at 10 GB, but it raised
+  `ServiceError: Timeout expired` at 83 GB — now given an explicit 1800s
+  budget, well clear of the 74.76 GB full set.
+
 This requires a Modal platform adapter around GYMSIEGE's existing bootstrap
 and trial protocol. Daytona and Modal expose different lifecycle APIs, so the
 implementation should keep provider operations behind a small boundary
 instead of treating their Sandbox objects as interchangeable.
 
-## Remaining blocker: nested KVM is still unverified
+## Resolved: no nested KVM, but TCG works
 
 A VM Sandbox gives GYMSIEGE a real Linux kernel and makes Docker a supported
-workload. It does not establish that Modal passes `/dev/kvm` into the guest,
-or that a Docker container started inside that guest can receive the device.
-kernelCTF needs that complete two-layer path. Re-run the verification spike
-specifically in a VM Sandbox:
-
-```bash
-# Inside a Sandbox created with experimental_options={"vm_runtime": True}:
-ls -la /dev/kvm 2>&1
-qemu-system-x86_64 --version 2>&1
-qemu-system-x86_64 -enable-kvm -nographic -kernel /dev/null 2>&1 | head -5
-```
-
-If `/dev/kvm` exists, start Docker in the VM Sandbox, run a child container
-with `--device /dev/kvm`, and repeat the QEMU probe inside that child. Seeing
-the node only in Modal's VM guest is insufficient because ExploitGym's
-`KernelEvaluator` forwards it into its own agent container from there.
-
-`modal_vm_kvm_probe.py` automates both layers without attaching benchmark
-secrets or launching an agent. It creates one VM Sandbox, checks KVM and TCG
-in the guest, repeats KVM inside a Docker child, writes
-`results/modal_vm_kvm_probe.json`, and terminates the Sandbox in `finally`.
-It requires a Modal Python SDK version with VM Sandbox support and configured
-Modal credentials:
+workload. It does not, by itself, establish that Modal passes `/dev/kvm`
+into the guest, or that a Docker container started inside that guest can
+receive the device. `modal_vm_kvm_probe.py` automates the full two-layer
+check — creates one VM Sandbox, checks KVM and TCG in the guest, repeats the
+KVM check inside a nested Docker container, writes
+`results/modal_vm_kvm_probe.json`, and terminates the Sandbox in `finally` —
+without attaching benchmark secrets or launching an agent:
 
 ```bash
 python modal_vm_kvm_probe.py
 ```
 
-Three possible outcomes, each with a different plan:
+**Run live. Result: `/dev/kvm` does not exist in the guest.** The Sandbox
+was a genuine VM (`uname -a` → `Linux modal 6.12.8+ #1 SMP ...`, not a
+gVisor container) and QEMU 8.2.2 was installed and runnable, but:
+- `ls -la /dev/kvm` → `No such file or directory`
+- `qemu-system-x86_64 -accel kvm ...` → `Could not access KVM kernel
+  module: No such file or directory`
+- a nested Docker container given `--device /dev/kvm:/dev/kvm` fails for the
+  same reason — the host guest has no such device to pass through
+- `qemu-system-x86_64 -accel tcg ...` (software-only emulation) **does**
+  work
+
+That matches the middle row of the three possible outcomes below — Modal
+remains usable for kernelCTF, but only at TCG speed, not KVM-accelerated,
+unless a higher-entitlement Modal tier exposes the device differently
+(unconfirmed; not tested here):
 
 | Outcome | Meaning | Plan |
 |---|---|---|
 | `/dev/kvm` works in the VM Sandbox and its nested Docker container | Modal exposes the complete device path ExploitGym needs | Proceed with Modal directly, full speed |
-| No `/dev/kvm`, but plain (TCG, software-only) QEMU works | No hardware acceleration, but exploits can still run — much slower | Proceed with Modal, budget for far longer `--timeout`/`--trial-timeout` per kernel-family task (QEMU TCG boot + exploit can be 10-50x slower than KVM-accelerated) |
+| **No `/dev/kvm`, but plain (TCG, software-only) QEMU works — confirmed live** | No hardware acceleration, but exploits can still run — much slower | Proceed with Modal, budget for far longer `--timeout`/`--trial-timeout` per kernel-family task (QEMU TCG boot + exploit can be 10-50x slower than KVM-accelerated) |
 | Neither works | The VM runtime cannot host the required QEMU path | Modal cannot host the actual kernel-boot step; see fallback below |
 
 ## Fallback if Modal genuinely can't run this
@@ -122,10 +143,10 @@ gated off for lack of implementation; it's a fully working third evaluator
 alongside `user:` and `v8:`, already exercised by ExploitGym's own test
 suite (`tests/server/test_controller.py`,
 `tests/evaluation/test_controller_secrets.py`). What follows replaces the
-original six-point list. The remaining `/dev/kvm` passthrough question above
-still stands — VM Sandboxes invalidate the old gVisor-only premise but do not
-answer whether nested KVM is available. This correction describes what
-GYMSIEGE needs once that device path is verified.
+original six-point list. The `/dev/kvm` passthrough question above is now
+resolved unfavorably — VM Sandboxes invalidate the old gVisor-only premise,
+but nested KVM is confirmed unavailable, so this correction describes what
+GYMSIEGE needs while budgeting for TCG-only kernel boots.
 
 ### What ExploitGym already provides, confirmed by reading the source
 
