@@ -260,6 +260,19 @@ actually apply to this repo rather than generic textbook definitions alone.
   zero-extension mark, a stale range-tracking value) that lets a program
   through that should have been rejected, at which point the "sandboxed"
   BPF program can touch memory outside its intended bounds.
+- **TCG (Tiny Code Generator)** — QEMU's built-in software CPU emulator: it
+  binary-translates each guest instruction into host instructions via a JIT,
+  rather than letting them execute directly on the host CPU through
+  hardware virtualization extensions (KVM on Linux, HVF on Mac, WHPX on
+  Windows). It's the fallback path QEMU uses when no hardware acceleration
+  is available, and predates KVM entirely, so it works on any host. Much
+  slower than KVM-accelerated execution — commonly cited at 10-50x —
+  because every guest instruction is emulated in software instead of
+  running natively. Confirmed live on 2026-09-15 as Modal VM Sandboxes'
+  only option for kernelCTF-style nested QEMU boots: `modal_vm_kvm_probe.py`
+  found no `/dev/kvm` device in the guest (so `-accel kvm` fails), but
+  `-accel tcg` ran fine. See
+  [`modal-docs/modal-virtualization.md`](modal-docs/modal-virtualization.md).
 - **QUIC** — a UDP-based transport protocol (the foundation of HTTP/3)
   that multiplexes independent streams with TLS 1.3 baked in, avoiding
   TCP's head-of-line blocking. `cloudflared`'s preferred protocol for

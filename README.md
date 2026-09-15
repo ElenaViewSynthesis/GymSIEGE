@@ -87,7 +87,7 @@ reliability run in `TODO.md` deliberately skips this task: repeating a zero
 that has already reproduced four times buys no information. It's a
 `nofuzz`-family CVE task, not ARVO-sourced, so it isn't in the table above.
 
-CyberGym also pins 12 ARVO tasks (`txt/tasks.pinned.txt`), but none are runnable until `gymsiege-toolchain` exists — see the storage-ceiling note further down.
+CyberGym also pins 12 ARVO tasks (`txt/tasks.pinned.txt`), but none are runnable on Daytona until `gymsiege-toolchain` exists there — see the storage-ceiling note further down (now resolved via Modal). The full 20-task pinned set bakes on Modal instead (`modal_snapshot_build.py`), which has no equivalent disk ceiling.
 
 ### CyberGym — start a LiteLLM gateway first
 
@@ -168,7 +168,7 @@ python orchestrator.py run --tasks-file txt/tasks.demo.txt \
 
 `--k 1 --modes patch-only` is deliberate: the defaults are `--k 3` over both modes, i.e. six trials per task. `--budget-usd` caps cumulative solver spend as a launch gate — in-flight trials still finish, so with `--max-parallel N` the total can overshoot by up to ~N trials.
 
-`txt/tasks.demo.txt` is three CyberGym tasks whose images fit the 10 GiB snapshot ceiling; the full 20-task pinned set needs 74.76 GB of images and cannot be captured at all ([daytonaio/daytona#5156](https://github.com/daytonaio/daytona/issues/5156)).
+`txt/tasks.demo.txt` is three CyberGym tasks whose images fit the 10 GiB snapshot ceiling; the full 20-task pinned set needs 74.76 GB of images and cannot be captured **on Daytona** at all ([daytonaio/daytona#5156](https://github.com/daytonaio/daytona/issues/5156)) — it bakes on Modal instead, see the storage-ceiling note below.
 
 ## Daytona adapter security and CLI
 
@@ -303,8 +303,9 @@ are task inputs in patch-only mode. See
 [`DAYTONA_HUGGINGFACE_EGRESS_ISSUE.md`](DAYTONA_HUGGINGFACE_EGRESS_ISSUE.md).
 
 **Storage ceiling — `gymsiege-toolchain` cannot be baked for the full pinned
-set right now.** This is a separate constraint from the `Content-Length`
-issue above, and it is a hard ceiling, not a bug to work around. Snapshot
+set on Daytona (resolved via Modal, below).** This is a separate constraint
+from the `Content-Length` issue above, and on Daytona it is a hard ceiling,
+not a bug to work around. Snapshot
 capture makes Daytona's sysbox runtime `rsync` the sandbox's entire
 `/var/lib/docker` back into the sandbox's own disk before it can pause and
 snapshot the container — and every sandbox on this account is capped at
@@ -323,20 +324,54 @@ terminal state and raises with the platform's `error_reason` if it lands in
 anything but `ACTIVE`, instead of trusting the sandbox-level return. Filed
 upstream as
 [daytonaio/daytona#5156](https://github.com/daytonaio/daytona/issues/5156).
-`gymsiege-toolchain` is therefore **absent** until either this account's
-per-sandbox disk quota is raised or the bake is redesigned to capture only
-the toolchain and dataset (~4 GiB, comfortable) and pull images per trial
-instead — the same pattern `gymsiege-exploitgym` already uses successfully.
-In the meantime, `txt/tasks.demo.txt` — `freetype2/arvo_368`,
-`libtpms/oss-fuzz_42537128`, `unit/oss-fuzz_42536363`, no two sharing a
-build image — is sized to fit and is the only pinned-style set that can
-currently be baked: ~5.7 GB of images plus ~1 GB OS/toolchain and ~0.5 GB
-dataset, ~8.7 GB of the 10 GiB total, leaving a ~1.5 GiB free-space floor.
-This is the set to actually bake `gymsiege-toolchain` from:
+`gymsiege-toolchain` is therefore **absent on Daytona** until either this
+account's per-sandbox disk quota is raised or the bake is redesigned to
+capture only the toolchain and dataset (~4 GiB, comfortable) and pull images
+per trial instead — the same pattern `gymsiege-exploitgym` already uses
+successfully. On Daytona specifically, `txt/tasks.demo.txt` —
+`freetype2/arvo_368`, `libtpms/oss-fuzz_42537128`, `unit/oss-fuzz_42536363`,
+no two sharing a build image — is sized to fit and is the only pinned-style
+set Daytona itself can bake: ~5.7 GB of images plus ~1 GB OS/toolchain and
+~0.5 GB dataset, ~8.7 GB of the 10 GiB total, leaving a ~1.5 GiB free-space
+floor. This is the set to actually bake `gymsiege-toolchain` from:
 
 ```bash
 python snapshot_build.py --tasks-file txt/tasks.demo.txt
 ```
+
+**Resolved via Modal, not by raising the Daytona quota.** Modal's VM
+Sandbox runtime (`experimental_options={"vm_runtime": True}`) caps sandbox
+disk at 512 GiB instead of Daytona's 10 GiB, and documents that VM Sandbox
+filesystem snapshots include Docker state — see
+[`modal-docs/modal-virtualization.md`](modal-docs/modal-virtualization.md).
+`modal_snapshot_build.py` bakes the toolchain, pulls all 16 pinned images,
+and captures a non-expiring filesystem snapshot (`ttl=None`), verified
+against an independent fork restored from it before the Image ID is ever
+written out — so a bake that merely *looked* like it captured isn't trusted
+blind. Validated live at `--limit 2` and `--limit 8` (up to 83 GB of baked
+`/var/lib/docker` state; the full 20-task set is 74.76 GB, comfortably
+inside the 512 GiB ceiling):
+
+```bash
+python modal_snapshot_build.py
+```
+
+This is a separate, one-time bake from `snapshot_build.py` above and can
+take a while (the full image pull dominates; the 8-task/83 GB validation
+run alone took ~5.5 minutes just to pull). It needs `python -m modal setup`
+(see [Modal auth](#local-setup-and-credentials) above) and a named Modal
+Secret `gymsiege-huggingface` supplying `HF_TOKEN`:
+
+```bash
+python -m modal secret create gymsiege-huggingface --from-dotenv <path-to-a-file-containing-only-HF_TOKEN=...>
+```
+
+Writes the verified snapshot Image ID to `results/modal_snapshot.json`.
+**This bakes the toolchain/image set — it does not yet run trials against
+it.** The Modal trial adapter (creating one per-trial Sandbox forked from
+this snapshot, applying secrets/lifetime/network policy, and running the
+actual CyberGym protocol against it) is not yet built; see
+[`TODO.md`](TODO.md#scoping-kernel-compatible-sandbox-support-target-cve-2026-23111_cos).
 
 **Do not run `snapshot_build.py` with no `--tasks-file`** — it defaults to
 `txt/tasks.pinned.txt`, the full set documented above as unable to fit, and
@@ -379,21 +414,31 @@ LITELLM_MASTER_KEY=...
 ## CyberGym-E2E protocol
 
 ```bash
-# One-time toolchain/data/image snapshot. --tasks-file is required: the
-# default txt/tasks.pinned.txt (20 tasks, 74.76 GB of images) cannot fit the
-# 10 GiB per-sandbox disk ceiling -- see the storage-ceiling note above.
+# One-time toolchain/data/image snapshot on Daytona. --tasks-file is
+# required: the default txt/tasks.pinned.txt (20 tasks, 74.76 GB of images)
+# cannot fit Daytona's 10 GiB per-sandbox disk ceiling -- see the
+# storage-ceiling note above.
 python snapshot_build.py --tasks-file txt/tasks.demo.txt
 
 # orchestrator.py run defaults --tasks-file to txt/tasks.pinned.txt (the full
-# set, not baked -- see above), so pass txt/tasks.demo.txt explicitly until the
-# storage ceiling is resolved.
+# set, not baked on Daytona -- see above), so pass txt/tasks.demo.txt
+# explicitly for a Daytona trial run.
 
-# Small real-oracle smoke run.
+# Small real-oracle smoke run (Daytona).
 python orchestrator.py run --tasks-file txt/tasks.demo.txt \
   --limit 2 --k 1 --modes patch-only --max-parallel 2
 
-# Publication run, target shape once the storage ceiling is resolved
-# (full 20-task pinned set x k=3 x both modes) -- not runnable today.
+# Full 20-task/74.76 GB toolchain+image bake on Modal instead of Daytona --
+# no --tasks-file needed, no disk-ceiling workaround. See the "Resolved via
+# Modal" storage-ceiling note above for setup (modal setup, the
+# gymsiege-huggingface Secret). This bakes the snapshot only; orchestrator.py
+# does not yet drive trials against Modal sandboxes (no trial adapter yet).
+python modal_snapshot_build.py
+
+# Publication run, target shape once the Modal trial adapter exists
+# (full 20-task pinned set x k=3 x both modes) -- not runnable today; the
+# image/toolchain side of the storage ceiling is resolved (via Modal, above),
+# but orchestrator.py still only drives Daytona trials.
 python orchestrator.py run \
   --k 3 --modes e2e patch-only --max-parallel 8
 
