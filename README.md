@@ -225,6 +225,7 @@ dashboard.py  (local uvicorn, or --publish to a live Daytona preview link)
 |---|---|
 | `common.py` | Shared config, env parsing, constants (`CONCURRENCY_LADDER`, snapshot names, secret name defaults), and JSON I/O helpers used by every entrypoint below. |
 | `snapshot_build.py` | Bakes `gymsiege-toolchain`: installs the sanitizer toolchain, clones CyberGym-E2E, pre-pulls Docker build images, snapshots the sandbox, and seeds a provisioning baseline sample. **The full 20-task pinned set cannot currently be captured** — see the storage-ceiling note below. `--tasks-file txt/tasks.demo.txt` bakes a 3-task set sized to fit. |
+| `modal_snapshot_build.py` | Bakes the full pinned CyberGym set in a Modal VM Sandbox, captures a non-expiring filesystem snapshot, verifies an independent fork, and persists the verified Modal Image ID in `results/modal_snapshot.json`. |
 | `exploitgym_snapshot_build.py` | Bakes `gymsiege-exploitgym` for the official userspace smoke tasks (harness, static agent runtimes, firewall/proxy deps). |
 | `solver_agent.py` | Defines `Solver`: separates Computer Use research work from headless CyberGym build/oracle work. |
 | `sandbox_runner.py` | Runs one CyberGym trial end-to-end — provisioning, secrets, recording, solver call, metrics capture, artifact download, TTL arm, and guaranteed deletion. |
@@ -267,6 +268,14 @@ DAYTONA_API_KEY=...
 OPENAI_API_KEY=...
 HF_TOKEN=...
 ```
+
+**Modal** (optional — only needed for the CyberGym-on-Modal work scoped in [`modal-docs/modal-virtualization.md`](modal-docs/modal-virtualization.md), working around Daytona's 10 GiB snapshot ceiling, see [`FINDINGS.md#3`](FINDINGS.md#3-image-pre-baking-is-impossible-on-a-10-gib-sandbox)) authenticates outside `.env.local`, via its own CLI flow rather than a Daytona-style Secret:
+
+```bash
+python -m modal setup
+```
+
+Opens a browser for OAuth login and writes a token to `~/.modal.toml` — never put a Modal token in `.env.local` or any tracked file.
 
 CyberGym's dataset is gated on Hugging Face. Request access to
 `sunblaze-ucb/cybergym-e2e`, create a read token in that approved account, and

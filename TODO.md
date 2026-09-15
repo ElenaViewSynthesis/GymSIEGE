@@ -1201,36 +1201,39 @@ The GNSS-spoofing analogy applies most directly here: an agent that accepts anot
 
 ### Scoping: kernel-compatible sandbox support (target `CVE-2026-23111_cos`)
 
-Full plan: [`modal/modal-virtualization.md`](modal/modal-virtualization.md), which
+Full plan: [`modal-docs/modal-virtualization.md`](modal-docs/modal-virtualization.md), which
 scopes the integration work against Modal's own Sandbox SDK reference
-([`modal/modal-sandboxes.md`](modal/modal-sandboxes.md)). Summary here so this section
+([`modal-docs/modal-sandboxes.md`](modal-docs/modal-sandboxes.md)). Summary here so this section
 stands on its own:
 
 **Target chosen**: `CVE-2026-23111_cos` — `nf_tables` (the subsystem behind
 12 of 27 kernelCTF tasks, see [`kernelctf-tasks.md`](kernelctf-tasks.md)),
 reachable from an unprivileged user namespace. Representative bug class,
 cleanest attack surface of the set — the reasoning for picking this one
-specifically over the highest-CVSS option is in `modal/modal-virtualization.md`.
+specifically over the highest-CVSS option is in `modal-docs/modal-virtualization.md`.
 
-**Not built yet, and one real blocker found while scoping it**: Modal
-(the intended platform for KVM/virtualization support per current planning)
-documents its own sandboxes as gVisor-based. gVisor is a userspace syscall
-reimplementation that, by default and by well-documented design, does not
-expose `/dev/kvm` — the same limitation that blocks Docker-in-Docker on
-Google Cloud Run (also gVisor-based). kernelCTF exploits boot a specific
-pinned kernel build via QEMU (confirmed via a real challenge's
-`metadata.json`: `"environment": "lts-6.1.36"`), which needs either KVM
-acceleration or, at minimum, permission to run QEMU in software (TCG) mode.
-**This has not been verified either way on Modal specifically** — it's a
-real risk surfaced by reading Modal's own docs, not yet confirmed by
-actually testing on the platform.
+**Concrete platform architecture, with its bake path implemented**: use Modal's documented VM
+Sandbox runtime (`experimental_options={"vm_runtime": True}`) for the bake,
+run `snapshot_build.py`'s toolchain/data bootstrap and pull all 16 images for
+the full 20-task set, then capture `sb.snapshot_filesystem(ttl=None)`. Modal
+documents that VM Sandbox filesystem snapshots include Docker state. Each
+trial starts as an independent `Sandbox.create(image=Image.from_id(...))`
+restore from that snapshot; secrets, lifetime, and network policy are applied
+when the trial Sandbox is created. This removes Daytona's 10 GiB snapshot
+capture ceiling from the architecture. `modal_snapshot_build.py` now performs
+that bake, verifies Docker and the selected image set in an independent fork,
+and only then writes the Image ID to `results/modal_snapshot.json`. A live
+Modal bake and the trial adapter remain to be completed and measured.
 
-**Before any integration work**: run the three-command verification spike
-in `modal/modal-virtualization.md` on an actual Modal sandbox. Its result
-branches the plan three ways (full KVM support / TCG-only-so-much-slower /
-genuinely blocked, needing a split architecture with a separate
-KVM-capable provider for just the boot step) — don't write integration
-code before this comes back.
+**One blocker remains unverified**: a real Linux kernel inside Modal's VM
+runtime does not imply nested KVM passthrough. Run the three-command spike in
+`modal-docs/modal-virtualization.md` in a VM Sandbox, then—if `/dev/kvm`
+exists—repeat it inside a Docker child launched with `--device /dev/kvm`.
+That two-layer check matches where ExploitGym's `KernelEvaluator` actually
+needs the device. The result still branches three ways: working KVM, slower
+TCG-only QEMU, or a separate KVM-capable provider for the kernel boot step.
+`modal_vm_kvm_probe.py` now automates this spike and guarantees Sandbox
+termination; its live execution remains unchecked.
 
 **Correction after reading ExploitGym's own kernel-task source**: the
 "new snapshot family / new compile-run harness / new success oracle"
@@ -1271,7 +1274,7 @@ attempt, and the controller has its own real constants to plan against
 `exploitgym_adapter.py`'s `load_exploitgym_tasks()` (already threaded
 through from `orchestrator.py`'s existing `--allow-non-userspace` flag)
 remains the correct hook point — no new CLI surface needed. Full
-breakdown with file/line references: `modal/modal-virtualization.md`.
+breakdown with file/line references: `modal-docs/modal-virtualization.md`.
 
 ## Definition of the next safe checkpoint
 

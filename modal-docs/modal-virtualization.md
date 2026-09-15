@@ -1,78 +1,99 @@
 # Modal sandboxes and virtualization — infrastructure plan for kernelCTF support
 
-**Status: planned, not built.** Nothing in this file is implemented. Written
-to scope what running `kernel:kernelctf/*` tasks (see
-[`kernelctf-tasks.md`](kernelctf-tasks.md)) would actually require if Modal
-becomes the platform for it, and to record one real, verified blocker found
-while scoping this — not glossed over just because it complicates the plan.
-See [`modal-sandboxes.md`](modal-sandboxes.md) for Modal's own Sandbox SDK
-reference (lifecycle, config, custom images) — the actual API surface any
-of this would be built against.
+**Status: architecture and bake/fork implementation are in place; live Modal
+verification and the trial adapter remain open.** The older version of this plan treated Modal's
+gVisor runtime as the only Sandbox foundation. Modal now documents a full VM
+runtime, enabled with `experimental_options={"vm_runtime": True}`, and
+recommends it for Docker workloads. See
+[`modal-vm-sandboxes.md`](modal-vm-sandboxes.md),
+[`modal-snapshots.md`](modal-snapshots.md), and
+[`modal-sandboxes.md`](modal-sandboxes.md).
 
-## The blocker, found and verified before writing the rest of this plan
+## Concrete GYMSIEGE architecture
 
-**Modal's own security docs state it uses gVisor** for sandboxing
-("Compute jobs at Modal are containerized and virtualized using gVisor, the
-sandboxing technology developed at Google and used in Google Cloud Run and
-GKE" — `modal.com/docs/guide/security`).
+1. **Bake the complete CyberGym toolchain once in a VM Sandbox.** Create a
+   Sandbox with `experimental_options={"vm_runtime": True}` and run the
+   equivalent of `snapshot_build.py`: install the sanitizer toolchain, clone
+   `cybergym-e2e`, download the pinned dataset payload, and pull all 16 Docker
+   images used by the 20-task set. Modal explicitly documents that VM
+   Sandbox filesystem snapshots include Docker state such as
+   `/var/lib/docker`. This removes Daytona's 10 GiB capture ceiling from the
+   design, subject to a real Modal bake measuring the resulting image size.
+2. **Capture a persistent filesystem snapshot.** Call
+   `sb.snapshot_filesystem(ttl=None)` after the bootstrap and validation
+   gates pass, persist the returned Image ID, then terminate the bake
+   Sandbox. `ttl=None` is deliberate: filesystem snapshots otherwise expire
+   after 30 days, which is too easy to mistake for a durable named toolchain
+   snapshot.
+3. **Fork one independent Sandbox per trial.** Rehydrate the snapshot with
+   `modal.Image.from_id(snapshot_id)` and pass it as `image=` to each
+   `modal.Sandbox.create(...)`. Modal's filesystem-snapshot "Forking"
+   contract says every Sandbox starts from an identical, independent copy.
+   This is the Modal equivalent of Daytona create-from-snapshot restore.
+4. **Apply trial controls when each Sandbox is created.** Attach Modal Secret
+   objects by reference, set the trial lifetime, and configure
+   `block_network` or an outbound allowlist. Run commands through `sb.exec`
+   and terminate every trial in `finally`. These controls work independently
+   of the VM runtime; the bake needs the VM foundation for reliable Docker
+   behavior and for snapshotting Docker state.
 
-gVisor is a **userspace reimplementation of the Linux syscall surface** —
-its whole security model is intercepting syscalls in a sandboxed Go process
-instead of letting them reach the real host kernel. Two consequences that
-matter directly here:
-
-1. **gVisor does not expose `/dev/kvm` or nested virtualization by
-   default.** This is a well-known, widely-documented limitation — it's the
-   same reason Google Cloud Run (also gVisor-based) can't run
-   Docker-in-Docker or VM-based workloads without extra configuration.
-   kernelCTF exploits need to boot an actual pinned kernel build (see
-   `metadata.json`'s `"environment": "lts-6.1.36"` field, confirmed on a
-   real challenge) via QEMU — that needs either KVM hardware acceleration
-   or, at minimum, permission to run QEMU in software-emulation (TCG) mode.
-2. **Even if QEMU could run, the target is gVisor's own reimplemented
-   syscall surface, not upstream Linux** — irrelevant here specifically
-   because the *exploit itself* boots its own kernel inside QEMU rather than
-   attacking the host kernel directly, so this second point is less of a
-   blocker than the first. Worth stating for completeness, not being lazily
-   thorough.
-
-**This directly contradicts the "Modal handles KVM/hardware virtualization"
-premise as a plug-and-play assumption.** It doesn't mean Modal is wrong to
-use — it means the plan needs an explicit verification step and a fallback,
-not blind confidence it'll just work.
-
-A second, independent data point pointing the same direction:
-[`modal-sandboxes.md`](modal-sandboxes.md) is Modal's own `Sandbox.create`
-API reference, and its full "Configuration" section (Images, Volumes,
-secrets, custom images, readiness probes, tagging) documents no
-`devices=`-style parameter or any other device-passthrough mechanism for a
-Sandbox. That's not proof `/dev/kvm` is unreachable — the SDK reference
-for creating a Sandbox simply not mentioning device passthrough is weaker
-evidence than the security page's explicit gVisor statement above — but it
-doesn't contradict the blocker either, and it's one more reason this needs
-the verification spike below rather than being assumed away either
-direction.
-
-## Required verification spike, before any real integration work
-
-Before committing engineering time to a Modal-based kernelCTF harness, run
-this cheaply, using `Sandbox.create` + `sb.exec` exactly as documented in
-[`modal-sandboxes.md`](modal-sandboxes.md):
+`modal_snapshot_build.py` implements steps 1-3. It reuses the existing
+task-scoped bootstrap and image resolution, creates the bake environment as a
+Modal VM Sandbox, snapshots with `ttl=None`, and restores a separate regular
+Sandbox from `modal.Image.from_id(...)`. The script verifies Docker and every
+selected task image in that fork before writing `results/modal_snapshot.json`:
 
 ```bash
-# Inside an actual Modal sandbox/container:
+python modal_snapshot_build.py
+```
+
+The named Modal Secret `gymsiege-huggingface` must supply `HF_TOKEN`; select a
+different secret with `--hf-secret`. The manifest records the durable Image ID
+and exact task set for the future trial adapter.
+
+This requires a Modal platform adapter around GYMSIEGE's existing bootstrap
+and trial protocol. Daytona and Modal expose different lifecycle APIs, so the
+implementation should keep provider operations behind a small boundary
+instead of treating their Sandbox objects as interchangeable.
+
+## Remaining blocker: nested KVM is still unverified
+
+A VM Sandbox gives GYMSIEGE a real Linux kernel and makes Docker a supported
+workload. It does not establish that Modal passes `/dev/kvm` into the guest,
+or that a Docker container started inside that guest can receive the device.
+kernelCTF needs that complete two-layer path. Re-run the verification spike
+specifically in a VM Sandbox:
+
+```bash
+# Inside a Sandbox created with experimental_options={"vm_runtime": True}:
 ls -la /dev/kvm 2>&1
 qemu-system-x86_64 --version 2>&1
 qemu-system-x86_64 -enable-kvm -nographic -kernel /dev/null 2>&1 | head -5
+```
+
+If `/dev/kvm` exists, start Docker in the VM Sandbox, run a child container
+with `--device /dev/kvm`, and repeat the QEMU probe inside that child. Seeing
+the node only in Modal's VM guest is insufficient because ExploitGym's
+`KernelEvaluator` forwards it into its own agent container from there.
+
+`modal_vm_kvm_probe.py` automates both layers without attaching benchmark
+secrets or launching an agent. It creates one VM Sandbox, checks KVM and TCG
+in the guest, repeats KVM inside a Docker child, writes
+`results/modal_vm_kvm_probe.json`, and terminates the Sandbox in `finally`.
+It requires a Modal Python SDK version with VM Sandbox support and configured
+Modal credentials:
+
+```bash
+python modal_vm_kvm_probe.py
 ```
 
 Three possible outcomes, each with a different plan:
 
 | Outcome | Meaning | Plan |
 |---|---|---|
-| `/dev/kvm` present, KVM-accelerated QEMU boots | gVisor's default restriction doesn't apply to this Modal tier/config | Proceed with Modal directly, full speed |
+| `/dev/kvm` works in the VM Sandbox and its nested Docker container | Modal exposes the complete device path ExploitGym needs | Proceed with Modal directly, full speed |
 | No `/dev/kvm`, but plain (TCG, software-only) QEMU works | No hardware acceleration, but exploits can still run — much slower | Proceed with Modal, budget for far longer `--timeout`/`--trial-timeout` per kernel-family task (QEMU TCG boot + exploit can be 10-50x slower than KVM-accelerated) |
-| Neither works | gVisor blocks QEMU entirely, matching the documented limitation | Modal cannot host the actual kernel-boot step; see fallback below |
+| Neither works | The VM runtime cannot host the required QEMU path | Modal cannot host the actual kernel-boot step; see fallback below |
 
 ## Fallback if Modal genuinely can't run this
 
@@ -101,10 +122,10 @@ gated off for lack of implementation; it's a fully working third evaluator
 alongside `user:` and `v8:`, already exercised by ExploitGym's own test
 suite (`tests/server/test_controller.py`,
 `tests/evaluation/test_controller_secrets.py`). What follows replaces the
-original six-point list. The gVisor/`/dev/kvm` blocker above still stands
-as written — this correction is about what GYMSIEGE needs to build *once
-a working KVM-capable sandbox exists*, which is now the user's side to
-supply ("i will provide the modal sandbox setup").
+original six-point list. The remaining `/dev/kvm` passthrough question above
+still stands — VM Sandboxes invalidate the old gVisor-only premise but do not
+answer whether nested KVM is available. This correction describes what
+GYMSIEGE needs once that device path is verified.
 
 ### What ExploitGym already provides, confirmed by reading the source
 
@@ -238,10 +259,11 @@ upstream harness, not new-harness construction:
 
 ### What's explicitly *not* needed, correcting the original plan below
 
-- No new snapshot/image family or bake path needs to be *designed* — the
-  existing per-trial-pull pattern GYMSIEGE already uses for `user:`
-  images extends to `kernel:` images via the same `pull_images.py`, pending
-  only the size due-diligence in point 5 above.
+- No kernel-specific ExploitGym snapshot format is needed. The new Modal VM
+  filesystem snapshot is a provider-level replacement for GYMSIEGE's
+  Daytona snapshot and can contain Docker state. Whether kernel target
+  images join that bake or remain per-trial pulls still depends on their
+  measured size and update cadence.
 - No exploit build/run harness needs to be written — the agent compiles
   and runs its exploit *inside the QEMU VM itself*, over the serial
   console connection `KernelEvaluator`/the controller already establish.

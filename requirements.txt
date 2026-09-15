@@ -10,6 +10,15 @@
 # incomparable across the paper.
 daytona==0.207.0
 
+# The Modal SDK, same reasoning as Daytona above: it will be the client
+# whose provisioning/cleanup/snapshot behavior a CyberGym-on-Modal run
+# measures (see FINDINGS.md#3 -- Daytona's 10 GiB snapshot ceiling can't
+# hold the 20-task pinned set's 74.76 GB; Modal's VM Sandboxes cap at
+# 512 GiB instead, per modal-docs/modal-vm-sandboxes.md). Pinned exactly
+# for the same reason: an unpinned floor resolving to a newer SDK mid-run
+# would make provisioning/snapshot measurements incomparable.
+modal==1.5.5
+
 # Presentation layer only (local dashboard). Floored deliberately: version
 # drift here changes how results are displayed, never what they are.
 fastapi>=0.115.0
