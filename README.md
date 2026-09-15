@@ -11,16 +11,24 @@ Every trial runs inside a real, disposable Daytona sandbox — nothing here is s
 
 ## Quick start
 
+**Activate the venv first** (one-time creation in [Local setup and credentials](#local-setup-and-credentials) if you haven't already):
+
+```bash
+source .venv/bin/activate
+```
+
+Every command below assumes this — plain `python` resolves to the venv, no `.venv/bin/` prefix needed. Run `deactivate` to leave it.
+
 Two demo runs. **ExploitGym works with only an OpenAI key; CyberGym additionally needs a LiteLLM gateway** (see below for why).
 
-For every command in this README collected into one run-ordered list — including the exact venv path and why it must run from a **WSL terminal**, not native Windows PowerShell/Git-Bash — see [`EXPERIMENTS.md`](EXPERIMENTS.md).
+For every command in this README collected into one run-ordered list — including why it must run from a **WSL terminal**, not native Windows PowerShell/Git-Bash — see [`EXPERIMENTS.md`](EXPERIMENTS.md).
 
 ### ExploitGym — runs today
 
 Needs `DAYTONA_API_KEY` and the `gymsiege-openai` Daytona Secret. Budget is enforced per task by ExploitGym's own in-sandbox proxy.
 
 ```bash
-.venv/bin/python orchestrator.py exploitgym-run \
+python orchestrator.py exploitgym-run \
     --task user:nofuzz/CVE-2021-32132 --k 1 --budget-usd 3
 ```
 
@@ -116,7 +124,7 @@ Then add your OpenAI key as the upstream credential in the LiteLLM UI, define a 
 
 ```bash
 # Copy the LiteLLM master key into the Daytona vault (never printed, never committed)
-.venv/bin/python configure_secrets.py litellm
+python configure_secrets.py litellm
 
 # In .env.local — must be reachable FROM A SANDBOX, not just from your laptop
 LITELLM_BASE_URL=https://<your-gateway-host>:4000
@@ -125,7 +133,7 @@ LITELLM_BASE_URL=https://<your-gateway-host>:4000
 **If the `gymsiege-litellm` secret already exists, that command is a silent no-op** — confirmed live 2026-09-14: it printed `Reusing existing Daytona organization secret: gymsiege-litellm` and left the vault's stored key untouched, even though `.env.local`'s `LITELLM_MASTER_KEY` had since changed (e.g. after recreating the gateway's compose stack). Every sandbox kept getting the stale key, causing every trial to fail with `401 Unauthorized` on `/key/generate` — a gateway/tunnel problem, until it wasn't. Whenever the gateway's master key changes, re-run with `--replace` to actually push the new value:
 
 ```bash
-.venv/bin/python configure_secrets.py litellm --replace
+python configure_secrets.py litellm --replace
 ```
 
 **`http://localhost:4000` will not work.** `sandbox_runner.py` copies `LITELLM_BASE_URL` verbatim into the sandbox, where `localhost` is the sandbox's own loopback. The gateway must be on a host the sandbox can reach — a public deployment, or a tunnel (`cloudflared`, `ngrok`) in front of your local container. A `trycloudflare.com` **quick tunnel** works but is ephemeral and has returned intermittent `502 Bad Gateway` on the very first CyberGym network call — see [`FINDINGS.md#10`](FINDINGS.md#10-the-litellm-gateway-tunnel-intermittently-502s-on-cybergyms-very-first-network-call-before-any-model-or-oracle-engagement); a named `cloudflared` tunnel is more durable if this recurs.
@@ -152,7 +160,7 @@ Both values come from `.env.local` — never hardcode the key.
 Once that resolves:
 
 ```bash
-.venv/bin/python orchestrator.py run --tasks-file tasks.demo.txt \
+python orchestrator.py run --tasks-file tasks.demo.txt \
     --k 1 --modes patch-only --max-parallel 1 --budget-usd 12 2>&1 | tee run.log
 ```
 
@@ -246,16 +254,11 @@ Generated/ignored at runtime (not committed): `.venv/`, `data/`, `artifacts/`, `
 
 ```bash
 python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt
+source .venv/bin/activate
+python -m pip install -r requirements.txt
 ```
 
-**Every command in this README is written with the explicit `.venv/bin/python` prefix** so it's copy-pasteable in a fresh terminal with no setup step beyond the two lines above. If you'd rather activate the venv once per shell instead:
-
-```bash
-source .venv/bin/activate   # then drop the .venv/bin/ prefix -- plain `python` resolves to the venv
-...
-deactivate                  # when done
-```
+Every command in this README assumes the venv is activated in your current shell (plain `python` resolves to it) — run `deactivate` when you're done. See [Activate the venv](#quick-start) at the top for the same instruction repeated where you'll actually need it first.
 
 Developer-local values belong in the git-ignored `.env.local`:
 
@@ -323,7 +326,7 @@ dataset, ~8.7 GB of the 10 GiB total, leaving a ~1.5 GiB free-space floor.
 This is the set to actually bake `gymsiege-toolchain` from:
 
 ```bash
-.venv/bin/python snapshot_build.py --tasks-file tasks.demo.txt
+python snapshot_build.py --tasks-file tasks.demo.txt
 ```
 
 **Do not run `snapshot_build.py` with no `--tasks-file`** — it defaults to
@@ -335,7 +338,7 @@ ranking and [`FINDINGS.md`](FINDINGS.md) for the complete investigation.
 To validate a bootstrap change without spending time on a real bake:
 
 ```bash
-.venv/bin/python snapshot_build.py --limit 3 --no-snapshot
+python snapshot_build.py --limit 3 --no-snapshot
 ```
 
 `--limit` refuses to publish under the canonical snapshot name, so a truncated
@@ -344,8 +347,8 @@ bake cannot be mistaken for a complete one.
 Non-secret vault *names* are committed in `.env.defaults`. Copy local provider values into Daytona's organization vault once:
 
 ```bash
-.venv/bin/python configure_secrets.py openai
-.venv/bin/python configure_secrets.py huggingface
+python configure_secrets.py openai
+python configure_secrets.py huggingface
 ```
 
 Existing secrets are reused; pass `--replace` only when deliberately rotating a value. Sandboxes receive mappings such as `OPENAI_API_KEY -> gymsiege-openai` through `update_secrets` — plaintext values are never placed in sandbox-create parameters or logs.
@@ -353,7 +356,7 @@ Because `--replace` also applies a provider's current host trust boundary, rerun
 the following after `configure_secrets.py` changes its Hugging Face host list:
 
 ```bash
-.venv/bin/python configure_secrets.py huggingface --replace
+python configure_secrets.py huggingface --replace
 ```
 
 CyberGym upstream doesn't currently accept a direct OpenAI provider the way ExploitGym does. This experiment fixes the runtime to Codex and routes its GPT model through a LiteLLM deployment:
@@ -370,24 +373,24 @@ LITELLM_MASTER_KEY=...
 # One-time toolchain/data/image snapshot. --tasks-file is required: the
 # default tasks.pinned.txt (20 tasks, 74.76 GB of images) cannot fit the
 # 10 GiB per-sandbox disk ceiling -- see the storage-ceiling note above.
-.venv/bin/python snapshot_build.py --tasks-file tasks.demo.txt
+python snapshot_build.py --tasks-file tasks.demo.txt
 
 # orchestrator.py run defaults --tasks-file to tasks.pinned.txt (the full
 # set, not baked -- see above), so pass tasks.demo.txt explicitly until the
 # storage ceiling is resolved.
 
 # Small real-oracle smoke run.
-.venv/bin/python orchestrator.py run --tasks-file tasks.demo.txt \
+python orchestrator.py run --tasks-file tasks.demo.txt \
   --limit 2 --k 1 --modes patch-only --max-parallel 2
 
 # Publication run, target shape once the storage ceiling is resolved
 # (full 20-task pinned set x k=3 x both modes) -- not runnable today.
-.venv/bin/python orchestrator.py run \
+python orchestrator.py run \
   --k 3 --modes e2e patch-only --max-parallel 8
 
 # Infrastructure experiments.
-.venv/bin/python orchestrator.py provision-bench --samples 10
-.venv/bin/python orchestrator.py sweep --levels 1 2 4 8 16 32
+python orchestrator.py provision-bench --samples 10
+python orchestrator.py sweep --levels 1 2 4 8 16 32
 ```
 
 The upstream agent first performs its normal network-attached LLM loop. After it freezes `poc.bin` and `fix.patch`, GYMSIEGE calls `update_network_settings(network_block_all=True)` and independently re-runs the real vulnerable/fixed sanitizer stages. Only a nonzero vulnerable exit plus a zero fixed exit, under this isolated confirmation, can become `status=success`.
@@ -406,7 +409,7 @@ ExploitGym resolves them in `scripts/setup/pull_images.py` from each task's
 # Preflight: must report 0 sandboxes before spending anything. A stray
 # leftover sandbox holds capacity against the 10 GiB organization-wide
 # ceiling and will slow or fail every restore below.
-.venv/bin/python orchestrator.py reap --dry-run
+python orchestrator.py reap --dry-run
 
 # If that reports a stray sandbox, do NOT expect plain `reap` to clear it --
 # a sandbox in an ERROR/CREATING state refuses ordinary delete() ("Sandbox
@@ -420,14 +423,14 @@ ExploitGym resolves them in `scripts/setup/pull_images.py` from each task's
 # legitimately be running.
 
 # One-time public harness/runtime snapshot. Hardened task images are pulled per trial.
-.venv/bin/python exploitgym_snapshot_build.py
+python exploitgym_snapshot_build.py
 
 # Diagnostic rerun of the previously stalled task. --timeout raised to 3h
 # (see long-arvo-tasks.md) given the unexplained 70+ minute stall; TTL raised
 # to match so it doesn't undercut the new --trial-timeout.
 export GYMSIEGE_TTL_MIN=240
 
-PYTHONUNBUFFERED=1 .venv/bin/python orchestrator.py exploitgym-run \
+PYTHONUNBUFFERED=1 python orchestrator.py exploitgym-run \
   --task user:cybergym/arvo_66311 \
   --k 1 --max-parallel 1 \
   --agent codex --model gpt-5.6-luna \
@@ -445,8 +448,8 @@ unset GYMSIEGE_TTL_MIN
 # see FINDINGS.md#9-execs-hard-coded-timeout-ceiling-overrides---trial-timeout-and-both-failure-paths-overshoot-by-159s
 export GYMSIEGE_TTL_MIN=75
 
-.venv/bin/python orchestrator.py reap --dry-run
-PYTHONUNBUFFERED=1 .venv/bin/python orchestrator.py exploitgym-run \
+python orchestrator.py reap --dry-run
+PYTHONUNBUFFERED=1 python orchestrator.py exploitgym-run \
   --task user:cybergym/arvo_42298 \
   --k 1 --model gpt-5.6-luna --reasoning-effort medium \
   --budget-usd 5 --timeout 2400 --trial-timeout 4500 \
@@ -457,7 +460,7 @@ unset GYMSIEGE_TTL_MIN
 
 # Two-task serial production rerun. Run this only after the diagnostic above
 # has completed and its result confirms cleanup_destroyed=true.
-PYTHONUNBUFFERED=1 .venv/bin/python orchestrator.py exploitgym-run \
+PYTHONUNBUFFERED=1 python orchestrator.py exploitgym-run \
   --tasks-file exploitgym_tasks.production.txt --k 1 --max-parallel 1 \
   --agent codex --model gpt-5.6-sol --budget-usd 5 \
   --reasoning-effort medium \
@@ -526,14 +529,14 @@ ExploitGym's agent interaction must retain LLM connectivity, so its containment 
 
 ```bash
 # Local dashboard.
-.venv/bin/python dashboard.py
+python dashboard.py
 
 # Snapshot results into a named, TTL-protected Daytona dashboard sandbox.
-.venv/bin/python dashboard.py --publish
+python dashboard.py --publish
 
 # Inspect or reap leaked siege-* sandboxes.
-.venv/bin/python orchestrator.py reap --dry-run
-.venv/bin/python orchestrator.py reap
+python orchestrator.py reap --dry-run
+python orchestrator.py reap
 ```
 
 The dashboard combines the CyberGym and ExploitGym leaderboards, the concurrency failure curve, provisioning p50/p95, per-sandbox CPU/memory time-series, results, and CyberGym recordings. Publication uploads a point-in-time snapshot; re-run `--publish --sandbox-id ID` to refresh an existing dashboard sandbox in place.
@@ -584,7 +587,7 @@ Example of a running sandbox as seen on the Daytona platform:
 ## Verification
 
 ```bash
-.venv/bin/python -m unittest discover -s tests -v
+python -m unittest discover -s tests -v
 python3 -m py_compile *.py
 bash -n demo.sh
 ```
