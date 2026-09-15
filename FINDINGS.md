@@ -398,7 +398,145 @@ No images resolved; nothing to pull.
 
 ---
 
-## 12. Verification status
+## 12. No CyberGym-E2E trial had ever actually invoked an LLM — cybergym-e2e's own mandatory firewall proxy was never started
+
+**Status: root-caused and fixed 2026-09-15.** Discovered via the new Modal
+trial adapter (`modal_sandbox_runner.py`) — not a Modal-specific bug, it's
+in shared code (`solver_agent.py`'s `BuildAgent.run`) and would eventually
+have hit Daytona too, once a Daytona trial got a working LiteLLM tunnel.
+
+Every CyberGym-E2E trial run so far — three on Daytona 2026-09-14
+(`freetype2/arvo_368`, `libtpms/oss-fuzz_42537128`,
+`unit/oss-fuzz_42536363`; see `results/exploitgym-runs/results.json` and
+their `run_agent.log`s) and three on Modal 2026-09-15 — recorded `$0`
+`solver_cost_usd`, `agent_success: None`, and every stage field `null`.
+Previously attributed entirely to two known, unrelated causes: a stale
+Cloudflare tunnel URL causing a `401` on `/key/generate` (all three Daytona
+trials), and Daytona's own `update_network_settings` rejection (finding —
+see `codex-task-open-issues.md#2`). Both real, but both fired *before* a
+trial could ever reach the actual find-vuln/patch LLM loop, so they masked
+a third, deeper blocker underneath.
+
+With a working tunnel and Modal's isolation working correctly enough to
+surface it, a 2026-09-15 Modal trial (`freetype2/arvo_368`, patch-only) got
+further than any recorded trial in this project's history — past key
+generation, into `run_agent()` itself — and failed there instead:
+
+```
+RuntimeError: Firewall is enabled by default but its proxy is not reachable
+(404 Client Error for http+docker://localhost/v1.52/networks/cybergym-internal:
+Not Found ("network cybergym-internal not found")). Start it with:
+cd scripts && python -m firewall start
+Or pass --no-firewall to run with unrestricted network.
+```
+
+(`artifacts/freetype2_arvo_368/patch-only/trial-1/run_agent.log`, this
+project's first-ever download of a CyberGym `run_agent.log` that reflects
+a real `run_agent()` invocation rather than an earlier-stage crash.)
+
+**Root cause, confirmed by reading upstream source directly (cloned
+`sunblaze-ucb/cybergym-e2e`, not guessed from the traceback alone):**
+`run_agent.py --use-firewall` defaults to `True` and puts the agent
+container behind a Squid domain-allowlist proxy on its own internal Docker
+network (`scripts/firewall/proxy.py`: `Agent ──(cybergym-internal, no
+internet)──▶ Squid ──(bridge)──▶ Internet`) — a real, intentional
+upstream anti-exfiltration boundary, independent of and in addition to
+GYMSIEGE's own LiteLLM-only network restriction. It calls
+`FirewallProxyManager().connect()`, which only *verifies* the proxy is
+already running — it never starts one. Nothing in GYMSIEGE's
+`BuildAgent.run` (the one shared code path both providers call) ever ran
+`python -m firewall start` first, so every trial that reached this point
+was always going to fail here, on either provider.
+
+Two things this is *not*: the earlier-phase "install" network (build
+dependency fetches) needs no pre-started proxy at all — it's Docker's
+plain default bridge (`network=None`), a upstream sentinel value, not a
+managed proxy; and the agent container's own network switch (bridge →
+`cybergym-internal`, after install) is handled entirely inside
+`run_agent.py` itself. The only actual gap was the missing `start()` call.
+
+**Fix:** `BuildAgent.run` now execs `cd {remote_dir}/scripts && python3 -m
+firewall start` before invoking `run_agent.py`, raising immediately (not
+falling back to `--no-firewall`) if that fails — a start failure is a real
+infrastructure error, and falling back would silently remove the isolation
+boundary rather than surface the problem. `FirewallProxyManager.start()`
+is upstream-documented as idempotent ("ensure the network and proxy
+container are running"), so calling it unconditionally every trial is
+correct, not just a first-run workaround.
+
+**The `start()` fix alone wasn't sufficient — confirmed live 2026-09-15,
+same day.** Re-running immediately surfaced a second, layered bug:
+`FirewallProxyManager._ensure_proxy()` (`scripts/firewall/proxy.py`) calls
+docker-py's `containers.create()` directly to launch the Squid proxy
+container, which — unlike `docker run` — never auto-pulls a missing
+image, and `ubuntu/squid:latest` (`proxy.py`'s `PROXY_IMAGE` constant)
+isn't baked into either provider's snapshot:
+
+```
+docker.errors.ImageNotFound: 404 Client Error for
+http+docker://localhost/v1.52/containers/create?name=cybergym-proxy:
+Not Found ("No such image: ubuntu/squid:latest")
+```
+
+Fixed by prepending `docker pull ubuntu/squid:latest &&` to the same exec
+call — network is still open at that point (the isolation cut happens
+later, in `_reconfirm_isolated`), so pulling it fresh each trial is cheap.
+Pre-baking it into the snapshot instead (matching how every other Docker
+image this project uses is pre-baked) is the better long-term fix, but
+needs a full rebake of both providers' snapshots to land and verify —
+deferred rather than forced now.
+
+**2026-09-15 continuation — trial-time pull removed after snapshot
+verification.** `ubuntu/squid:latest` now joins the resolved task images in
+`snapshot_build.py`'s shared `PULL_IMAGES_PY` phase. That is the correct bake
+boundary: Docker and the cloned project metadata are available there, and both
+the Daytona and Modal builders already invoke it before snapshot capture.
+`BuildAgent.run` now executes only `python3 -m firewall start`; it no longer
+contacts a registry before starting the proxy.
+
+Both provider snapshots were rebaked. Daytona's first requested command
+prepared the three-task source successfully (image pull 50.6s; Docker store
+4,112,145,785 bytes) but exposed a pre-existing publication bug: canonical
+rebakes returned HTTP 409 because `snapshot_build.py` did not replace an
+existing snapshot. The builder now follows the already-used ExploitGym
+pattern: remove the prior snapshot only after every preparation gate passes,
+then wait for the name to be released. The retry completed bootstrap in 51.7s,
+image pulls in 50.5s, captured `gymsiege-toolchain` in 235.5s, independently
+observed its state as `ACTIVE`, and restored it in 84.5s. A legacy
+`provisioning_bench.json` shape then caused a local `KeyError` after the restore
+had already been deleted; appends now use `setdefault` for backward
+compatibility.
+
+Modal gave the complete content check. The full current set is 22 tasks and
+19 images (18 task images plus Squid). The pull log explicitly included
+`docker pull ubuntu/squid:latest`; pre-capture validation found all 19 images,
+with 111,473,420,282 bytes under `/var/lib/docker`. Snapshot
+`im-01M2KGVFWQXKDAHDHZCKS70VB6` was restored into a separate Sandbox, Docker
+became ready in 9.0s, and the fork again verified all 19 images in 9.9s before
+`results/modal_snapshot.json` was replaced. Both Modal Sandboxes terminated.
+
+A live Modal `freetype2/arvo_368` patch-only trial then restored that Image in
+0.6s. The shared build loop started 16 seconds after the sandbox-ready log with
+no Docker pull, registry, or apt output during firewall setup, and reached the
+network-isolated re-detonation. It then hit the separate, already predicted
+`codex-task-open-issues.md#5` failure: `apt-get` inside the isolated oracle
+could not reach Ubuntu mirrors. The structured result is
+`results/modal_trial_squid_baked.json`: `t_build_s=164.976`,
+`t_total_s=175.943`, `status=oracle_unavailable`, and
+`cleanup_destroyed=true`. This confirms the proxy-image fix while preserving
+the independent oracle failure as a separate open issue.
+
+The Daytona trial did not reach the firewall and therefore cannot be cited as
+provider-specific runtime confirmation. Its fresh snapshot restored in 42.9s,
+then secret-attach restart timed out and the retry returned `Sandbox state
+change in progress`. Cleanup and two targeted reap attempts received the same
+provider error; the sandbox retained its 60-minute TTL. A second trial was
+stopped during local SDK import at the user's request, before any API call or
+new sandbox creation. No further Daytona operations were run.
+
+---
+
+## 13. Verification status
 
 | Claim | Basis |
 |---|---|
@@ -407,8 +545,8 @@ No images resolved; nothing to pull.
 | 74.76 GB / 16 images | `docker system df` on a live bake |
 | Resource ceilings | Rejected `create` + dashboard |
 | No LiteLLM | Env inspection + Daytona secret listing |
-| CyberGym per-trial cost | **Not measured. No trial has completed.** |
-| Whether images survive into a snapshot | **Not measured.** Capture never succeeded. |
+| CyberGym per-trial cost | **Still not measured — no trial has completed a full agent run.** Finding #12: three separate blockers found and fixed in sequence (stale tunnel, Daytona network-restriction, missing firewall proxy); a 2026-09-15 Modal trial got furthest yet (into `run_agent()` itself) before hitting a fourth, still-open blocker (`codex-task-open-issues.md#5`). |
+| Whether images survive into a snapshot | Modal filesystem snapshot `im-01M2KGVFWQXKDAHDHZCKS70VB6` independently restored and verified all 19 images, including `ubuntu/squid:latest`; Daytona's three-task snapshot reached `ACTIVE` and restored, but its live trial stopped at secret-attach restart before the firewall check. |
 | `arvo_1699` glibc mismatch | `results/run1-arvo_1699.json` stage trace + error text |
 | `arvo_42298` exec-timeout coupling and ~159s overshoot | `results/run1-arvo_42298.json` + `results/run1-arvo_42298-retry.json` stage traces and `error` tracebacks |
 | Trial sandboxes never disabled Daytona's platform auto-stop | `arvo_62183` sandbox directly observed as `stopped` on the Daytona dashboard mid-`exec()`; `grep auto_stop_interval exploitgym_adapter.py sandbox_runner.py` (absent before the fix) |

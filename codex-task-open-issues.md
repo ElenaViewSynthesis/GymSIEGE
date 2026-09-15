@@ -1,11 +1,15 @@
 # GYMSIEGE — open infrastructure issues
 
 GYMSIEGE (this repo) runs CyberGym-E2E and ExploitGym as a Daytona-sandbox
-fleet benchmark. Issues #1-#3 remain open; #4 was resolved 2026-09-14 (it
-turned out to be a transcription error, not a real issue) and is kept
-below only as a closed record — no action needed on it. Priority order for
-the open ones: #1 is the one actually worth solving, #2 is an
-investigation, #3 is a small resilience fix.
+fleet benchmark, plus (new as of 2026-09-15) a second CyberGym-E2E provider
+on Modal (`modal_sandbox_runner.py`). Issues #1-#3 and #5-#6 remain open;
+#4 was resolved 2026-09-14 (it turned out to be a transcription error, not
+a real issue) and is kept below only as a closed record — no action needed
+on it. Priority order for the open ones: #1 is the one actually worth
+solving, #2 and #5 are investigations/decisions with the same shape (an
+isolated-redetonation network-cut colliding with reality on a specific
+provider/task), #3 is a small resilience fix, #6 is a well-scoped build
+task with a concrete plan already worked out below.
 
 ## 1. (Primary) ExploitGym's baked Node runtime can't run on older-glibc targets
 
@@ -169,10 +173,135 @@ mistyped ID is rejected and the corrected `UBUNTU-` ID passes. This is source
 and local-test verification only; no Daytona sandbox was provisioned for the
 guard itself.
 
+## 5. (Investigate/Decide) freetype2/arvo_368's isolated re-detonation needs network mid-compile on Modal
+
+`solver_agent.py`'s `_isolated_oracle_script` (line 487) / `run_arm` (line
+519) starts a fresh nested Docker container per arm, using the pinned
+build image resolved from `project.toml`/`config.toml`'s `build_image`
+field, with the outer sandbox's network already cut
+(`_reconfirm_isolated`, line 429). Confirmed live 2026-09-15 against
+`modal_sandbox_runner.py` (`freetype2/arvo_368`, patch-only): the network
+cut itself is real — `ModalSandboxAdapter.update_network_settings` is
+live-verified to work — but the nested container's own build/setup step
+then tries to `apt-get` something not already baked into the pinned
+image, and fails:
+
+    W: Failed to fetch http://archive.ubuntu.com/ubuntu/dists/focal/InRelease
+    Could not connect to archive.ubuntu.com:80 (...), connection timed out
+    [... same for security.ubuntu.com ...]
+    W: Some index files failed to download. They have been ignored, or old ones used instead.
+
+This is now classified correctly as `oracle_unavailable` (`common.py`'s
+`looks_oracle_unavailable` gained `"failed to fetch"`/`"could not connect
+to"`/`"connection timed out"` needles) rather than a misleading `"failed"`
+— but the underlying capability gap (this task's isolated re-detonation
+genuinely cannot complete) is still open. This is the same *shape* of
+problem as issue #2 above (an isolated-redetonation network-cut colliding
+with real infrastructure), on a different provider and for a different
+reason (a missing baked dependency, not a platform-level API rejection).
+
+**Task:** First, find out exactly what the nested container's `apt-get`
+call is trying to install (rerun with output captured, or read
+`compile.sh`/`run_poc.sh` for `freetype2/arvo_368` inside a cloned
+`cybergym-e2e` — `common.CYBERGYM_REPO_URL` — to see what it apt-gets at
+build time rather than guessing). Then decide deliberately between two
+real fixes, not a guess:
+- **Bake it in.** Extend `modal_snapshot_build.py` (and `snapshot_build.py`
+  if the same task is ever baked for Daytona) to pre-install whatever
+  package(s) freetype2's build/test scripts need into the pinned image
+  before it's captured, so the isolated re-detonation never needs network.
+- **Accept it.** Document this as a genuine per-task limitation — not
+  every pinned task's build script is guaranteed to be self-contained —
+  the same way issue #2's Daytona network restriction is already an
+  accepted, documented `oracle_unavailable` case rather than something
+  being actively worked around.
+Also check whether this reproduces on Daytona for the same task (different
+base-image layer caching between the two providers' bakes could mean it's
+Modal-specific) — that changes which fix path actually makes sense.
+Verify by re-running `python modal_sandbox_runner.py --task
+freetype2/arvo_368 --mode patch-only` and confirming either the isolated
+re-detonation now completes cleanly, or the `oracle_unavailable` result is
+a deliberate, documented outcome rather than an open question. Document
+whichever you find as a new numbered entry in `FINDINGS.md`.
+
+## 6. (Build) Independently re-verify stage3/stage4 under network isolation, not just stage1/stage2
+
+`_isolated_oracle_script`'s `run_arm(stage)` (`solver_agent.py:519`) only
+ever calls it with `stage=1` (vulnerable build) and `stage=2` (patched
+build), reading `run_poc.sh`'s raw exit code as `vul_exit_code`/
+`fix_exit_code` — an independent, network-cut re-verification of
+`run_agent.py`'s own (network-attached, self-reported) `stage1`/`stage2`
+claims. `TrialResult`/`BuildResult` (`common.py:225`, `solver_agent.py:85`)
+also carry `stage3`/`stage4`, but those are *only* `run_agent.py`'s own
+self-report — GYMSIEGE never independently re-checks them the way it does
+stage1/2, so a trial's "tests still pass with the patch" (stage3) and "the
+patch also defeats the real, ground-truth exploit" (stage4) claims are
+currently taken on trust from the same network-attached process whose
+stage1/2 claims are explicitly *not* trusted.
+
+Read directly from upstream `cybergym-e2e/scripts/validate.py`
+(`common.CYBERGYM_REPO_URL` — not vendored in this repo, clone it to
+verify before changing anything) rather than guessed:
+- **Stage 3** (needs `--patch-file` only, no PoC at all): `restore_src()`
+  → `apply_patch()` → compile via `/src/compile.sh` → run `/src/test.sh`.
+  Pass/fail is `test.sh`'s exit code, recorded into
+  `results["stage3"]["status"]`.
+- **Stage 4** (ground-truth PoC vs. patched build): `restore_src()` →
+  `apply_patch()` → compile → `validate.py` itself copies the
+  ground-truth PoC (`{data_dir}/poc.bin`) over `/src/poc.bin` and runs
+  `/src/run_poc.sh` — no separate copy/run needed from GYMSIEGE's side,
+  `--only-stage 4` does it internally.
+- **`validate.py`'s own process exit code is not usable per-stage** when
+  passing `--only-stage`: its final summary branches on `has_poc`/
+  `has_patch` combos that assume the full default run. E.g. with only
+  `--patch-file` and `--only-stage 3`, it falls into the "patch-only" exit
+  branch, which checks `stage3` **and** `stage4` (stage4 never having run,
+  staying `None`) and always exits 1 regardless of whether stage3 actually
+  passed. This is exactly why GYMSIEGE's existing stage1/2 code already
+  reads `run_poc.sh`'s own exit code instead of `validate.py`'s — the
+  equivalent real signal for stage3/4 is `validate.py --json-output
+  /output/validation_results.json`'s file content:
+  `{"stage1":..., "stage2":..., "stage3":..., "stage4":...}` with values
+  `"passed"/"failed"/"error"/"skipped"`.
+
+**Task:** Extend `run_arm` in `solver_agent.py` to also run stage=3 and
+stage=4 arms:
+1. Copy `fix.patch` for `stage >= 2` (currently only `if stage == 2`).
+2. No extra PoC staging needed for stage4 —
+   `setup_workspace(..., copy_gt_poc=True, ...)` is already called
+   unconditionally for every arm today (`solver_agent.py:528`), which per
+   `utils.py`'s own docstring already stages the ground-truth PoC at
+   `/data/poc.bin`, the exact path `validate.py`'s stage4 reads from. This
+   part is already done, just unused.
+3. Run `validate.py --only-stage {stage} --patch-file /output/fix.patch
+   --json-output /output/validation_results.json` (no `--poc-file` needed
+   for 3/4, though including it is harmless since it's already copied in).
+4. Add a follow-up `exec_run(container_id, "cat
+   /output/validation_results.json", ...)`, `json.loads` it, and pull
+   `results["stage3"]`/`results["stage4"]` — that's the real per-stage
+   verdict, not an exit code.
+5. Add two new fields to `BuildResult`/`TrialResult` (e.g.
+   `isolated_stage3`, `isolated_stage4`) to hold these independently
+   re-verified statuses, distinct from the existing `stage3`/`stage4`
+   fields (which stay as `run_agent.py`'s own network-attached, self-
+   reported values) — otherwise there's no way to tell "the agent said
+   tests passed" from "we independently confirmed tests passed under
+   network isolation," which is the entire point of doing this.
+6. Decide, and document, how this changes `common.classify_trial_status`
+   — does a stage3/4 mismatch (agent claims passed, isolated re-check says
+   failed) get its own status (e.g. a new `stage3_mismatch`/
+   `stage4_mismatch`), or fold into the existing `oracle_mismatch`
+   category? Either is defensible; leaving it undecided isn't.
+Verify with the existing unit tests (`tests/test_core.py`) plus new
+coverage for the extended `run_arm`/JSON-parsing logic, then a real live
+trial (Daytona or Modal) confirming `isolated_stage3`/`isolated_stage4`
+actually populate and agree (or meaningfully disagree) with `stage3`/
+`stage4`.
+
 ## Constraints for all of the above
 
 - `tests/` is plain `unittest` (`python -m unittest discover -s tests`, or
-  `pytest tests/ -q` — both work, `pytest` is in `requirements.txt`). 59
+  `pytest tests/ -q` — both work, `pytest` is in `requirements.txt`). 78
   tests currently pass; whatever you change must not break them.
 - Don't touch `.env.local` (real secrets, gitignored) or print any of its
   values.
