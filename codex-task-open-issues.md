@@ -173,56 +173,117 @@ mistyped ID is rejected and the corrected `UBUNTU-` ID passes. This is source
 and local-test verification only; no Daytona sandbox was provisioned for the
 guard itself.
 
-## 5. (Investigate/Decide) freetype2/arvo_368's isolated re-detonation needs network mid-compile on Modal
+## 5. RESOLVED (2026-09-16) — validator bootstrap fixed via pre-baked images; a distinct per-task issue remains (see #7)
 
-`solver_agent.py`'s `_isolated_oracle_script` (line 487) / `run_arm` (line
-519) starts a fresh nested Docker container per arm, using the pinned
-build image resolved from `project.toml`/`config.toml`'s `build_image`
-field, with the outer sandbox's network already cut
-(`_reconfirm_isolated`, line 429). Confirmed live 2026-09-15 against
-`modal_sandbox_runner.py` (`freetype2/arvo_368`, patch-only): the network
-cut itself is real — `ModalSandboxAdapter.update_network_settings` is
-live-verified to work — but the nested container's own build/setup step
-then tries to `apt-get` something not already baked into the pinned
-image, and fails:
+**No action needed on the universal bootstrap itself. Kept as a closed
+record; see #7 for the follow-on gap it exposed.**
 
-    W: Failed to fetch http://archive.ubuntu.com/ubuntu/dists/focal/InRelease
-    Could not connect to archive.ubuntu.com:80 (...), connection timed out
-    [... same for security.ubuntu.com ...]
-    W: Some index files failed to download. They have been ignored, or old ones used instead.
+Fixed via the "pre-bake the validator's own dependencies" option below:
+`snapshot_build.py`/`modal_snapshot_build.py` now build a `gymsiege-validator-*`
+derivative image per distinct `build_image` (`VALIDATOR_IMAGE_MANIFEST`,
+`VALIDATOR_IMAGE_RECIPE_VERSION`), and `_isolated_oracle_script`'s
+`setup_workspace_offline()` (`solver_agent.py:53`,
+`VALIDATOR_BOOTSTRAP_COMMANDS`/`VALIDATOR_DEPENDENCY_CHECK`) monkey-patches
+`utils.exec_run` so the two universal bootstrap commands
+(`apt-get install sudo git`, `install_validate_deps.sh`) become a cheap
+`command -v`/`import tomli` check instead of a real network install.
 
-This is now classified correctly as `oracle_unavailable` (`common.py`'s
-`looks_oracle_unavailable` gained `"failed to fetch"`/`"could not connect
-to"`/`"connection timed out"` needles) rather than a misleading `"failed"`
-— but the underlying capability gap (this task's isolated re-detonation
-genuinely cannot complete) is still open. This is the same *shape* of
-problem as issue #2 above (an isolated-redetonation network-cut colliding
-with real infrastructure), on a different provider and for a different
-reason (a missing baked dependency, not a platform-level API rejection).
+Confirmed live 2026-09-16: a fresh `curl/arvo_66012` isolated re-detonation
+no longer hits the old `archive.ubuntu.com`/`oracle_unavailable` wall at
+all — it gets past `setup_workspace()` cleanly and reaches real per-arm
+`compile.sh`/`run_poc.sh` attempts. It now fails differently (both arms
+exit 127), which is a **separate, narrower, per-task issue** — see #7.
 
-**Task:** First, find out exactly what the nested container's `apt-get`
-call is trying to install (rerun with output captured, or read
-`compile.sh`/`run_poc.sh` for `freetype2/arvo_368` inside a cloned
-`cybergym-e2e` — `common.CYBERGYM_REPO_URL` — to see what it apt-gets at
-build time rather than guessing). Then decide deliberately between two
-real fixes, not a guess:
-- **Bake it in.** Extend `modal_snapshot_build.py` (and `snapshot_build.py`
-  if the same task is ever baked for Daytona) to pre-install whatever
-  package(s) freetype2's build/test scripts need into the pinned image
-  before it's captured, so the isolated re-detonation never needs network.
-- **Accept it.** Document this as a genuine per-task limitation — not
-  every pinned task's build script is guaranteed to be self-contained —
-  the same way issue #2's Daytona network restriction is already an
-  accepted, documented `oracle_unavailable` case rather than something
-  being actively worked around.
-Also check whether this reproduces on Daytona for the same task (different
-base-image layer caching between the two providers' bakes could mean it's
-Modal-specific) — that changes which fix path actually makes sense.
-Verify by re-running `python modal_sandbox_runner.py --task
-freetype2/arvo_368 --mode patch-only` and confirming either the isolated
-re-detonation now completes cleanly, or the `oracle_unavailable` result is
-a deliberate, documented outcome rather than an open question. Document
-whichever you find as a new numbered entry in `FINDINGS.md`.
+## 7. (Build) `_isolated_oracle_script`'s `run_arm` runs task `prepare.sh` after the network is already cut, not before — every task whose `prepare.sh` needs network fails closed with exit 127
+
+**Confirmed live 2026-09-16** against `curl/arvo_66012` (patch-only,
+Modal): both `vul_exit_code` and `fix_exit_code` came back `127` with
+`network_isolated_detonation=true` and `detonation_error=null` — i.e. no
+exception was raised, `run_arm` completed "successfully" for both arms,
+it just got a bare "command/file not found" from the raw `run_poc.sh`
+re-check on both. This is downstream of #5's fix, not a regression of it:
+`setup_workspace()`'s own bootstrap now passes (confirmed by log evidence
+below), so this is a different step failing.
+
+**Root cause, confirmed by reading upstream source directly** (cloned
+`sunblaze-ucb/cybergym-e2e`, not guessed — `projects/curl/arvo_66012/*.sh`,
+`scripts/utils.py`, `scripts/validate.py`):
+
+- curl/arvo_66012's `prepare.sh` is **not** a no-op (unlike freetype2's,
+  which is why #5 didn't catch this): `$SRC/curl_fuzzer/scripts/ossfuzzdeps.sh`.
+  `scripts/utils.py`'s own `setup_workspace()` docstring says outright:
+  "prepare.sh is the last network-dependent step: ~30% of tasks
+  apt-get/pip/git clone in it."
+- `_isolated_oracle_script`'s `run_arm` (`solver_agent.py:625`) calls
+  `setup_workspace_offline(container_id, DATA_PATH, SCRIPT_PATH, MODE,
+  copy_gt_poc=True, scripts_dir=...)` **without** `run_prepare=True`, so
+  `utils.setup_workspace()` skips its own `prepare.sh` step entirely
+  (`utils.py`'s `if run_prepare:` block, default `False`). `prepare.sh`
+  then only runs later, **inside `validate.py`'s own process**, because
+  `run_arm`'s `cmd` passes `--run-prepare` on the `validate.py` CLI
+  (`solver_agent.py:648`) — i.e. it runs it, just much later than
+  `setup_workspace()`'s docstring says it's designed to: "the last
+  network-dependent step... run once here [meaning inside
+  `setup_workspace`, before the firewall locks down] rather than inside
+  `validate.py`."
+- By the time `run_arm`'s containers exist at all, `_reconfirm_isolated`
+  (`solver_agent.py:527`) has already called
+  `self.sandbox.update_network_settings(network_block_all=True)` — a full
+  sandbox-level network kill, not CyberGym's own Squid firewall. **Moving
+  `run_prepare=True` earlier inside `run_arm` alone will not fix this** —
+  the container's local setup ordering doesn't matter if the outer
+  sandbox's egress is already zero; `prepare.sh` needs the *sandbox-level*
+  cut to not have happened yet when it runs.
+- `run_agent.py`'s own container already solves exactly this problem, for
+  exactly this reason: it runs on a full-internet `bridge` network through
+  its own install/`setup_workspace(run_prepare=True)` phase, and only
+  *afterward* switches the container to the restricted `cybergym-internal`
+  network before the agent starts. Stage1-4 (validate.py, including
+  `compile.sh`/`run_poc.sh`) then run correctly under that restricted
+  network — confirmed by this morning's real `curl/arvo_66012` trial
+  (`artifacts/curl_arvo_66012/patch-only/trial-1/run_agent.log`): prepare
+  → compile → stage3 PASS → stage4 (real ASan heap-use-after-free,
+  correctly still reproducing) all completed with the *agent's* container
+  under Squid, no exit-127 anywhere. So compile.sh/run_poc.sh themselves
+  need no network once built — only `prepare.sh` does, and only *before*
+  the cut.
+
+**Task:** Restructure `_reconfirm_isolated`/`run_arm` to mirror
+`run_agent.py`'s own already-proven two-phase pattern, rather than cutting
+network once for the entire detonation:
+1. Split `run_arm` into a setup phase and a detonate phase. For **both**
+   arms' containers: `start_container` +
+   `setup_workspace_offline(..., run_prepare=True)` (now actually running
+   `prepare.sh`, per-container) **before** any network cut.
+2. Only then call `self.sandbox.update_network_settings(network_block_all=True)`
+   once, and run each arm's `validate.py --only-stage {stage} ...`
+   (drop `--run-prepare` from the CLI now that it already ran) plus the
+   raw `run_poc.sh` re-check.
+3. This keeps the actual guarantee that matters — compile/detonate can't
+   silently depend on live network — while accommodating the ~30% of
+   tasks whose `prepare.sh` legitimately needs it, exactly as upstream's
+   own container already does.
+4. Before implementing, empirically check how many of the 22 pinned tasks
+   actually have a non-no-op, network-touching `prepare.sh` (grep each
+   `projects/<task>/prepare.sh` in a fresh `cybergym-e2e` clone for
+   `apt-get`/`pip`/`curl`/`wget`/`git clone`/`ossfuzzdeps`-style calls) —
+   if it's near-universal like #5 was, this two-phase restructure is
+   clearly worth it; if it's one or two tasks, a narrower per-task
+   allowlist tweak might be simpler. Either is defensible; report which
+   and why.
+5. Alternative worth naming but not defaulting to: bake each task's
+   `prepare.sh` side effects into a **per-task** validator image at bake
+   time (extending `VALIDATOR_IMAGE_MANIFEST` from per-`build_image` to
+   per-task) so detonation never touches the network at all. Strictly
+   stronger isolation, but a materially bigger change (one image per task
+   instead of one per shared `build_image`) — only worth it if the
+   two-phase approach turns out to have a real correctness problem (e.g.
+   if some task's `prepare.sh` output is itself nondeterministic based on
+   what it fetched).
+Verify with a fresh `curl/arvo_66012` isolated re-detonation (Modal)
+reaching a real `vul_exit_code`/`fix_exit_code` (crashed/didn't-crash, not
+127), plus `tests/test_core.py` coverage for the reordered `run_arm`.
+Update this entry with what actually worked.
 
 ## 6. (Build) Independently re-verify stage3/stage4 under network isolation, not just stage1/stage2
 
@@ -301,7 +362,7 @@ actually populate and agree (or meaningfully disagree) with `stage3`/
 ## Constraints for all of the above
 
 - `tests/` is plain `unittest` (`python -m unittest discover -s tests`, or
-  `pytest tests/ -q` — both work, `pytest` is in `requirements.txt`). 78
+  `pytest tests/ -q` — both work, `pytest` is in `requirements.txt`). 80
   tests currently pass; whatever you change must not break them.
 - Don't touch `.env.local` (real secrets, gitignored) or print any of its
   values.
