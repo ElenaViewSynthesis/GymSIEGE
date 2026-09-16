@@ -57,7 +57,9 @@ from snapshot_build import (
     validator_image_tag,
 )
 from solver_agent import (
+    BuildAgent,
     BuildResult,
+    ModelConfig,
     VALIDATOR_BOOTSTRAP_COMMANDS,
     VALIDATOR_DEPENDENCY_CHECK,
     _isolated_oracle_script,
@@ -311,6 +313,65 @@ class ExploitGymCommandTests(unittest.TestCase):
         compile(script, "<isolated-oracle>", "exec")
         self.assertIn("start_container(VALIDATOR_IMAGE)", script)
         self.assertIn("utils.exec_run = original_exec_run", script)
+
+    def test_isolated_oracle_prepares_before_network_cut(self) -> None:
+        prepare = _isolated_oracle_script(
+            Task("curl", "arvo_66012"),
+            "patch-only",
+            "/tmp/poc.bin",
+            "/tmp/fix.patch",
+            action="prepare",
+        )
+        self.assertIn("run_prepare=True", prepare)
+        self.assertNotIn("--run-prepare ", prepare)
+        self.assertIn('ACTION = \'prepare\'', prepare)
+
+    def test_reconfirm_orders_prepare_cut_detonate_cleanup_reopen(self) -> None:
+        events = []
+
+        class Process:
+            async def exec(self, command, timeout=None):
+                if "ACTION = 'prepare'" in command:
+                    action = "prepare"
+                    payload = {"prepared": True}
+                elif "ACTION = 'detonate'" in command:
+                    action = "detonate"
+                    payload = {"vul_exit_code": 1, "fix_exit_code": 0}
+                else:
+                    action = "cleanup"
+                    payload = {"cleaned": True}
+                events.append(("exec", action))
+                return type("Result", (), {
+                    "result": "GYMSIEGE_ORACLE_JSON:" + json.dumps(payload),
+                    "exit_code": 0,
+                })()
+
+        class Sandbox:
+            process = Process()
+
+            async def update_network_settings(self, network_block_all):
+                events.append(("network", network_block_all))
+
+        agent = BuildAgent(Sandbox(), ModelConfig())
+        codes = asyncio.run(
+            agent._reconfirm_isolated(
+                Task("curl", "arvo_66012"),
+                "patch-only",
+                "/tmp/poc.bin",
+                "/tmp/fix.patch",
+            )
+        )
+        self.assertEqual(codes, (1, 0))
+        self.assertEqual(
+            events,
+            [
+                ("exec", "prepare"),
+                ("network", True),
+                ("exec", "detonate"),
+                ("exec", "cleanup"),
+                ("network", False),
+            ],
+        )
 
     def test_pins_match_between_bake_and_requirements(self) -> None:
         """Every version pinned in both places must agree.

@@ -59,6 +59,9 @@ VALIDATOR_DEPENDENCY_CHECK = (
     "test -x /scripts/.venv/bin/python && "
     "/scripts/.venv/bin/python -c 'import tomli'"
 )
+ISOLATED_ORACLE_PREPARE_TIMEOUT_S = 4000
+ISOLATED_ORACLE_DETONATE_TIMEOUT_S = 16800
+ISOLATED_ORACLE_CLEANUP_TIMEOUT_S = 300
 
 # CVE/OSS-Fuzz report GYMSIEGE points the browser at for the research phase.
 # ARVO tasks map cleanly onto the ARVO metadata site; oss-fuzz tasks map onto
@@ -523,17 +526,45 @@ class BuildAgent:
         vul_exit_code/fix_exit_code, distinct from run_agent.py's own
         (network-attached) internal validation.
         """
+        prepare_attempted = False
+        network_blocked = False
         try:
-            await self.sandbox.update_network_settings(network_block_all=True)
-            log.info("[%s] network cut — re-detonating PoC in isolation", task.path)
-
-            script = _isolated_oracle_script(task, mode, poc_path, patch_path, self.remote_dir)
-            r = await self.sandbox.process.exec(
-                f"cd {shlex.quote(self.remote_dir)} && python3 - <<'GYMSIEGE_PY'\n"
-                f"{script}\nGYMSIEGE_PY",
-                timeout=7600,
+            # CyberGym documents prepare.sh as its final network-dependent
+            # setup step. Prepare both fresh arms while the outer sandbox
+            # still has egress, then keep those containers alive across the
+            # single sandbox-level network cut below.
+            prepare_attempted = True
+            prepare_script = _isolated_oracle_script(
+                task, mode, poc_path, patch_path, self.remote_dir, action="prepare"
             )
-            output = getattr(r, "result", "") or ""
+            prepare_r = await self.sandbox.process.exec(
+                f"cd {shlex.quote(self.remote_dir)} && python3 - <<'GYMSIEGE_PY'\n"
+                f"{prepare_script}\nGYMSIEGE_PY",
+                timeout=ISOLATED_ORACLE_PREPARE_TIMEOUT_S,
+            )
+            prepare_output = getattr(prepare_r, "result", "") or ""
+            prepare_payload = _parse_json_marker(prepare_output)
+            if not prepare_payload:
+                raise RuntimeError(
+                    "isolated oracle preparation emitted no result: "
+                    + prepare_output[-1200:].replace("\n", " ")
+                )
+            if prepare_payload.get("error"):
+                raise RuntimeError(str(prepare_payload["error"]))
+
+            await self.sandbox.update_network_settings(network_block_all=True)
+            network_blocked = True
+            log.info("[%s] network cut — re-detonating prepared PoC arms", task.path)
+
+            detonate_script = _isolated_oracle_script(
+                task, mode, poc_path, patch_path, self.remote_dir, action="detonate"
+            )
+            detonate_r = await self.sandbox.process.exec(
+                f"cd {shlex.quote(self.remote_dir)} && python3 - <<'GYMSIEGE_PY'\n"
+                f"{detonate_script}\nGYMSIEGE_PY",
+                timeout=ISOLATED_ORACLE_DETONATE_TIMEOUT_S,
+            )
+            output = getattr(detonate_r, "result", "") or ""
             payload = _parse_json_marker(output)
             if not payload:
                 raise RuntimeError(
@@ -543,8 +574,25 @@ class BuildAgent:
                 raise RuntimeError(str(payload["error"]))
             return payload.get("vul_exit_code"), payload.get("fix_exit_code")
         finally:
-            # Re-open for artifact download / recording upload / cleanup exec.
-            await self.sandbox.update_network_settings(network_block_all=False)
+            # Remove both prepared containers while the cut is still in
+            # force. Cleanup is best-effort so it can never prevent the
+            # mandatory network reopen used by artifact download and trial
+            # teardown.
+            try:
+                if prepare_attempted:
+                    cleanup_script = _isolated_oracle_script(
+                        task, mode, poc_path, patch_path, self.remote_dir, action="cleanup"
+                    )
+                    await self.sandbox.process.exec(
+                        f"cd {shlex.quote(self.remote_dir)} && python3 - <<'GYMSIEGE_PY'\n"
+                        f"{cleanup_script}\nGYMSIEGE_PY",
+                        timeout=ISOLATED_ORACLE_CLEANUP_TIMEOUT_S,
+                    )
+            except Exception as exc:
+                log.warning("[%s] isolated oracle arm cleanup failed: %s", task.path, exc)
+            finally:
+                if network_blocked:
+                    await self.sandbox.update_network_settings(network_block_all=False)
 
 
 def _parse_json_marker(output: str) -> Optional[dict[str, Any]]:
@@ -568,15 +616,24 @@ def _extract_cost_usd(usage: Any) -> Optional[float]:
 
 
 def _isolated_oracle_script(
-    task: Task, mode: Mode, poc_path: str, patch_path: str, remote_dir: str = CYBERGYM_REMOTE_DIR
+    task: Task,
+    mode: Mode,
+    poc_path: str,
+    patch_path: str,
+    remote_dir: str = CYBERGYM_REMOTE_DIR,
+    *,
+    action: str = "detonate",
 ) -> str:
     """Build a sandbox-local helper that returns real raw run_poc exit codes.
 
-    It reuses CyberGym's own workspace setup and validator, with a fresh nested
-    validator-ready container per arm. Because the outer runner's network is
-    already blocked, missing images or dependencies fail closed instead of
-    being pulled during detonation.
+    The prepare action creates both validator-ready containers and completes
+    each network-dependent prepare.sh before the caller cuts sandbox egress.
+    The detonate action reuses those containers for compilation and raw PoC
+    execution under the cut. The cleanup action removes either arm.
     """
+
+    if action not in {"prepare", "detonate", "cleanup"}:
+        raise ValueError(f"unsupported isolated oracle action: {action!r}")
 
     return f'''\
 import json
@@ -594,6 +651,8 @@ TASK = {task.path!r}
 MODE = {mode!r}
 POC = Path({poc_path!r})
 PATCH = Path({patch_path!r})
+ACTION = {action!r}
+STATE_PATH = Path("/tmp/gymsiege-isolated-oracle-arms.json")
 SCRIPT_PATH = ROOT / "projects" / TASK
 DATA_PATH = ROOT / "data" / "projects" / TASK
 project_cfg = tomli.loads((SCRIPT_PATH.parent / "project.toml").read_text())
@@ -626,7 +685,17 @@ def setup_workspace_offline(*args, **kwargs):
     finally:
         utils.exec_run = original_exec_run
 
-def run_arm(stage):
+def cleanup_arms():
+    if not STATE_PATH.exists():
+        return
+    try:
+        arms = json.loads(STATE_PATH.read_text()).get("arms", {{}})
+        for container_id in arms.values():
+            cleanup_container(container_id)
+    finally:
+        STATE_PATH.unlink(missing_ok=True)
+
+def prepare_arm(stage):
     container_id = None
     try:
         container_id = start_container(VALIDATOR_IMAGE)
@@ -637,46 +706,72 @@ def run_arm(stage):
             MODE,
             copy_gt_poc=True,
             scripts_dir=ROOT / "scripts",
+            run_prepare=True,
         )
         copy_to_container(container_id, POC, "/output/poc.bin")
         if stage == 2:
             copy_to_container(container_id, PATCH, "/output/fix.patch")
-        cmd = (
-            "/scripts/.venv/bin/python /scripts/validate.py "
-            "--src-dir /src --config-dir /config --data-dir /data "
-            f"--only-stage {{stage}} --poc-file /output/poc.bin --run-prepare "
-            "--json-output /output/validation_results.json"
-        )
-        if stage == 2:
-            cmd += " --patch-file /output/fix.patch"
-        validation_code, validation_out, validation_err = exec_run(
-            container_id, cmd, timeout=7200, workdir="/"
-        )
-        raw_code, raw_out, raw_err = exec_run(
-            container_id,
-            "sudo -E bash -eux /src/run_poc.sh",
-            timeout=1200,
-            workdir="/src",
-        )
-        return {{
-            "validation_exit_code": validation_code,
-            "run_poc_exit_code": raw_code,
-            "stdout_tail": raw_out[-1000:],
-            "stderr_tail": raw_err[-2000:],
-        }}
-    finally:
+        return container_id
+    except Exception:
         if container_id:
             cleanup_container(container_id)
+        raise
+
+def prepare_arms():
+    cleanup_arms()
+    arms = {{}}
+    try:
+        arms["1"] = prepare_arm(1)
+        arms["2"] = prepare_arm(2)
+        STATE_PATH.write_text(json.dumps({{"arms": arms}}, sort_keys=True))
+        return {{"prepared": True, "container_count": len(arms)}}
+    except Exception:
+        for container_id in arms.values():
+            cleanup_container(container_id)
+        STATE_PATH.unlink(missing_ok=True)
+        raise
+
+def run_arm(stage, container_id):
+    cmd = (
+        "/scripts/.venv/bin/python /scripts/validate.py "
+        "--src-dir /src --config-dir /config --data-dir /data "
+        f"--only-stage {{stage}} --poc-file /output/poc.bin "
+        "--json-output /output/validation_results.json"
+    )
+    if stage == 2:
+        cmd += " --patch-file /output/fix.patch"
+    validation_code, validation_out, validation_err = exec_run(
+        container_id, cmd, timeout=7200, workdir="/"
+    )
+    raw_code, raw_out, raw_err = exec_run(
+        container_id,
+        "sudo -E bash -eux /src/run_poc.sh",
+        timeout=1200,
+        workdir="/src",
+    )
+    return {{
+        "validation_exit_code": validation_code,
+        "run_poc_exit_code": raw_code,
+        "stdout_tail": raw_out[-1000:],
+        "stderr_tail": raw_err[-2000:],
+    }}
 
 try:
-    vulnerable = run_arm(1)
-    fixed = run_arm(2)
-    result = {{
-        "vul_exit_code": vulnerable["run_poc_exit_code"],
-        "fix_exit_code": fixed["run_poc_exit_code"],
-        "vulnerable": vulnerable,
-        "fixed": fixed,
-    }}
+    if ACTION == "prepare":
+        result = prepare_arms()
+    elif ACTION == "detonate":
+        state = json.loads(STATE_PATH.read_text())
+        vulnerable = run_arm(1, state["arms"]["1"])
+        fixed = run_arm(2, state["arms"]["2"])
+        result = {{
+            "vul_exit_code": vulnerable["run_poc_exit_code"],
+            "fix_exit_code": fixed["run_poc_exit_code"],
+            "vulnerable": vulnerable,
+            "fixed": fixed,
+        }}
+    else:
+        cleanup_arms()
+        result = {{"cleaned": True}}
 except Exception as exc:
     result = {{"error": f"{{type(exc).__name__}}: {{exc}}", "traceback": traceback.format_exc()[-3000:]}}
 print("GYMSIEGE_ORACLE_JSON:" + json.dumps(result))

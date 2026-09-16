@@ -83,19 +83,32 @@ from common import (
     get_logger,
 )
 from modal_snapshot_build import DEFAULT_APP, DEFAULT_MANIFEST, REMOTE_REPO_DIR
-from solver_agent import ModelConfig, Solver
+from solver_agent import (
+    ISOLATED_ORACLE_DETONATE_TIMEOUT_S,
+    ISOLATED_ORACLE_PREPARE_TIMEOUT_S,
+    ModelConfig,
+    Solver,
+)
 
 log = get_logger("modal_sandbox_runner")
 
 OUT_DIR = "/root/agent_output"
 DEFAULT_LITELLM_SECRET = os.environ.get("GYMSIEGE_MODAL_LITELLM_SECRET_NAME", "gymsiege-litellm")
 DOCKER_READY_TIMEOUT_S = 180
-# Budget: run_agent.py's own --timeout (AGENT_TIMEOUT_S) + the isolated
-# re-detonation's own 7600s exec timeout (solver_agent._reconfirm_isolated)
-# + headroom for docker-wait/telemetry/artifact download. Modal's own
+# Budget: run_agent.py's own timeout plus the isolated oracle's separate
+# online preparation and network-cut detonation phases, with headroom for
+# docker-wait/telemetry/artifact download. Modal's own
 # ceiling is 24h (86400s); this stays comfortably under it.
 TRIAL_SANDBOX_TIMEOUT_S = int(
-    os.environ.get("GYMSIEGE_MODAL_TRIAL_TIMEOUT_S", str(AGENT_TIMEOUT_S + 7600 + 1800))
+    os.environ.get(
+        "GYMSIEGE_MODAL_TRIAL_TIMEOUT_S",
+        str(
+            AGENT_TIMEOUT_S
+            + ISOLATED_ORACLE_PREPARE_TIMEOUT_S
+            + ISOLATED_ORACLE_DETONATE_TIMEOUT_S
+            + 1800
+        ),
+    )
 )
 TRIAL_SANDBOX_CPU = 2
 TRIAL_SANDBOX_MEMORY_MIB = 8192
