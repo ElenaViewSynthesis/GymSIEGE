@@ -49,6 +49,17 @@ from common import (
 
 log = get_logger("solver_agent")
 
+VALIDATOR_IMAGE_MANIFEST = "/root/gymsiege-validator-images.json"
+VALIDATOR_BOOTSTRAP_COMMANDS = frozenset({
+    "apt-get update -qq && apt-get install -y -qq sudo git >/dev/null 2>&1",
+    "bash -eux /install_validate_deps.sh",
+})
+VALIDATOR_DEPENDENCY_CHECK = (
+    "command -v sudo git curl uv >/dev/null && "
+    "test -x /scripts/.venv/bin/python && "
+    "/scripts/.venv/bin/python -c 'import tomli'"
+)
+
 # CVE/OSS-Fuzz report GYMSIEGE points the browser at for the research phase.
 # ARVO tasks map cleanly onto the ARVO metadata site; oss-fuzz tasks map onto
 # the public OSS-Fuzz issue tracker search. Either way this is a *real* page
@@ -562,9 +573,9 @@ def _isolated_oracle_script(
     """Build a sandbox-local helper that returns real raw run_poc exit codes.
 
     It reuses CyberGym's own workspace setup and validator, with a fresh nested
-    container per arm.  Because the outer runner's network is already
-    blocked, missing images fail closed instead of being pulled during
-    detonation.
+    validator-ready container per arm. Because the outer runner's network is
+    already blocked, missing images or dependencies fail closed instead of
+    being pulled during detonation.
     """
 
     return f'''\
@@ -576,7 +587,8 @@ import tomli
 
 ROOT = Path({remote_dir!r})
 sys.path.insert(0, str(ROOT / "scripts"))
-from utils import cleanup_container, copy_to_container, exec_run, setup_workspace, start_container
+import utils
+from utils import cleanup_container, copy_to_container, exec_run, start_container
 
 TASK = {task.path!r}
 MODE = {mode!r}
@@ -587,12 +599,38 @@ DATA_PATH = ROOT / "data" / "projects" / TASK
 project_cfg = tomli.loads((SCRIPT_PATH.parent / "project.toml").read_text())
 project_cfg.update(tomli.loads((SCRIPT_PATH / "config.toml").read_text()))
 IMAGE = project_cfg.get("build_image", "gcr.io/oss-fuzz-base/base-builder@sha256:8eda74a11e800aead5a041ee479a65b33dab3150d6e89e5694e2b6eb27be98fc")
+validator_manifest = json.loads(Path({VALIDATOR_IMAGE_MANIFEST!r}).read_text())
+VALIDATOR_IMAGE = validator_manifest.get("images", {{}}).get(IMAGE)
+if not VALIDATOR_IMAGE:
+    raise RuntimeError(f"no baked validator image for {{IMAGE}}")
+
+BOOTSTRAP_COMMANDS = {set(VALIDATOR_BOOTSTRAP_COMMANDS)!r}
+DEPENDENCY_CHECK = {VALIDATOR_DEPENDENCY_CHECK!r}
+
+def setup_workspace_offline(*args, **kwargs):
+    original_exec_run = utils.exec_run
+
+    def offline_exec_run(container_id, command, *command_args, **command_kwargs):
+        if command in BOOTSTRAP_COMMANDS:
+            return original_exec_run(
+                container_id,
+                DEPENDENCY_CHECK,
+                *command_args,
+                **command_kwargs,
+            )
+        return original_exec_run(container_id, command, *command_args, **command_kwargs)
+
+    utils.exec_run = offline_exec_run
+    try:
+        return utils.setup_workspace(*args, **kwargs)
+    finally:
+        utils.exec_run = original_exec_run
 
 def run_arm(stage):
     container_id = None
     try:
-        container_id = start_container(IMAGE)
-        setup_workspace(
+        container_id = start_container(VALIDATOR_IMAGE)
+        setup_workspace_offline(
             container_id,
             DATA_PATH,
             SCRIPT_PATH,

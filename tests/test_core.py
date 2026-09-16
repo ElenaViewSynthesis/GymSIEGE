@@ -46,8 +46,22 @@ from orchestrator import (
     build_parser,
     cmd_reap,
 )
-from snapshot_build import BOOTSTRAP_SH, CLEANUP_AND_DISK_SH, CRASH_LOG_HELPERS_PY
-from solver_agent import BuildResult
+from snapshot_build import (
+    BOOTSTRAP_SH,
+    CLEANUP_AND_DISK_SH,
+    CRASH_LOG_HELPERS_PY,
+    PULL_IMAGES_PY,
+    VALIDATOR_IMAGE_MANIFEST,
+    VALIDATOR_IMAGE_RECIPE_VERSION,
+    VALIDATOR_UV_VERSION,
+    validator_image_tag,
+)
+from solver_agent import (
+    BuildResult,
+    VALIDATOR_BOOTSTRAP_COMMANDS,
+    VALIDATOR_DEPENDENCY_CHECK,
+    _isolated_oracle_script,
+)
 
 
 class TaskParsingTests(unittest.TestCase):
@@ -255,6 +269,48 @@ class ExploitGymCommandTests(unittest.TestCase):
         )
         self.assertIn('${HF_HOME:-$HOME/.cache/huggingface}/xet', rendered)
         self.assertIn("minimum_bytes=123", rendered)
+
+    def test_validator_images_are_baked_for_offline_oracle_setup(self) -> None:
+        source = "gcr.io/example/arvo-builder@sha256:" + "a" * 64
+        tag = validator_image_tag(source)
+        self.assertTrue(tag.startswith("gymsiege-validator-arvo:"))
+        self.assertEqual(tag, validator_image_tag(source))
+        self.assertNotEqual(tag, validator_image_tag(source + "different"))
+
+        rendered = PULL_IMAGES_PY.format(
+            repo_dir="/root/cybergym-e2e",
+            tasks=["curl/arvo_66012"],
+            validator_manifest=VALIDATOR_IMAGE_MANIFEST,
+            validator_recipe_version=VALIDATOR_IMAGE_RECIPE_VERSION,
+            validator_uv_version=VALIDATOR_UV_VERSION,
+        )
+        self.assertIn(f"astral.sh/uv/{VALIDATOR_UV_VERSION}/install.sh", rendered)
+        self.assertIn(
+            f'LABEL org.gymsiege.validator-ready="{VALIDATOR_IMAGE_RECIPE_VERSION}"',
+            rendered,
+        )
+        self.assertIn("uv python install 3.13", rendered)
+        self.assertIn("tomli==2.4.1", rendered)
+        self.assertIn(VALIDATOR_IMAGE_MANIFEST, rendered)
+
+    def test_isolated_oracle_skips_only_exact_baked_bootstraps(self) -> None:
+        self.assertEqual(
+            VALIDATOR_BOOTSTRAP_COMMANDS,
+            {
+                "apt-get update -qq && apt-get install -y -qq sudo git >/dev/null 2>&1",
+                "bash -eux /install_validate_deps.sh",
+            },
+        )
+        self.assertIn("/scripts/.venv/bin/python -c 'import tomli'", VALIDATOR_DEPENDENCY_CHECK)
+        script = _isolated_oracle_script(
+            Task("curl", "arvo_66012"),
+            "patch-only",
+            "/tmp/poc.bin",
+            "/tmp/fix.patch",
+        )
+        compile(script, "<isolated-oracle>", "exec")
+        self.assertIn("start_container(VALIDATOR_IMAGE)", script)
+        self.assertIn("utils.exec_run = original_exec_run", script)
 
     def test_pins_match_between_bake_and_requirements(self) -> None:
         """Every version pinned in both places must agree.

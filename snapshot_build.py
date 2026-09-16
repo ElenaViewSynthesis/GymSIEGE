@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import hashlib
 import json
 import os
 import sys
@@ -118,6 +119,24 @@ BAKE_TTL_MINUTES = int(os.environ.get("GYMSIEGE_BAKE_TTL_MIN", "180"))
 # terminal state before trusting the bake. See wait_for_snapshot_active().
 SNAPSHOT_STATE_POLL_TIMEOUT_S = 300
 SNAPSHOT_STATE_POLL_INTERVAL_S = 5
+
+# Every isolated oracle arm starts a fresh nested container, so validator
+# dependencies must live in Docker images rather than only in the outer
+# Daytona/Modal filesystem. The bake records source -> derived image tags
+# here; solver_agent.py consumes the mapping after the network cut.
+VALIDATOR_IMAGE_MANIFEST = "/root/gymsiege-validator-images.json"
+VALIDATOR_IMAGE_RECIPE_VERSION = "1"
+VALIDATOR_UV_VERSION = "0.9.11"
+
+
+def validator_image_tag(image: str) -> str:
+    """Return the stable local tag for one validator-ready source image."""
+    recipe = f"{VALIDATOR_IMAGE_RECIPE_VERSION}\0uv={VALIDATOR_UV_VERSION}\0{image}"
+    digest = hashlib.sha256(recipe.encode()).hexdigest()[:24]
+    # setup_workspace() uses this name predicate to decide whether an ARVO
+    # image's pre-populated /src must be cleared. Preserve that behavior.
+    family = "arvo" if "arvo" in image or "cybergym" in image else "generic"
+    return f"gymsiege-validator-{family}:{digest}"
 
 # Installed *inside* the sandbox. Kept as one script so a single process.exec
 # call gets us one clean exit code and one combined log instead of N round
@@ -365,6 +384,9 @@ PULL_IMAGES_PY = r"""
 set -euxo pipefail
 cd "{repo_dir}"
 python3 - <<'PY'
+import hashlib
+import json
+import subprocess
 import docker
 
 tasks = {tasks!r}
@@ -394,6 +416,52 @@ print(f"[pull_images] pulling {{len(wanted)}} images for {{len(tasks)}} pinned t
 for img in sorted(wanted):
     print(f"[pull_images] docker pull {{img}}")
     client.images.pull(img)
+
+# setup_workspace() starts a new container from each task image. Installing
+# these tools only in the outer sandbox therefore cannot make isolated
+# validation self-contained. Build a small derivative of every task image;
+# retain the originals for run_agent.py and the Squid image for its proxy.
+uv_version = {validator_uv_version!r}
+recipe_version = {validator_recipe_version!r}
+validator_images = {{}}
+for img in sorted(wanted - {{firewall_proxy_image}}):
+    recipe = f"{{recipe_version}}\0uv={{uv_version}}\0{{img}}"
+    digest = hashlib.sha256(recipe.encode()).hexdigest()[:24]
+    family = "arvo" if "arvo" in img or "cybergym" in img else "generic"
+    tag = f"gymsiege-validator-{{family}}:{{digest}}"
+    dockerfile = f'''FROM {{img}}
+USER root
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+RUN apt-get update -qq \\
+ && apt-get install -y -qq --no-install-recommends sudo git curl ca-certificates \\
+ && rm -rf /var/lib/apt/lists/*
+RUN curl -LsSf https://astral.sh/uv/{validator_uv_version}/install.sh \\
+    | env UV_UNMANAGED_INSTALL=/usr/local/bin sh \\
+ && uv python install 3.13 \\
+ && mkdir -p /scripts \\
+ && uv venv /scripts/.venv --python 3.13 \\
+ && uv pip install --python /scripts/.venv/bin/python 'tomli==2.4.1' \\
+ && command -v sudo git curl uv >/dev/null \\
+ && /scripts/.venv/bin/python -c 'import tomli'
+LABEL org.gymsiege.validator-ready="{validator_recipe_version}"
+'''
+    print(f"[validator_images] docker build {{tag}} from {{img}}")
+    subprocess.run(
+        ["docker", "build", "--tag", tag, "-"],
+        input=dockerfile,
+        text=True,
+        check=True,
+    )
+    validator_images[img] = tag
+
+manifest = {{
+    "schema_version": 1,
+    "recipe_version": recipe_version,
+    "uv_version": uv_version,
+    "images": validator_images,
+}}
+Path({validator_manifest!r}).write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+print(f"[validator_images] wrote {{len(validator_images)}} mappings to {validator_manifest}")
 PY
 """
 
@@ -701,7 +769,13 @@ async def build_snapshot(args: argparse.Namespace | None = None) -> None:
             if skip_image_pull:
                 log.warning("skipping pinned-image pull (--skip-image-pull)")
             else:
-                pull = PULL_IMAGES_PY.format(repo_dir=CYBERGYM_REMOTE_DIR, tasks=tasks)
+                pull = PULL_IMAGES_PY.format(
+                    repo_dir=CYBERGYM_REMOTE_DIR,
+                    tasks=tasks,
+                    validator_manifest=VALIDATOR_IMAGE_MANIFEST,
+                    validator_recipe_version=VALIDATOR_IMAGE_RECIPE_VERSION,
+                    validator_uv_version=VALIDATOR_UV_VERSION,
+                )
                 pull_step = await timed_exec(
                     sandbox, pull, "pull_pinned_images", timeout=3600
                 )

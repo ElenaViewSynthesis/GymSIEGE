@@ -23,6 +23,9 @@ from snapshot_build import (
     CRASH_LOG_HELPERS_PY,
     MIN_SNAPSHOT_FREE_BYTES,
     PULL_IMAGES_PY,
+    VALIDATOR_IMAGE_MANIFEST,
+    VALIDATOR_IMAGE_RECIPE_VERSION,
+    VALIDATOR_UV_VERSION,
     pinned_task_paths,
 )
 
@@ -147,6 +150,7 @@ for task in tasks:
 wanted.add(firewall_proxy_image)
 
 import docker
+import subprocess
 client = docker.from_env()
 missing = []
 for image in sorted(wanted):
@@ -156,13 +160,55 @@ for image in sorted(wanted):
         missing.append(image)
 if missing:
     raise RuntimeError(f"snapshot is missing {{len(missing)}} image(s): {{missing}}")
+validator_manifest = json.loads(Path({VALIDATOR_IMAGE_MANIFEST!r}).read_text())
+validator_images = validator_manifest.get("images", {{}})
+task_images = wanted - {{firewall_proxy_image}}
+if set(validator_images) != task_images:
+    raise RuntimeError(
+        "validator image mapping mismatch: "
+        f"missing={{sorted(task_images - set(validator_images))}}, "
+        f"extra={{sorted(set(validator_images) - task_images)}}"
+    )
+if validator_manifest.get("recipe_version") != {VALIDATOR_IMAGE_RECIPE_VERSION!r}:
+    raise RuntimeError("validator image recipe version mismatch")
+if validator_manifest.get("uv_version") != {VALIDATOR_UV_VERSION!r}:
+    raise RuntimeError("validator uv version mismatch")
+validator_check = (
+    "command -v sudo git curl uv >/dev/null && "
+    "test -x /scripts/.venv/bin/python && "
+    "/scripts/.venv/bin/python -c 'import tomli'"
+)
+for source_image, validator_image in sorted(validator_images.items()):
+    try:
+        client.images.get(validator_image)
+    except docker.errors.ImageNotFound:
+        raise RuntimeError(
+            f"snapshot is missing validator image {{validator_image}} for {{source_image}}"
+        )
+    check = subprocess.run(
+        ["docker", "run", "--rm", "--network", "none", validator_image,
+         "bash", "-lc", validator_check],
+        capture_output=True,
+        text=True,
+    )
+    if check.returncode != 0:
+        raise RuntimeError(
+            f"offline validator dependency check failed for {{validator_image}}: "
+            f"{{check.stdout[-1000:]}} {{check.stderr[-1000:]}}"
+        )
 Path("/root/gymsiege-modal-snapshot.json").write_text(json.dumps({{
     "tasks": tasks,
     "task_count": len(tasks),
     "images": sorted(wanted),
     "image_count": len(wanted),
+    "validator_images": validator_images,
+    "validator_image_count": len(validator_images),
 }}, sort_keys=True))
-print(json.dumps({{"task_count": len(tasks), "image_count": len(wanted)}}))
+print(json.dumps({{
+    "task_count": len(tasks),
+    "image_count": len(wanted),
+    "validator_image_count": len(validator_images),
+}}))
 PY
 """
 
@@ -234,7 +280,13 @@ def build_snapshot(args: argparse.Namespace) -> dict[str, Any]:
             _exec(
                 source,
                 "pull_pinned_images",
-                PULL_IMAGES_PY.format(repo_dir=REMOTE_REPO_DIR, tasks=tasks),
+                PULL_IMAGES_PY.format(
+                    repo_dir=REMOTE_REPO_DIR,
+                    tasks=tasks,
+                    validator_manifest=VALIDATOR_IMAGE_MANIFEST,
+                    validator_recipe_version=VALIDATOR_IMAGE_RECIPE_VERSION,
+                    validator_uv_version=VALIDATOR_UV_VERSION,
+                ),
                 7200,
             )
         )
