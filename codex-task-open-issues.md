@@ -314,6 +314,48 @@ known-affected tasks — `curl/arvo_66012`, `opensc/oss-fuzz_42535468`,
 (crashed/didn't-crash, not 127), plus `tests/test_core.py` coverage for
 the reordered `run_arm`. Update this entry with what actually worked.
 
+**Resolved and live-verified 2026-09-16.** `_reconfirm_isolated()` now runs
+the oracle in three explicit actions. `prepare` starts both arm containers,
+calls `setup_workspace_offline(..., run_prepare=True)` for each while sandbox
+egress is still available, stages the PoC/patch, and persists their container
+IDs in a sandbox-local state file. The host then applies the sandbox-level
+network cut exactly once. `detonate` reuses those prepared containers, invokes
+`validate.py --only-stage` without `--run-prepare`, and performs the raw
+`run_poc.sh` check. `cleanup` removes both arms while the network is still cut;
+the host reopens networking in an outer `finally`, even if detonation or cleanup
+fails. Modal's trial TTL budget now includes the separate bounded preparation
+and detonation phases.
+
+Unit coverage exercises the generated script and the host-visible ordering
+`prepare -> network_block_all=True -> detonate -> cleanup ->
+network_block_all=False`. The exact command run after the implementation was:
+
+    .venv/bin/python -m pytest tests/test_core.py -q
+
+It completed with `82 passed, 1 warning in 349.33s`; the warning is the existing
+Modal adapter executor-shutdown warning.
+
+The production loop was no longer present in `ps` before verification. Fresh
+Modal trials used `--trial 7` and dedicated result files, leaving the production
+JSON/artifacts untouched:
+
+    .venv/bin/python modal_sandbox_runner.py --task opensc/oss-fuzz_42535468 --mode patch-only --trial 7 --output results/modal_issue7/opensc_oss-fuzz_42535468.json
+    .venv/bin/python modal_sandbox_runner.py --task mruby/arvo_19902 --mode patch-only --trial 7 --output results/modal_issue7/mruby_arvo_19902.json
+    .venv/bin/python modal_sandbox_runner.py --task curl/arvo_66012 --mode patch-only --trial 7 --output results/modal_issue7/curl_arvo_66012.json
+
+All three live logs emitted `network cut — re-detonating prepared PoC arms`
+only after both preparations completed, and all three changed from the old
+`127/127` infrastructure wall to a real `vul_exit_code=1` /
+`fix_exit_code=0`, with `network_isolated_detonation=true`,
+`detonation_error=null`, and `cleanup_destroyed=true`. Opensc completed in
+771.51s (`t_build_s=743.83`) and mruby in 620.03s (`t_build_s=582.90`), both
+with overall `status=success`. Curl completed in 2056.33s
+(`t_build_s=2032.29`); its newly generated patch failed the network-attached
+stage 3 and therefore correctly retained overall `status=failed`, while the
+independent isolated oracle itself returned the real 1/0 verdict. The original
+issue — preparation being attempted only after the network cut and collapsing
+both raw arms to exit 127 — is fixed across all three known affected tasks.
+
 ## 6. (Build) Independently re-verify stage3/stage4 under network isolation, not just stage1/stage2
 
 `_isolated_oracle_script`'s `run_arm(stage)` (`solver_agent.py:519`) only
