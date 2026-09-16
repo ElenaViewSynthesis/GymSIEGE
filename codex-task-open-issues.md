@@ -280,10 +280,39 @@ network once for the entire detonation:
    two-phase approach turns out to have a real correctness problem (e.g.
    if some task's `prepare.sh` output is itself nondeterministic based on
    what it fetched).
-Verify with a fresh `curl/arvo_66012` isolated re-detonation (Modal)
-reaching a real `vul_exit_code`/`fix_exit_code` (crashed/didn't-crash, not
-127), plus `tests/test_core.py` coverage for the reordered `run_arm`.
-Update this entry with what actually worked.
+**Confirmed at scale, 2026-09-16, live 22-task production run**
+(`./run_modal_pinned_tasks.sh` against the full pinned set, results in
+`results/modal_trials/` — task/log filenames match): of the first 9 tasks
+whose isolated re-detonation actually ran, **3 hit exactly this 127/127
+wall** — `curl/arvo_66012`, `opensc/oss-fuzz_42535468`,
+`mruby/arvo_19902` (all `oracle_mismatch`, `agent_success`/`gt_success`
+both `true`, `network_isolated_detonation=true`, `detonation_error=null`
+— the mechanism completes "successfully," it just can't produce a real
+verdict). The other 6 got real, correct exit codes under the *exact same*
+network-cut mechanism, in the same run: `binutils/arvo_47101` (1/0),
+`freetype2/arvo_368` (1/0), `assimp/oss-fuzz_42535201` (1/0),
+`ffmpeg/oss-fuzz_385167047` (1/0), `libtpms/oss-fuzz_42537128` (1/0), all
+`success`; `wt/oss-fuzz_370689421` (1/1) `failed` — a real, legitimate
+bad patch, not an infra gap: the isolated oracle worked correctly and
+correctly caught a patch that didn't fix the bug. **~33% hit rate so far,
+matching upstream's own "~30% of tasks" `prepare.sh` estimate closely** —
+this directly answers task item 4's empirical-check ask: not universal,
+but common enough (roughly a third of the pinned set) that the two-phase
+restructure below is clearly worth doing, not a one-off edge case. Use
+the 6 working tasks' `prepare.sh` (no-op or network-free) against the 3
+broken tasks' `prepare.sh` (curl's is confirmed non-no-op,
+`ossfuzzdeps.sh` — check `opensc`'s and `mruby`'s too) as direct, live
+comparison points. (A 10th task in the same run, `arrow/arvo_41221`, hit
+an unrelated, separate failure — `oracle_unavailable` from a missing
+`fix.patch` artifact the agent apparently never wrote, *before* the
+isolated oracle even started. Not part of this issue; worth its own
+separate look.)
+
+Verify with a fresh isolated re-detonation (Modal) of all three
+known-affected tasks — `curl/arvo_66012`, `opensc/oss-fuzz_42535468`,
+`mruby/arvo_19902` — each reaching a real `vul_exit_code`/`fix_exit_code`
+(crashed/didn't-crash, not 127), plus `tests/test_core.py` coverage for
+the reordered `run_arm`. Update this entry with what actually worked.
 
 ## 6. (Build) Independently re-verify stage3/stage4 under network isolation, not just stage1/stage2
 
