@@ -1,0 +1,3 @@
+16:42:13 INFO    modal_sandbox_runner: [net-snmp/arvo_52465] Modal sandbox sb-fcejsjow1DzUW8wlActtIo ready in 0.4s (provisioning=snapshot)
+16:42:31 INFO    solver_agent: [net-snmp/arvo_52465] build/PoC/patch loop starting (mode=patch-only, agent=codex)
+16:55:26 INFO    solver_agent: [net-snmp/arvo_52465] network cut — re-detonating PoC in isolation
