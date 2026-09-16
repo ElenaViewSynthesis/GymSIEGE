@@ -420,6 +420,41 @@ time, use `./run_modal_pinned_tasks.sh` — a thin sequential loop over the
 same command above (real cost per task, one task's failure doesn't stop
 the rest); see the [Files](#files) table below.
 
+**Checking a live sandbox while a run is in progress.** The local log only
+prints before/after the single blocking `sandbox.process.exec()` call that
+runs the whole agent+validation cycle, so long silences (tens of minutes)
+are expected mid-task, not necessarily a hang. Check both ends, read-only,
+without touching the run:
+
+```bash
+$ ps aux | grep modal_sandbox_runner
+proxi      94269  0.3  1.4 283948 117524 pts/6   Sl   12:27   0:11 .venv/bin/python modal_sandbox_runner.py --task ffmpeg/oss-fuzz_385167047 --mode patch-only --output results/modal_trials/ffmpeg_oss-fuzz_385167047.json
+proxi      96180  0.0  0.0   4112  2104 pts/5    S+   13:29   0:00 grep --color=auto modal_sandbox_runner
+```
+
+Low, near-idle CPU with real accumulated time (not `0:00`) on the actual
+`modal_sandbox_runner.py` line means the local process is genuinely
+waiting on the remote sandbox, not spinning or crashed. Then confirm the
+remote side:
+
+```bash
+$ modal container list
+                                   Active Containers in environment:
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Container ID                  ┃ App ID                    ┃ App Name          ┃ Start Time           ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━┩
+│ ta-01M2MYQXBEJD1AW9PFDFXB6ENS │ ap-3OpVibo2FW22CajpUOgYmS │ gymsiege-cybergym │ 2026-09-16 12:13 BST │
+└───────────────────────────────┴───────────────────────────┴───────────────────┴──────────────────────┘
+```
+
+Note there is no `modal sandbox list`/`modal sandbox logs` subcommand in
+this CLI despite the SDK's `modal.Sandbox` naming — `container list` is
+the real inspection command, and it prints the sandbox's Container ID,
+App ID/Name, and start time. **Confirmed live 2026-09-16**: a task that
+looked stuck locally (no new log line for 45+ minutes) was still genuinely
+alive and running per `container list`'s output — local silence alone is
+not evidence of a stall.
+
 Not yet true of this adapter, unlike the Daytona path:
 - **Not wired into `orchestrator.py run`/`sweep`** — no `--provider modal`
   flag exists yet; it's a standalone script today, the same relationship
