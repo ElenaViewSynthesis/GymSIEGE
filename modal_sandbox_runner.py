@@ -118,9 +118,21 @@ class _ModalProcessProxy:
 
     async def exec(self, cmd: str, timeout: Optional[int] = None) -> _ModalExecResult:
         process = await self._sandbox.exec.aio("bash", "-lc", cmd, timeout=timeout)
-        await process.wait.aio()
-        stdout = await process.stdout.read.aio() or ""
-        stderr = await process.stderr.read.aio() or ""
+        # Drain both pipes while the command runs. A curl validation completed
+        # remotely after 42 minutes but wait.aio() never returned because its
+        # accumulated output had not been consumed; waiting before reading can
+        # deadlock a high-output process on stream backpressure.
+        stdout_task = asyncio.create_task(process.stdout.read.aio())
+        stderr_task = asyncio.create_task(process.stderr.read.aio())
+        try:
+            await process.wait.aio()
+            stdout, stderr = await asyncio.gather(stdout_task, stderr_task)
+        finally:
+            for task in (stdout_task, stderr_task):
+                if not task.done():
+                    task.cancel()
+        stdout = stdout or ""
+        stderr = stderr or ""
         # Daytona's `.result` carries combined output; concatenating keeps
         # _parse_json_marker's "scan every line for the marker" logic correct
         # regardless of which stream a given line actually landed on.
