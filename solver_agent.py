@@ -35,6 +35,7 @@ import shlex
 import time
 from pathlib import Path
 from typing import Any, Optional
+from urllib.parse import urlparse
 
 from pydantic import BaseModel
 
@@ -363,9 +364,27 @@ class BuildAgent:
         # by the shared snapshot bake and verified after restore. Keep this
         # trial step network-independent so a build cannot silently depend on
         # registry availability.
+        #
+        # --domain is required, not optional: with no --domain args, Squid
+        # loads only its upstream default_allowlist.txt (api.anthropic.com /
+        # api.openai.com / generativelanguage.googleapis.com). Every real
+        # agent call actually goes to LITELLM_BASE_URL's host (a Cloudflare/
+        # ngrok tunnel), which is on neither list -- confirmed live
+        # 2026-09-16 (modal_squid_diagnostic.py) that Squid was silently
+        # rejecting every single call with "CONNECT tunnel failed, response
+        # 403", which Codex's own HTTP client reports generically as "stream
+        # disconnected before completion" / "error sending request" -- not a
+        # network or streaming problem at all, a plain access-control denial
+        # every prior trial hit blindly.
+        litellm_host = urlparse(os.environ.get("LITELLM_BASE_URL", "")).hostname
+        if not litellm_host:
+            raise RuntimeError(
+                "LITELLM_BASE_URL is not set (or has no parseable host); "
+                "cannot allowlist it for the firewall proxy"
+            )
         firewall_start = await self.sandbox.process.exec(
             f"cd {shlex.quote(self.remote_dir)}/scripts && "
-            "python3 -m firewall start",
+            f"python3 -m firewall start --domain {shlex.quote(litellm_host)}",
             timeout=300,
         )
         if getattr(firewall_start, "exit_code", 1) != 0:
