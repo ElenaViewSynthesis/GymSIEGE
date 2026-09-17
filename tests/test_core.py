@@ -293,7 +293,14 @@ class ExploitGymCommandTests(unittest.TestCase):
         )
         self.assertIn("uv python install 3.13", rendered)
         self.assertIn("tomli==2.4.1", rendered)
+        self.assertIn("libblocksruntime0 libunwind8", rendered)
+        self.assertIn("libBlocksRuntime.so.0", rendered)
+        self.assertIn("libunwind-ptrace.so.0", rendered)
+        self.assertIn("libunwind-x86_64.so.8", rendered)
         self.assertIn(VALIDATOR_IMAGE_MANIFEST, rendered)
+
+        modal_source = Path("modal_snapshot_build.py").read_text(encoding="utf-8")
+        self.assertIn("/src/honggfuzz/honggfuzz --help", modal_source)
 
     def test_isolated_oracle_skips_only_exact_baked_bootstraps(self) -> None:
         self.assertEqual(
@@ -336,7 +343,18 @@ class ExploitGymCommandTests(unittest.TestCase):
                     payload = {"prepared": True}
                 elif "ACTION = 'detonate'" in command:
                     action = "detonate"
-                    payload = {"vul_exit_code": 1, "fix_exit_code": 0}
+                    payload = {
+                        "vul_exit_code": 1,
+                        "fix_exit_code": 0,
+                        "vulnerable": {
+                            "stdout_tail": "vulnerable stdout",
+                            "stderr_tail": "vulnerable stderr",
+                        },
+                        "fixed": {
+                            "stdout_tail": "fixed stdout",
+                            "stderr_tail": "fixed stderr",
+                        },
+                    }
                 else:
                     action = "cleanup"
                     payload = {"cleaned": True}
@@ -353,7 +371,7 @@ class ExploitGymCommandTests(unittest.TestCase):
                 events.append(("network", network_block_all))
 
         agent = BuildAgent(Sandbox(), ModelConfig())
-        codes = asyncio.run(
+        oracle = asyncio.run(
             agent._reconfirm_isolated(
                 Task("curl", "arvo_66012"),
                 "patch-only",
@@ -361,7 +379,12 @@ class ExploitGymCommandTests(unittest.TestCase):
                 "/tmp/fix.patch",
             )
         )
-        self.assertEqual(codes, (1, 0))
+        self.assertEqual(oracle.vul_exit_code, 1)
+        self.assertEqual(oracle.fix_exit_code, 0)
+        self.assertEqual(oracle.vul_run_poc_stdout_tail, "vulnerable stdout")
+        self.assertEqual(oracle.vul_run_poc_stderr_tail, "vulnerable stderr")
+        self.assertEqual(oracle.fix_run_poc_stdout_tail, "fixed stdout")
+        self.assertEqual(oracle.fix_run_poc_stderr_tail, "fixed stderr")
         self.assertEqual(
             events,
             [

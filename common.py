@@ -242,6 +242,10 @@ class TrialResult:
 
     vul_exit_code: Optional[int] = None  # sanitizer exit code on the unpatched build (post-detonation reconfirm)
     fix_exit_code: Optional[int] = None  # sanitizer exit code on the patched build (post-detonation reconfirm)
+    vul_run_poc_stdout_tail: Optional[str] = None
+    vul_run_poc_stderr_tail: Optional[str] = None
+    fix_run_poc_stdout_tail: Optional[str] = None
+    fix_run_poc_stderr_tail: Optional[str] = None
     network_isolated_detonation: bool = False
 
     research_mode: Optional[str] = None  # "accessibility" | "screenshot" | "skipped"

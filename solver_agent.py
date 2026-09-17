@@ -112,6 +112,10 @@ class BuildResult:
     log_path: str
     vul_exit_code: Optional[int] = None
     fix_exit_code: Optional[int] = None
+    vul_run_poc_stdout_tail: Optional[str] = None
+    vul_run_poc_stderr_tail: Optional[str] = None
+    fix_run_poc_stdout_tail: Optional[str] = None
+    fix_run_poc_stderr_tail: Optional[str] = None
     network_isolated_detonation: bool = False
     detonation_error: Optional[str] = None
     solver_usage: Optional[dict[str, Any]] = None
@@ -122,6 +126,16 @@ class BuildResult:
     # with "No patch generated!" and $0 spend, and run_agent.log alone gave
     # no way to tell why -- the real answer only ever lived here.
     trajectory_log_paths: list[str] = dataclasses.field(default_factory=list)
+
+
+@dataclasses.dataclass(frozen=True)
+class IsolatedOracleResult:
+    vul_exit_code: Optional[int]
+    fix_exit_code: Optional[int]
+    vul_run_poc_stdout_tail: Optional[str]
+    vul_run_poc_stderr_tail: Optional[str]
+    fix_run_poc_stdout_tail: Optional[str]
+    fix_run_poc_stderr_tail: Optional[str]
 
 
 class VisionPageAssessment(BaseModel):
@@ -472,13 +486,21 @@ class BuildAgent:
             poc_path = f"{self.remote_dir}/data/projects/{task.path}/poc.bin"
 
         vul_code = fix_code = None
+        vul_stdout_tail = vul_stderr_tail = None
+        fix_stdout_tail = fix_stderr_tail = None
         network_isolated = False
         detonation_error = None
         if poc_path and patch_path and summary:
             try:
-                vul_code, fix_code = await self._reconfirm_isolated(
+                oracle = await self._reconfirm_isolated(
                     task, mode, poc_path, patch_path
                 )
+                vul_code = oracle.vul_exit_code
+                fix_code = oracle.fix_exit_code
+                vul_stdout_tail = oracle.vul_run_poc_stdout_tail
+                vul_stderr_tail = oracle.vul_run_poc_stderr_tail
+                fix_stdout_tail = oracle.fix_run_poc_stdout_tail
+                fix_stderr_tail = oracle.fix_run_poc_stderr_tail
                 network_isolated = vul_code is not None and fix_code is not None
             except Exception as exc:
                 detonation_error = str(exc)
@@ -505,6 +527,10 @@ class BuildAgent:
             log_path=log_path,
             vul_exit_code=vul_code,
             fix_exit_code=fix_code,
+            vul_run_poc_stdout_tail=vul_stdout_tail,
+            vul_run_poc_stderr_tail=vul_stderr_tail,
+            fix_run_poc_stdout_tail=fix_stdout_tail,
+            fix_run_poc_stderr_tail=fix_stderr_tail,
             network_isolated_detonation=network_isolated,
             detonation_error=detonation_error,
             solver_usage=usage if isinstance(usage, dict) else None,
@@ -514,7 +540,7 @@ class BuildAgent:
 
     async def _reconfirm_isolated(
         self, task: Task, mode: Mode, poc_path: str, patch_path: str
-    ) -> tuple[Optional[int], Optional[int]]:
+    ) -> IsolatedOracleResult:
         """
         run_agent.py's own S1-S4 loop needs network (LLM API calls) so the
         network can't be cut for the whole build/PoC/patch loop. Instead,
@@ -572,7 +598,18 @@ class BuildAgent:
                 )
             if payload.get("error"):
                 raise RuntimeError(str(payload["error"]))
-            return payload.get("vul_exit_code"), payload.get("fix_exit_code")
+            vulnerable = payload.get("vulnerable")
+            fixed = payload.get("fixed")
+            vulnerable = vulnerable if isinstance(vulnerable, dict) else {}
+            fixed = fixed if isinstance(fixed, dict) else {}
+            return IsolatedOracleResult(
+                vul_exit_code=payload.get("vul_exit_code"),
+                fix_exit_code=payload.get("fix_exit_code"),
+                vul_run_poc_stdout_tail=vulnerable.get("stdout_tail"),
+                vul_run_poc_stderr_tail=vulnerable.get("stderr_tail"),
+                fix_run_poc_stdout_tail=fixed.get("stdout_tail"),
+                fix_run_poc_stderr_tail=fixed.get("stderr_tail"),
+            )
         finally:
             # Remove both prepared containers while the cut is still in
             # force. Cleanup is best-effort so it can never prevent the

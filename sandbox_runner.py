@@ -203,6 +203,10 @@ async def run_trial(
         result.stage1, result.stage2, result.stage3, result.stage4 = build.stage1, build.stage2, build.stage3, build.stage4
         result.agent_success, result.gt_success = build.agent_success, build.gt_success
         result.vul_exit_code, result.fix_exit_code = build.vul_exit_code, build.fix_exit_code
+        result.vul_run_poc_stdout_tail = build.vul_run_poc_stdout_tail
+        result.vul_run_poc_stderr_tail = build.vul_run_poc_stderr_tail
+        result.fix_run_poc_stdout_tail = build.fix_run_poc_stdout_tail
+        result.fix_run_poc_stderr_tail = build.fix_run_poc_stderr_tail
         result.network_isolated_detonation = build.network_isolated_detonation
         result.detonation_error = build.detonation_error
         result.solver_usage = build.solver_usage
