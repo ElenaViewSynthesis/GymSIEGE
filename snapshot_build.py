@@ -125,7 +125,7 @@ SNAPSHOT_STATE_POLL_INTERVAL_S = 5
 # Daytona/Modal filesystem. The bake records source -> derived image tags
 # here; solver_agent.py consumes the mapping after the network cut.
 VALIDATOR_IMAGE_MANIFEST = "/root/gymsiege-validator-images.json"
-VALIDATOR_IMAGE_RECIPE_VERSION = "1"
+VALIDATOR_IMAGE_RECIPE_VERSION = "2"
 VALIDATOR_UV_VERSION = "0.9.11"
 
 
@@ -433,7 +433,8 @@ for img in sorted(wanted - {{firewall_proxy_image}}):
 USER root
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN apt-get update -qq \\
- && apt-get install -y -qq --no-install-recommends sudo git curl ca-certificates \\
+ && apt-get install -y -qq --no-install-recommends \\
+      sudo git curl ca-certificates libblocksruntime0 libunwind8 \\
  && rm -rf /var/lib/apt/lists/*
 RUN curl -LsSf https://astral.sh/uv/{validator_uv_version}/install.sh \\
     | env UV_UNMANAGED_INSTALL=/usr/local/bin sh \\
@@ -442,6 +443,9 @@ RUN curl -LsSf https://astral.sh/uv/{validator_uv_version}/install.sh \\
  && uv venv /scripts/.venv --python 3.13 \\
  && uv pip install --python /scripts/.venv/bin/python 'tomli==2.4.1' \\
  && command -v sudo git curl uv >/dev/null \\
+ && ldconfig -p | grep -q 'libBlocksRuntime.so.0' \\
+ && ldconfig -p | grep -q 'libunwind-ptrace.so.0' \\
+ && ldconfig -p | grep -q 'libunwind-x86_64.so.8' \\
  && /scripts/.venv/bin/python -c 'import tomli'
 LABEL org.gymsiege.validator-ready="{validator_recipe_version}"
 '''

@@ -176,7 +176,12 @@ if validator_manifest.get("uv_version") != {VALIDATOR_UV_VERSION!r}:
 validator_check = (
     "command -v sudo git curl uv >/dev/null && "
     "test -x /scripts/.venv/bin/python && "
-    "/scripts/.venv/bin/python -c 'import tomli'"
+    "/scripts/.venv/bin/python -c 'import tomli' && "
+    "ldconfig -p | grep -q 'libBlocksRuntime.so.0' && "
+    "ldconfig -p | grep -q 'libunwind-ptrace.so.0' && "
+    "ldconfig -p | grep -q 'libunwind-x86_64.so.8' && "
+    "if test -x /src/honggfuzz/honggfuzz; then "
+    "/src/honggfuzz/honggfuzz --help >/dev/null; fi"
 )
 for source_image, validator_image in sorted(validator_images.items()):
     try:
