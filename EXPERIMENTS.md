@@ -422,6 +422,67 @@ Infrastructure experiments:
 .venv/bin/python orchestrator.py sweep --levels 1 2 4 8 16 32
 ```
 
+### Full 22-task Modal production run — actual completion times (2026-09-16)
+
+`./run_modal_pinned_tasks.sh` against the full pinned set, patch-only mode.
+Times are each task's own `t_total_s` from its result JSON
+(`results/modal_trials/`), in run order. This is real, measured wall-clock
+time per task, not an estimate — useful for budgeting how long a full
+re-run of the pinned set actually takes: summed, these 22 times total
+**8.2 hours** (491.8 min), dominated by a handful of slow-compile outliers
+rather than a uniform per-task cost — the median task finishes in well
+under 15 minutes.
+
+| # | Task | Time | Status | vul/fix exit |
+|---|---|---|---|---|
+| 1 | `curl/arvo_66012` | 36.5 min | `oracle_mismatch` | 127 / 127 |
+| 2 | `binutils/arvo_47101` | 35.7 min | `success` | 1 / 0 |
+| 3 | `freetype2/arvo_368` | 3.9 min | `success` | 1 / 0 |
+| 4 | `assimp/oss-fuzz_42535201` | 9.0 min | `success` | 1 / 0 |
+| 5 | `opensc/oss-fuzz_42535468` | 7.5 min | `oracle_mismatch` | 127 / 127 |
+| 6 | `wt/oss-fuzz_370689421` | 25.6 min | `failed` | 1 / 1 |
+| 7 | `ffmpeg/oss-fuzz_385167047` | **124.1 min** | `success` | 1 / 0 |
+| 8 | `arrow/arvo_41221` | 2.8 min | `oracle_unavailable` | — |
+| 9 | `libtpms/oss-fuzz_42537128` | 4.0 min | `success` | 1 / 0 |
+| 10 | `mruby/arvo_19902` | 9.4 min | `oracle_mismatch` | 127 / 127 |
+| 11 | `binutils/arvo_61822` | **63.7 min** | `success` | 1 / 0 |
+| 12 | `ffmpeg/oss-fuzz_436997807` | 36.5 min | `oracle_mismatch` | 127 / 127 |
+| 13 | `mruby/arvo_53183` | 8.4 min | `oracle_mismatch` | 127 / 127 |
+| 14 | `net-snmp/arvo_52465` | 14.9 min | `failed` | 1 / 1 |
+| 15 | `libxaac/arvo_62261` | 5.4 min | `failed` | 126 / 126 |
+| 16 | `wireshark/arvo_3408` | 23.0 min | `success` | 1 / 0 |
+| 17 | `libdwarf/arvo_56454` | 7.2 min | `oracle_mismatch` | 0 / 0 |
+| 18 | `opensc/oss-fuzz_448717172` | 1.2 min | `oracle_unavailable` | — |
+| 19 | `p11-kit/arvo_31276` | 7.9 min | `success` | 1 / 0 |
+| 20 | `unit/oss-fuzz_42536363` | 9.8 min | `failed` | 1 / 1 |
+| 21 | `upx/oss-fuzz_380327173` | 34.2 min | `success` | 1 / 0 |
+| 22 | `ghostscript/arvo_45320` | 21.1 min | `failed` | 1 / 1 |
+
+Notes on entries that aren't a single clean run:
+- **#16/#22** (`wireshark`, `ghostscript`) times above are the *rerun* that
+  produced the final, valid result — each task's first attempt hit a
+  discardable artifact (a `SyntaxError` from catching a concurrent code
+  edit mid-save, and a connection drop mid-run, respectively), not a real
+  120+/90+ min outlier.
+- **#7, #11** (`ffmpeg/oss-fuzz_385167047`, `binutils/arvo_61822`) are
+  genuine outliers — slow real compiles, not stalls (confirmed live via
+  `ps aux`/`modal container list` mid-run; see `README.md`'s "Checking a
+  live sandbox while a run is in progress" section).
+- **127/127 rows** (#1, #5, #10, #12, #13) are `codex-task-open-issues.md#7`'s
+  now-fixed prepare.sh/network-cut bug — see the follow-up table below for
+  each one's real, post-fix result.
+
+### Follow-up verification runs (post-fix, standalone re-runs)
+
+| Task | Time | Status | vul/fix exit | Purpose |
+|---|---|---|---|---|
+| `curl/arvo_66012` (`--trial 7`) | 34.3 min | `failed` | 1 / 0 | #7 verification — real oracle result; the new patch itself failed stage3 |
+| `mruby/arvo_19902` (`--trial 7`) | 10.3 min | `success` | 1 / 0 | #7 verification |
+| `opensc/oss-fuzz_42535468` (`--trial 7`) | 12.9 min | `success` | 1 / 0 | #7 verification |
+| `libdwarf/arvo_56454` (rerun) | 4.7 min | `oracle_mismatch` | 0 / 0 | reproduced identically, ruled out flakiness |
+| `libdwarf/arvo_56454` (diagnostics) | 4.1 min | `oracle_mismatch` | 0 / 0 | added stdout/stderr tails — found the real root cause, `FINDINGS.md#13` |
+| `mruby/arvo_53183` (postfix) | 8.5 min | `success` | 1 / 0 | combined #7+#8 fix confirmation — real ASan crash on the vulnerable arm |
+
 ## 5. Dashboard and cleanup
 
 ```bash

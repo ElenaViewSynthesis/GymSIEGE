@@ -418,7 +418,12 @@ python modal_sandbox_runner.py --task freetype2/arvo_368 --mode patch-only \
 To run every task in `txt/tasks.pinned.txt` this way instead of one at a
 time, use `./run_modal_pinned_tasks.sh` — a thin sequential loop over the
 same command above (real cost per task, one task's failure doesn't stop
-the rest); see the [Files](#files) table below.
+the rest); see the [Files](#files) table below. For actual measured
+per-task completion times from a full run of the pinned set (8.2 hours
+total, dominated by a handful of slow-compile outliers rather than a
+uniform per-task cost) plus the post-fix verification reruns, see
+[EXPERIMENTS.md's full 22-task Modal production run
+table](EXPERIMENTS.md#full-22-task-modal-production-run--actual-completion-times-2026-09-16).
 
 **Checking a live sandbox while a run is in progress.** The local log only
 prints before/after the single blocking `sandbox.process.exec()` call that
