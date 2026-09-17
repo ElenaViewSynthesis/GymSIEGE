@@ -536,7 +536,84 @@ new sandbox creation. No further Daytona operations were run.
 
 ---
 
-## 13. Verification status
+## 13. `libdwarf/arvo_56454`'s isolated oracle correctly reports no crash — the historical bug depends on uninitialized memory that doesn't reproduce in this environment
+
+**Status: investigated 2026-09-17, not a bug — closed as an environment/
+determinism limitation, not fixable in GYMSIEGE or via a `run_poc.sh`
+change.**
+
+Surfaced by `codex-task-open-issues.md#7`'s new diagnostic instrumentation
+(`vul_run_poc_stdout_tail`/`stderr_tail`, added to `TrialResult`/
+`BuildResult` specifically so cases like this become diagnosable instead
+of a bare, unexplained exit code): a live 2026-09-16 22-task Modal
+production trial against `libdwarf/arvo_56454` (patch-only) returned
+`vul_exit_code=0` **and** `fix_exit_code=0` — neither arm crashes,
+including the unpatched/vulnerable one — reproduced identically on a
+manual rerun and again on a dedicated diagnostic run
+(`results/modal_oracle_diagnostics/libdwarf_arvo_56454.json`).
+
+**First hypothesis (wrong, and disproven with evidence, not just
+re-guessed):** the task's `run_poc.sh` invokes the compiled fuzz target
+directly with the PoC path as a bare argument
+(`/out/fuzz_die_cu_offset /src/poc.bin`), and the raw `stderr_tail`
+showed the target printing its own `Usage for fuzzing: honggfuzz -P
+[flags] -- /out/fuzz_die_cu_offset` line — this looked like a
+honggfuzz-vs-libFuzzer invocation mismatch (this task's `config.toml`
+sets `FUZZING_ENGINE=honggfuzz`, unlike curl/freetype2/binutils's
+`afl`). That theory was checked against upstream `google/honggfuzz`
+source directly, not assumed: `libhfuzz/persistent.c`'s
+`HonggfuzzRunFromFile()` opens the final CLI argument, reads it, and
+calls `HonggfuzzRunOneInput()` → `LLVMFuzzerTestOneInput()` — the exact
+same calling convention libFuzzer-built targets use. The "Usage for
+fuzzing" line is printed immediately *after* "Accepting input from
+'/src/poc.bin'", i.e. informational, not a failure path; there is also
+no `--run_this_input` flag in honggfuzz's actual documented CLI. **The
+direct-invocation form is correct and already works** — confirmed
+separately by `net-snmp/arvo_52465`, a sibling `FUZZING_ENGINE=honggfuzz`
+pinned task, which got real, correct `vul_exit_code`/`fix_exit_code`
+results via the identical bare-invocation `run_poc.sh` in the same
+production run.
+
+**Actual root cause, found by reproducing the crash directly, not
+inferred:** the historical `crash.log` bundled with this ARVO task shows
+an ASan stack-buffer-overflow from reading an **uninitialized** local
+`Dwarf_Die die`. Three live Modal diagnostics confirmed the PoC *is*
+correctly delivered to the target (including honggfuzz's own bounded,
+oracle-compatible verifier mode — `honggfuzz -P -V -r 0 -n 1 ...
+--exit_upon_crash --exit_code_upon_crash 86`, run after fixing a
+separate, unrelated gap where the baked validator image's
+`/src/honggfuzz/honggfuzz` binary was missing `libBlocksRuntime.so.0`/
+`libunwind-ptrace.so.0`/`libunwind-x86_64.so.8`) — every one completed
+with `crashes_count: 0`. The bug is real and the PoC is genuinely
+delivered; the specific uninitialized-memory value that happened to
+trigger the historical crash simply isn't reproduced by this pinned
+image/source/PoC combination's memory layout. This task is
+oracle-incompatible in the current environment, not broken
+infrastructure — `oracle_mismatch` (`0`/`0`) is the honest result.
+
+Scope check (all 22 pinned tasks scanned against the exact upstream
+commit baked into the current Modal snapshot,
+`b46456c46838b2b090d7e6ded5bfdf1ff583dba7`): 4 use
+`FUZZING_ENGINE=honggfuzz` — `mruby/arvo_53183`, `net-snmp/arvo_52465`,
+`libdwarf/arvo_56454`, `opensc/oss-fuzz_448717172`. Only `libdwarf`'s
+specific crash is confirmed non-reproducible; `net-snmp`'s reproduced
+correctly in the same run, so this is not a systemic honggfuzz problem
+— see `codex-task-open-issues.md#8` for the full investigation.
+
+**The separate validator-runtime gap is fixed and snapshot-verified.**
+`snapshot_build.py` validator recipe version `2` installs
+`libblocksruntime0` and `libunwind8`, verifies all three previously
+missing sonames with `ldconfig`, and Modal's offline image check launches
+honggfuzz with its cross-version `--help` option. A first full rebuild
+built all 18 derivatives but failed closed before snapshotting because an
+initial `--version` probe was unsupported by one older ARVO binary. The
+corrected full rebuild passed all 18 offline checks before capture and
+again in an independent fork, producing persistent Modal snapshot
+`im-01M2RQB74W4A582AJ9Q77KEBCG` for 22 tasks, 19 source images, and 18
+validator images. The bake sandbox and fork were both terminated. The
+recipe is shared with Daytona; Daytona was not started or rebaked.
+
+## 14. Verification status
 
 | Claim | Basis |
 |---|---|
