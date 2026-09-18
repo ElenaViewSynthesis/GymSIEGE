@@ -14,6 +14,8 @@ from daytona.common.errors import DaytonaTimeoutError
 
 import common
 import modal_sandbox_runner
+import modal_exploitgym_build
+import modal_exploitgym_runner
 from common import (
     SNAPSHOT_NAME,
     Task,
@@ -1530,3 +1532,82 @@ class ModalSnapshotManifestTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ModalExploitGymAdapterTests(unittest.TestCase):
+    """The standalone Modal ExploitGym runner/bake reuse the Daytona helpers
+    and leave the live-verified Daytona adapter untouched (see the
+    'Standalone Modal runner' decision)."""
+
+    def test_runner_parser_defaults(self) -> None:
+        parser = modal_exploitgym_runner.build_parser()
+        args = parser.parse_args(["--task", "user:cybergym/arvo_1699"])
+        self.assertEqual(args.model, "gpt-5.6-luna")
+        self.assertEqual(args.agent, "codex")
+        self.assertEqual(args.budget_usd, 3.0)
+        self.assertEqual(args.timeout, 3600)
+        self.assertEqual(args.reasoning_effort, "medium")
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["--task", "x", "--agent", "claude_code"])
+
+    def test_runner_reuses_shared_daytona_helpers(self) -> None:
+        import exploitgym_adapter
+        self.assertIs(modal_exploitgym_runner._run_script, exploitgym_adapter._run_script)
+        self.assertIs(modal_exploitgym_runner._read_json, exploitgym_adapter._read_json)
+        self.assertIs(modal_exploitgym_runner._score, exploitgym_adapter._score)
+        self.assertIs(
+            modal_exploitgym_runner.ExploitGymTrialResult,
+            exploitgym_adapter.ExploitGymTrialResult,
+        )
+
+    def test_build_reuses_daytona_bootstrap_and_node_fetch(self) -> None:
+        import exploitgym_snapshot_build as eg
+        self.assertIs(modal_exploitgym_build.bootstrap_script, eg.bootstrap_script)
+        self.assertIs(
+            modal_exploitgym_build.download_node_compatibility_archive,
+            eg.download_node_compatibility_archive,
+        )
+        self.assertEqual(
+            modal_exploitgym_build.NODE_COMPAT_REMOTE_ARCHIVE, eg.NODE_COMPAT_REMOTE_ARCHIVE
+        )
+
+    def test_build_rejects_non_userspace_tasks(self) -> None:
+        with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as fh:
+            fh.write("kernel:foo/bar_1\n")
+            path = Path(fh.name)
+        try:
+            args = argparse.Namespace(tasks_file=path)
+            with self.assertRaises(RuntimeError):
+                modal_exploitgym_build.selected_tasks(args)
+        finally:
+            path.unlink()
+
+    def test_load_snapshot_manifest_requires_image_id(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            manifest = Path(d) / "modal_exploitgym_snapshot.json"
+            with self.assertRaises(RuntimeError):
+                modal_exploitgym_runner.load_snapshot_manifest(manifest)
+            manifest.write_text(
+                json.dumps({"snapshot_image_id": "im-abc", "app": "gymsiege-exploitgym"})
+            )
+            loaded = modal_exploitgym_runner.load_snapshot_manifest(manifest)
+            self.assertEqual(loaded["snapshot_image_id"], "im-abc")
+
+    def test_verify_script_checks_node_squid_and_variant(self) -> None:
+        script = modal_exploitgym_build._verify_script(["user:cybergym/arvo_1699"])
+        self.assertIn("data/runtime/node/bin/node --version", script)
+        self.assertIn("docker image inspect ubuntu/squid:latest", script)
+        self.assertIn(modal_exploitgym_build.NODE_COMPAT_VARIANT, script)
+
+    def test_node_probe_runs_offline_against_hardened_image(self) -> None:
+        probe = modal_exploitgym_runner._node_probe_script(
+            ExploitGymTask("user:cybergym/arvo_1699")
+        )
+        self.assertIn("--network none", probe)
+        self.assertIn("exp.hardened", probe)
+        self.assertIn("/data/node/bin/node", probe)
+
+    def test_daytona_adapter_left_untouched(self) -> None:
+        src = Path("exploitgym_adapter.py").read_text(encoding="utf-8")
+        self.assertNotIn("modal", src.lower())
+        self.assertIn("async def run_exploitgym_trial(", src)

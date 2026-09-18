@@ -232,10 +232,12 @@ dashboard.py  (local uvicorn, or --publish to a live Daytona preview link)
 | `common.py` | Shared config, env parsing, constants (`CONCURRENCY_LADDER`, snapshot names, secret name defaults), and JSON I/O helpers used by every entrypoint below. |
 | `snapshot_build.py` | Bakes `gymsiege-toolchain`: installs the sanitizer toolchain, clones CyberGym-E2E, pre-pulls Docker build images, snapshots the sandbox, and seeds a provisioning baseline sample. **The full 20-task pinned set cannot currently be captured** — see the storage-ceiling note below. `--tasks-file txt/tasks.demo.txt` bakes a 3-task set sized to fit. |
 | `modal_snapshot_build.py` | Bakes the full pinned CyberGym set in a Modal VM Sandbox, captures a non-expiring filesystem snapshot, verifies an independent fork, and persists the verified Modal Image ID in `results/modal_snapshot.json`. |
+| `modal_exploitgym_build.py` | Bakes the ExploitGym toolchain into a Modal VM filesystem snapshot — reuses `exploitgym_snapshot_build.py`'s own `bootstrap_script` verbatim (clone, static socat/nc, glibc-2.17 Node, squid), captures a non-expiring snapshot, verifies an independent fork, and writes the Image ID to `results/modal_exploitgym_snapshot.json`. Offline-tested only; not yet live-baked. |
 | `exploitgym_snapshot_build.py` | Bakes `gymsiege-exploitgym` for the official userspace smoke tasks (harness, static agent runtimes, firewall/proxy deps). |
 | `solver_agent.py` | Defines `Solver`: separates Computer Use research work from headless CyberGym build/oracle work. |
 | `sandbox_runner.py` | Runs one CyberGym trial end-to-end on Daytona — provisioning, secrets, recording, solver call, metrics capture, artifact download, TTL arm, and guaranteed deletion. |
 | `modal_sandbox_runner.py` | The Modal equivalent of `sandbox_runner.py` — restores a per-trial Sandbox from `modal_snapshot_build.py`'s Image ID, runs the same `solver_agent.py` build/oracle work via `ModalSandboxAdapter`, captures cgroup telemetry and artifacts. Standalone (`--task`/`--mode`), not yet wired into `orchestrator.py`. |
+| `modal_exploitgym_runner.py` | The Modal equivalent of `exploitgym_adapter.py` — a standalone runner that re-expresses the ExploitGym stage flow on Modal while reusing the Daytona adapter's own `_run_script`/`_read_json`/`_score` and `ExploitGymTrialResult` (the Daytona path is left untouched). No 10 GiB ceiling, so trials can run in parallel. Offline-tested only; not yet live-verified against a real Modal bake/trial. |
 | `orchestrator.py` | CLI entrypoint: `run`, `sweep`, `provision-bench`, `exploitgym-run`, `reap` — owns the concurrency semaphore and fans trials out across the fleet. Daytona only; Modal trials run through `modal_sandbox_runner.py` directly. |
 | `exploitgym_adapter.py` | Runs upstream ExploitGym inside a sandbox with mandatory firewall/proxy/hardened settings; delegates task construction and scoring to ExploitGym itself. |
 | `dashboard.py` | FastAPI app combining the CyberGym/ExploitGym leaderboards, concurrency curve, provisioning latency histogram, per-sandbox telemetry, and recording links. Runs locally or publishes to a live Daytona preview link. |
@@ -709,6 +711,54 @@ curl -sSL "https://raw.githubusercontent.com/sunblaze-ucb/exploitgym/main/data/t
 The broader `kernel:` family also includes 159 `kernel:syzbot/*` tasks (fuzzer-found bugs from Google's syzbot, not all CVE-tagged) — swap the grep pattern to `^kernel:syzbot/` to list those instead. See [`kernelctf-tasks.md`](kernelctf-tasks.md) for what each kernelCTF CVE actually is.
 
 ExploitGym's agent interaction must retain LLM connectivity, so its containment signal is the upstream internal Docker firewall rather than a false claim of Daytona-wide block-all during the agent step. GYMSIEGE blocks Daytona egress immediately after the evaluator returns and records both facts separately per trial.
+
+### ExploitGym on Modal (new — offline-tested, not yet live-verified)
+
+The default ExploitGym path above runs on Daytona, whose account tier caps the
+organization at **10 vCPU / 10 GiB total** — each 4 vCPU / 8 GiB ExploitGym
+sandbox fits, but only one at a time, so a multi-task run is strictly serial
+(see the `--max-parallel 1` note under [ExploitGym — runs today](#exploitgym--runs-today)).
+Modal has no such ceiling. `modal_exploitgym_build.py` + `modal_exploitgym_runner.py`
+port the ExploitGym flow to Modal so those trials can run in parallel.
+
+This is a **standalone** runner: it re-expresses only provisioning, the
+docker/network boundary, telemetry, and cleanup for Modal, and reuses the
+Daytona adapter's own evaluation command (`_run_script`), result parsing
+(`_read_json`/`_score`/`_cost_usd`), and `ExploitGymTrialResult` unchanged — so
+the scored logic is literally the same code, and `exploitgym_adapter.py` (the
+live-verified Daytona path) is not modified. The bake likewise reuses
+`exploitgym_snapshot_build.py`'s `bootstrap_script` verbatim, including the
+glibc-2.17 Node runtime, downloaded and SHA-256-verified on the host and baked
+into the image via `add_local_file`.
+
+> **Status: offline-tested only.** The modules import cleanly and are covered by
+> unit tests (`tests/test_core.py::ModalExploitGymAdapterTests`, including
+> identity assertions that the shared helpers are reused and the Daytona adapter
+> is untouched), but no real Modal bake or trial has run yet — the commands
+> below spend real Modal time and LLM budget, and the first live bake may
+> surface Modal-API adjustments (the alpha outbound-network policy,
+> `add_local_file` path persistence under `vm_runtime`, the `/home/daytona/...`
+> paths as root). Any failure surfaces as a structured `ExploitGymTrialResult`
+> (`failure_stage`, `error`), not a silent pass. Do not cite this as working
+> until a live bake/trial confirms it, per this repo's evidence standard.
+
+```bash
+# Requires Modal credentials (its own CLI login, outside .env.local) and a
+# `gymsiege-openai` **Modal** Secret supplying OPENAI_API_KEY — the same
+# credential the Daytona path uses, attached as a Modal Secret at create time.
+
+# 1. Bake the Modal ExploitGym snapshot (writes results/modal_exploitgym_snapshot.json).
+python modal_exploitgym_build.py --tasks-file txt/exploitgym_tasks.pinned.txt
+
+# 2. Run one trial — e.g. an old-glibc task Issue #1 unblocked. Unlike Daytona,
+#    several of these can run concurrently (no 10 GiB ceiling).
+python modal_exploitgym_runner.py --task user:cybergym/arvo_1699 \
+  --budget-usd 3 --timeout 3600 \
+  --output results/modal_exploitgym/arvo_1699.json
+```
+
+Like `modal_sandbox_runner.py`, this is standalone (`--task`), not wired into
+`orchestrator.py`'s `exploitgym-run` fan-out.
 
 ## Dashboard and cleanup
 
