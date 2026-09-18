@@ -2,55 +2,49 @@
 
 GYMSIEGE (this repo) runs CyberGym-E2E and ExploitGym as a Daytona-sandbox
 fleet benchmark, plus (new as of 2026-09-15) a second CyberGym-E2E provider
-on Modal (`modal_sandbox_runner.py`). Issues #1-#3 and #6 remain open; #4,
-#5, #7, and #8 are resolved/investigated and kept below only as closed
-records — no action needed on any of them. Priority order for the open
-ones: #1 is the one actually worth solving, #2 is a Daytona-specific
-investigation/decision, #3 is a small resilience fix, #6 is a well-scoped
-build task with a concrete plan already worked out below.
+on Modal (`modal_sandbox_runner.py`). Issues #2, #3, and #6 remain open; #1,
+#4, #5, #7, and #8 are resolved/investigated and kept below only as closed
+records — no action needed on any of them. Priority order for the open ones:
+#2 is a Daytona-specific investigation/decision, #3 is a small resilience
+fix, and #6 is a well-scoped build task with a concrete plan below.
 
-## 1. (Primary) ExploitGym's baked Node runtime can't run on older-glibc targets
+## 1. RESOLVED (2026-09-18) — glibc-2.17 Node runs on old and new targets
 
-`exploitgym_snapshot_build.py:125-135` bakes the trial runtime by downloading
-Node's official prebuilt glibc release and running:
+**No action needed.** The snapshot now bakes Node 22.21.0's
+`linux-x64-glibc-217` compatibility distribution, verifies its pinned SHA-256,
+and uses ExploitGym's installer only to add Codex to that runtime.
 
-    bash scripts/setup/static_build_node_and_agents.sh \
-      --prefix "$PWD/data/runtime/node" --codex --skip-node-build
+The upstream static path was inspected at ExploitGym commit
+`e4123d043774623b2274e6bbe0155a423d631f0a`. Dropping `--skip-node-build`
+really does compile Node inside `alpine:3.20` with
+`./configure --fully-static`. A live Daytona bake proved the Alpine image can
+be pulled but its nested container cannot read either Alpine package index;
+`apk add` fails before compilation. Node's prebuilt musl distribution was not
+selected because its own documentation requires Alpine's `libstdc++` and a
+musl runtime, neither of which is guaranteed in the glibc challenge images.
+Bundling another loader/libc tree was therefore unnecessary.
 
-`--skip-node-build` is upstream ExploitGym's own script
-(`sunblaze-ucb/exploitgym`, path `scripts/setup/static_build_node_and_agents.sh`
-inside the cloned repo — not vendored in this repo, fetch it to read). We have
-never actually inspected what dropping `--skip-node-build` does; the flag name
-implies the script *can* build Node itself, possibly statically or against an
-older glibc baseline, which — if true — would eliminate this whole failure
-class in one shot instead of needing per-target workarounds.
+The chosen archive is explicitly compiled against glibc 2.17 for older Linux
+distributions. Local inspection confirmed checksum
+`ff8605572e22e48aaedf4024a4ebb9854df5f92dde2456055f5c8eb49fcafbd1`,
+`node --version` = `v22.21.0`, and no referenced glibc symbol newer than
+`GLIBC_2.17`, below Ubuntu 16.04's glibc 2.23. The controller downloads and
+verifies it, then uploads it into the disposable bake sandbox because direct
+Daytona-sandbox connections to `unofficial-builds.nodejs.org` were reset.
 
-`exploitgym_adapter.py:454-479`'s `node_compatibility_probe` mounts this baked
-runtime read-only into each trial's own challenge image and runs
-`node --version` against it, offline, before any model call. 7 of the tasks
-run so far have failed this probe with the exact same signature — the target
-image is missing `GLIBC_2.25`/`2.27`/`2.28`:
+Live verification completed on 2026-09-18:
 
-    /data/node/bin/node: /lib/x86_64-linux-gnu/libc.so.6: version `GLIBC_2.27' not found
+- The rebuilt `gymsiege-exploitgym` passed runtime checks for `gdb`, `nc`,
+  `node --version`, `codex.sh --version`, and `socat`; snapshot capture reached
+  `ACTIVE` in 113.2s and an independent restore probe passed.
+- The exact offline `node_compatibility_probe` command passed with exit 0 and
+  `v22.21.0` inside `user:cybergym/arvo_1699`, which previously failed for
+  missing `GLIBC_2.27`/`2.28`.
+- The same command passed with exit 0 and `v22.21.0` inside
+  `user:nofuzz/CVE-2022-39393`, the previously passing newer-glibc regression
+  control. Neither verification made a model call.
 
-All 7 (`arvo_18224`, `arvo_1699`, `arvo_25885`, `arvo_11896`, `CVE-2022-23308`,
-`CVE-2021-43848`, `CVE-2022-32234`) are "Ubuntu 16.04 family" per
-`probe_arvo_glibc.py` / `results/glibc_probe.json`. 4 other tasks
-(`arvo_42298`, `arvo_58295`, `arvo_62183`, `CVE-2022-39393`) already pass this
-probe fine on newer-glibc targets — **any fix must not break those**.
-
-**Task:** Investigate whether upstream's static-build path (or a musl Node
-build, or bundling glibc alongside the binary, or downloading an older Node
-release built against an older glibc floor) produces a `node` binary that
-runs unmodified across both the old- and new-glibc target images. If one
-works, wire it into `exploitgym_snapshot_build.py`'s bake step. The result
-still has to pass upstream's own `validate.sh` runtime checks (this file's
-lines 145-154: `gdb`, `nc`, `node --version`, `codex.sh --version`, `socat`).
-Verify by re-baking `gymsiege-exploitgym`, then re-running
-`probe_arvo_glibc.py` (or `orchestrator.py exploitgym-run --task
-user:cybergym/arvo_1699 --k 1 --budget-usd 1`) and confirming it now clears
-`node_compatibility_probe` instead of failing it — plus a spot-check that a
-previously-passing task (e.g. `CVE-2022-39393`) still passes.
+Full mechanism and ruled-out alternatives are recorded in `FINDINGS.md#15`.
 
 ## 2. (Investigate) CyberGym's isolated-oracle network lockdown is now rejected outright by this Daytona account tier
 
