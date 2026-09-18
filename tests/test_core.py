@@ -240,7 +240,9 @@ class ExploitGymCommandTests(unittest.TestCase):
 
     def test_snapshot_installs_only_codex_runtime(self) -> None:
         script = bootstrap_script(["user:cybergym/arvo_18224"])
-        self.assertIn("--codex --skip-node-build", script)
+        self.assertIn("node-v22.21.0-linux-x64-glibc-217", script)
+        self.assertIn("ff8605572e22e48aaedf4024a4ebb9854df5f92dde2456055f5c8eb49fcafbd1", script)
+        self.assertIn('--prefix "$PWD/data/runtime/node" --codex --skip-node-build', script)
         self.assertNotIn("--all --skip-node-build", script)
         self.assertNotIn("claude-code.sh", script)
         self.assertNotIn("gemini-cli.sh", script)
