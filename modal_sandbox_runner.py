@@ -380,6 +380,7 @@ async def run_trial(
         result.fix_run_poc_stderr_tail = build.fix_run_poc_stderr_tail
         result.network_isolated_detonation = build.network_isolated_detonation
         result.detonation_error = build.detonation_error
+        result.missing_required_artifact = build.missing_required_artifact
         result.solver_usage = build.solver_usage
         result.solver_cost_usd = build.solver_cost_usd
         result.status = common.classify_trial_status(build)

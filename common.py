@@ -232,7 +232,7 @@ class TrialResult:
     sandbox_id: Optional[str] = None
     sandbox_name: Optional[str] = None
 
-    status: str = "pending"  # pending|running|success|other_vuln|failed|error|oracle_unavailable|timeout
+    status: str = "pending"  # pending|running|success|other_vuln|failed|no_patch|no_poc|error|oracle_unavailable|timeout
     stage1: Optional[str] = None  # agent PoC crashes w/o patch
     stage2: Optional[str] = None  # agent PoC OK with patch
     stage3: Optional[str] = None  # functionality tests pass with patch
@@ -275,6 +275,7 @@ class TrialResult:
     cleanup_delete_accepted: bool = False
     cleanup_destroyed: bool = False
     detonation_error: Optional[str] = None
+    missing_required_artifact: Optional[str] = None
 
     error: Optional[str] = None
     started_at: Optional[str] = None
@@ -332,7 +333,12 @@ def classify_trial_status(build: Any) -> str:
         and build.vul_exit_code not in (None, 0)
         and build.fix_exit_code == 0
     )
-    if build.detonation_error and looks_oracle_unavailable(build.detonation_error):
+    missing_artifact = getattr(build, "missing_required_artifact", None)
+    if missing_artifact == "fix.patch":
+        return "no_patch"
+    elif missing_artifact == "poc.bin":
+        return "no_poc"
+    elif build.detonation_error and looks_oracle_unavailable(build.detonation_error):
         return "oracle_unavailable"
     elif build.agent_success and not isolated_ok:
         return "oracle_mismatch"

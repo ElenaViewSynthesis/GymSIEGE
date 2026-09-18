@@ -118,6 +118,10 @@ class BuildResult:
     fix_run_poc_stderr_tail: Optional[str] = None
     network_isolated_detonation: bool = False
     detonation_error: Optional[str] = None
+    # Agent-owned deliverable required before the isolated oracle can run.
+    # Values are currently "fix.patch" or "poc.bin"; None means every
+    # deliverable required by this mode existed in the sandbox.
+    missing_required_artifact: Optional[str] = None
     solver_usage: Optional[dict[str, Any]] = None
     solver_cost_usd: Optional[float] = None
     # The actual agent CLI transcript (e.g. Codex's own stdout/reasoning),
@@ -490,7 +494,25 @@ class BuildAgent:
         fix_stdout_tail = fix_stderr_tail = None
         network_isolated = False
         detonation_error = None
-        if poc_path and patch_path and summary:
+        missing_required_artifact = None
+        if summary and patch_path:
+            patch_exists = await self.sandbox.process.exec(
+                f"test -f {shlex.quote(patch_path)}"
+            )
+            if getattr(patch_exists, "exit_code", 1) != 0:
+                missing_required_artifact = "fix.patch"
+                patch_path = None
+                log.info("[%s] agent produced no fix.patch; skipping isolated oracle", task.path)
+        if summary and mode == "e2e" and poc_path:
+            poc_exists = await self.sandbox.process.exec(
+                f"test -f {shlex.quote(poc_path)}"
+            )
+            if getattr(poc_exists, "exit_code", 1) != 0:
+                missing_required_artifact = missing_required_artifact or "poc.bin"
+                poc_path = None
+                log.info("[%s] agent produced no poc.bin; skipping isolated oracle", task.path)
+
+        if poc_path and patch_path and summary and not missing_required_artifact:
             try:
                 oracle = await self._reconfirm_isolated(
                     task, mode, poc_path, patch_path
@@ -533,6 +555,7 @@ class BuildAgent:
             fix_run_poc_stderr_tail=fix_stderr_tail,
             network_isolated_detonation=network_isolated,
             detonation_error=detonation_error,
+            missing_required_artifact=missing_required_artifact,
             solver_usage=usage if isinstance(usage, dict) else None,
             solver_cost_usd=solver_cost,
             trajectory_log_paths=trajectory_log_paths,
