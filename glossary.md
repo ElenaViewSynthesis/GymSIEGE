@@ -31,6 +31,24 @@ actually apply to this repo rather than generic textbook definitions alone.
   on to turn a PoC into a pass/fail signal.
 - **PoC** — Proof of Concept; the artifact (`poc.bin`) an agent produces to
   demonstrate a vulnerability triggers.
+- **Patch (`fix.patch`)** — the agent's proposed fix: a source diff that
+  should stop the vulnerability from reproducing while leaving the program
+  otherwise working. Distinct from the PoC — the PoC *triggers* the bug, the
+  patch *closes* it. Required in both modes: in `patch-only` it is the agent's
+  only deliverable; in `e2e` the agent produces both the PoC and the patch.
+- **"No PoC" vs. "no patch"** — two different missing-artifact outcomes that
+  must not be conflated. **No PoC** = there is no `poc.bin` to detonate, so the
+  *vulnerable* arm cannot be tested (does the bug even reproduce?). In
+  `patch-only` mode this never happens — the ground-truth PoC is supplied
+  (`data/projects/<task>/poc.bin`); it applies only to `e2e` mode, where the
+  agent must produce the PoC itself. **No patch** = the agent produced no
+  `fix.patch`, so the *patched* arm cannot be tested (does the fix work?); this
+  is the agent's failure to deliver in `patch-only` mode, where the PoC is
+  already present. The isolated oracle needs both arms — a PoC to prove the bug
+  fires on the vulnerable build, and a patch to prove it stops firing on the
+  fixed build — so a missing PoC and a missing patch break *different* halves of
+  the scoring. A "no patch" result is an agent/capability outcome, not the
+  infrastructure failure (`oracle_unavailable`) it is easy to mislabel it as.
 - **CVE** — Common Vulnerabilities and Exposures; public vulnerability
   identifier format, used in several ExploitGym task IDs (e.g.
   `CVE-2021-32132`).

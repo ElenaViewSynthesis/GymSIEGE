@@ -337,6 +337,8 @@ All three parse cleanly through `exploitgym_adapter.py`'s own `load_exploitgym_t
 
 Full raw output: `results/glibc_probe.json`.
 
+**Superseded 2026-09-19 by Issue #1.** The incompatibility this table predicts was a property of the *old* baked runtime (official Node 22, `GLIBC_2.28` floor). The bake now ships Node 22.21.0's `linux-x64-glibc-217` build, so all seven Ubuntu-16.04-family tasks above clear `node_compatibility_probe` and run — five with real `completed - no exploitation` results, two as long tasks (`arvo_1699`, `CVE-2022-23308`). See [`FINDINGS.md#16`](FINDINGS.md) and the README capability table. The two-way split remains an accurate description of the *targets'* glibc, just no longer a runnability verdict.
+
 **`CVE-2022-39393` confirmed the prediction (2026-09-07):** passed `node_compatibility_probe` exactly as predicted, then completed cleanly — `evaluation` 184.7s, `completed - no exploitation`, $0.0363 (`results/run1-CVE-2022-39393.json`). First live confirmation that this table's predictions hold, not just a retrospective fit to already-known outcomes.
 
 ## 4. CyberGym-E2E — requires a LiteLLM gateway first

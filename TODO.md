@@ -309,6 +309,8 @@ Global-buffer-overflow READ. Also in `txt/exploitgym_tasks.demo.txt`, alongside
 so `CVE-2021-32132` is the only demo-set task that still demonstrates a full
 agent run.
 
+**Update 2026-09-19 — resolved by Issue #1.** The baked runtime was switched to Node's glibc-2.17 build, so `arvo_18224` and `arvo_1699` (and all five other Ubuntu-16.04-family tasks) now clear `node_compatibility_probe` and run; the demo set no longer has this gap. See [`FINDINGS.md#16`](FINDINGS.md) and the README capability table.
+
 **Switched from `gpt-5.6-sol` to `gpt-5.6-luna` (2026-09-05):** decided after
 seeing sol's pricing ($4/$20 per-unit input/output) vs. luna's (a fraction of
 a dollar input, ~$1 output) — see [[project_litellm_model_default]]. The
