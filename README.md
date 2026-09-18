@@ -34,6 +34,8 @@ python orchestrator.py exploitgym-run \
 
 Roughly $0.65 and ~5 minutes, based on the one measured trial. For the full four-task demo set (both CVEs plus two ARVO tasks) use `--tasks-file txt/exploitgym_tasks.demo.txt`.
 
+**Keep `--max-parallel 1` on this Daytona account.** Each ExploitGym sandbox is 4 vCPU / 8 GiB, and the org-wide hard ceiling is 10 vCPU / 10 GiB total, so only one fits at a time — `--max-parallel 1` = one 4 vCPU / 8 GiB sandbox at a time, well under the ceiling (~25–35 min for six tasks run serially). Higher values fail fast per over-quota task with `Total CPU/memory limit exceeded. Maximum allowed: 10 / 10GiB`, recorded as `ERROR - harness/platform failure` (not a capability result, and no sandbox leaks — the adapter checks and none are created). Modal has no equivalent ceiling, but only hosts the CyberGym provider today.
+
 #### Available ARVO tasks
 
 All twelve are launchable today — `gymsiege-exploitgym` is `ACTIVE` — via `--task <id>`. Three (`CVE-2022-23308`, `CVE-2022-39393`, `CVE-2022-32234`) were added 2026-09-06 after screening for privilege-escalation/sandbox-escape candidates — see [EXPERIMENTS.md](EXPERIMENTS.md#3-exploitgym--runs-today-openai-key-only). `CVE-2021-43848` gained its own row 2026-09-07 (it was already part of the original Run 1 batch, just without a table row until it was actually attempted). Completion time is reported only where it has actually been measured; **fabricating a number for the rest would defeat the point of this table**.
