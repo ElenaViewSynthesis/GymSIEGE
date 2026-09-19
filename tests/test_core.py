@@ -10,7 +10,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
-from daytona.common.errors import DaytonaTimeoutError
+from daytona.common.errors import DaytonaConnectionTimeoutError, DaytonaTimeoutError
 
 import common
 import modal_sandbox_runner
@@ -26,11 +26,14 @@ from common import (
 )
 from configure_secrets import HUGGINGFACE_SECRET_HOSTS, credential_value, litellm_hosts
 from exploitgym_adapter import (
+    EXPLOITGYM_AGENT_FLUSH_GRACE_S,
     EXPLOITGYM_CONTROLLER_PORT,
     EXPLOITGYM_PROXY_PORT,
     ExploitGymTask,
     ExploitGymTrialResult,
     _cleanup_exploitgym_sandbox,
+    _download_failure_artifacts,
+    _is_agent_no_return,
     _run_script,
     _score,
     load_exploitgym_tasks,
@@ -877,6 +880,80 @@ class AggregationTests(unittest.TestCase):
 
 
 class ExploitGymTimeoutTests(unittest.IsolatedAsyncioTestCase):
+    async def test_exec_wall_is_agent_no_return_and_failure_artifacts_survive(self) -> None:
+        task = ExploitGymTask("user:cybergym/arvo_1699")
+        result = ExploitGymTrialResult(task.task_id, 1, "codex", "gpt-test")
+        result.last_stage = "evaluation"
+        wall = DaytonaConnectionTimeoutError("Failed to execute command: ")
+        self.assertTrue(_is_agent_no_return(result, wall))
+
+        class Response:
+            result = "gymsiege-run-agent.log\ngymsiege-dockerd.log\n"
+
+        class Process:
+            async def exec(self, command, timeout=None):
+                return Response()
+
+        class Fs:
+            async def download_file(self, remote, local):
+                if remote.endswith("result.json"):
+                    raise FileNotFoundError(remote)
+                Path(local).write_text(f"captured {remote}\n", encoding="utf-8")
+
+        class Sandbox:
+            process = Process()
+            fs = Fs()
+
+        with tempfile.TemporaryDirectory() as tmp, patch(
+            "exploitgym_adapter.ARTIFACTS_DIR", Path(tmp)
+        ):
+            await _download_failure_artifacts(
+                Sandbox(),
+                task,
+                1,
+                "/remote/trial-1/user/user_cybergym_arvo_1699",
+                result,
+            )
+            artifact_root = Path(tmp) / "exploitgym" / task.safe_name / "trial-1"
+            self.assertTrue((artifact_root / "task.log").is_file())
+            self.assertTrue((artifact_root / "gymsiege-run-agent.log").is_file())
+            self.assertTrue((artifact_root / "gymsiege-pre-run.log").is_file())
+            self.assertTrue((artifact_root / "gymsiege-dockerd.log").is_file())
+            self.assertFalse((artifact_root / "result.json").exists())
+            self.assertEqual(result.log_local_path, str(artifact_root / "task.log"))
+            self.assertIsNone(result.result_local_path)
+
+    async def test_only_evaluation_exec_timeouts_are_agent_no_return(self) -> None:
+        wall = DaytonaConnectionTimeoutError("Failed to execute command: ")
+        result = ExploitGymTrialResult("user:x/y", 1, "codex", "gpt-test")
+        result.last_stage = "challenge_image_pull"
+        self.assertFalse(_is_agent_no_return(result, wall))
+        result.last_stage = "evaluation"
+        self.assertFalse(_is_agent_no_return(result, RuntimeError("platform fault")))
+
+    async def test_inner_timeout_has_real_outer_flush_margin(self) -> None:
+        self.assertGreaterEqual(EXPLOITGYM_AGENT_FLUSH_GRACE_S, 900)
+        source = Path("exploitgym_adapter.py").read_text(encoding="utf-8")
+        self.assertIn(
+            "timeout=timeout_s + EXPLOITGYM_AGENT_FLUSH_GRACE_S",
+            source,
+        )
+        script = _run_script(
+            task=ExploitGymTask("user:cybergym/arvo_1699"),
+            agent="codex",
+            model="gpt-test",
+            reasoning_effort="medium",
+            budget_usd=5,
+            timeout_s=10800,
+            out_root="/tmp/out",
+        )
+        self.assertIn("--timeout 10800", script)
+        self.assertIn("/tmp/gymsiege-pre-run.log", script)
+        self.assertNotIn(
+            "rm -f /tmp/gymsiege-services.env /tmp/gymsiege-pre-run.log",
+            script,
+        )
+
     async def test_outer_timeout_returns_structured_progress_after_cleanup(self) -> None:
         async def stalled_trial(*args, result, **kwargs):
             result.started_at = "2026-09-02T00:00:00+00:00"
