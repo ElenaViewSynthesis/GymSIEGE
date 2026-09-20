@@ -29,13 +29,18 @@ from exploitgym_adapter import (
     EXPLOITGYM_AGENT_FLUSH_GRACE_S,
     EXPLOITGYM_CONTROLLER_PORT,
     EXPLOITGYM_PROXY_PORT,
+    ExploitGymAgentNoReturnError,
     ExploitGymTask,
     ExploitGymTrialResult,
+    _EvaluationHandle,
     _cleanup_exploitgym_sandbox,
     _download_failure_artifacts,
     _is_agent_no_return,
+    _launch_evaluation,
+    _reap_evaluation_process_tree,
     _run_script,
     _score,
+    _wait_for_complete_result,
     load_exploitgym_tasks,
     validate_exploitgym_task_metadata,
 )
@@ -880,6 +885,131 @@ class AggregationTests(unittest.TestCase):
 
 
 class ExploitGymTimeoutTests(unittest.IsolatedAsyncioTestCase):
+    async def test_complete_result_ends_wait_before_wrapper_exit(self) -> None:
+        complete = {"checks": [{"name": "flag", "score": 0.0}], "score": 0.0}
+
+        class Response:
+            result = ""
+
+        class Process:
+            async def exec(self, command, timeout=None):
+                return Response()
+
+        class Sandbox:
+            process = Process()
+
+        with patch(
+            "exploitgym_adapter._read_json",
+            new=AsyncMock(side_effect=[None, complete]),
+        ) as read_json:
+            parsed = await _wait_for_complete_result(
+                Sandbox(),
+                "/trial/result.json",
+                "/trial/evaluation.status",
+                backstop_s=10,
+                poll_interval_s=0,
+            )
+        self.assertEqual(parsed, complete)
+        self.assertEqual(read_json.await_count, 2)
+
+    async def test_absent_result_keeps_agent_no_return_backstop(self) -> None:
+        class Response:
+            result = ""
+
+        class Process:
+            async def exec(self, command, timeout=None):
+                return Response()
+
+        class Sandbox:
+            process = Process()
+
+        result = ExploitGymTrialResult("user:x/y", 1, "codex", "gpt-test")
+        result.last_stage = "evaluation"
+        with patch(
+            "exploitgym_adapter._read_json",
+            new=AsyncMock(return_value=None),
+        ), self.assertRaises(ExploitGymAgentNoReturnError) as raised:
+            await _wait_for_complete_result(
+                Sandbox(),
+                "/trial/result.json",
+                "/trial/evaluation.status",
+                backstop_s=0,
+                poll_interval_s=0,
+            )
+        self.assertTrue(_is_agent_no_return(result, raised.exception))
+
+    async def test_launcher_removes_only_current_result_and_detaches_session(self) -> None:
+        commands = []
+
+        class Response:
+            result = "4321\n"
+
+        class Process:
+            async def exec(self, command, timeout=None):
+                commands.append((command, timeout))
+                return Response()
+
+        class Sandbox:
+            process = Process()
+
+        handle = await _launch_evaluation(
+            Sandbox(),
+            "run-agent-command",
+            out_root="/home/daytona/exploitgym-out/trial-7",
+            task_dir=(
+                "/home/daytona/exploitgym-out/trial-7/"
+                "user/user_cybergym_arvo_1699"
+            ),
+            task=ExploitGymTask("user:cybergym/arvo_1699"),
+        )
+        launcher, launcher_timeout = commands[0]
+        self.assertEqual(handle.pid, 4321)
+        self.assertEqual(launcher_timeout, 60)
+        self.assertIn("nohup setsid", launcher)
+        self.assertIn(
+            "rm -f /home/daytona/exploitgym-out/trial-7/"
+            "user/user_cybergym_arvo_1699/result.json",
+            launcher,
+        )
+        self.assertNotIn("rm -rf", launcher)
+        self.assertNotIn("/tmp/", launcher)
+
+    async def test_lingering_session_is_diagnosed_and_reaped(self) -> None:
+        commands = []
+
+        class Response:
+            result = "lingering=1 pcap=1 remaining=0\n"
+
+        class Process:
+            async def exec(self, command, timeout=None):
+                commands.append((command, timeout))
+                return Response()
+
+        class Sandbox:
+            process = Process()
+
+        handle = _EvaluationHandle(
+            pid=4321,
+            status_path="/trial/status",
+            wrapper_log_path="/trial/wrapper.log",
+            diagnostic_path="/trial/processes.log",
+        )
+        outcome = await _reap_evaluation_process_tree(
+            Sandbox(), handle, "user:cybergym/arvo_1699"
+        )
+        self.assertEqual(
+            outcome,
+            {"lingering": True, "pcap": True, "reaped": True},
+        )
+        reap_script, reap_timeout = commands[0]
+        self.assertEqual(reap_timeout, 30)
+        self.assertIn("ps -ef", reap_script)
+        self.assertIn("/proc/$process_pid/fd", reap_script)
+        self.assertIn("key|token", reap_script)
+        self.assertIn("[REDACTED]", reap_script)
+        self.assertIn("kill -TERM $pids", reap_script)
+        self.assertIn("kill -KILL $remaining_pids", reap_script)
+
     async def test_exec_wall_is_agent_no_return_and_failure_artifacts_survive(self) -> None:
         task = ExploitGymTask("user:cybergym/arvo_1699")
         result = ExploitGymTrialResult(task.task_id, 1, "codex", "gpt-test")
@@ -935,7 +1065,7 @@ class ExploitGymTimeoutTests(unittest.IsolatedAsyncioTestCase):
         self.assertGreaterEqual(EXPLOITGYM_AGENT_FLUSH_GRACE_S, 900)
         source = Path("exploitgym_adapter.py").read_text(encoding="utf-8")
         self.assertIn(
-            "timeout=timeout_s + EXPLOITGYM_AGENT_FLUSH_GRACE_S",
+            "backstop_s=timeout_s + EXPLOITGYM_AGENT_FLUSH_GRACE_S",
             source,
         )
         script = _run_script(
