@@ -2,11 +2,9 @@
 
 GYMSIEGE (this repo) runs CyberGym-E2E and ExploitGym as a Daytona-sandbox
 fleet benchmark, plus (new as of 2026-09-15) a second CyberGym-E2E provider
-on Modal (`modal_sandbox_runner.py`). Issues #2, #3, and #6 remain open; #1,
-#4, #5, #7-#10 are resolved/investigated and kept below only as closed records
-— no action needed on them. Priority:
-#2 is a Daytona-specific investigation/decision, #3 is a small resilience
-fix, and #6 is a well-scoped build task with a concrete plan below.
+on Modal (`modal_sandbox_runner.py`). Issue #2 remains open; #1, #3-#10 are
+resolved/investigated and kept below only as closed records — no action needed
+on them. Priority: #2 is a Daytona-specific investigation/decision.
 
 ## 1. RESOLVED (2026-09-18) — glibc-2.17 Node runs on old and new targets
 
@@ -95,7 +93,22 @@ pattern in `solver_agent.py`'s `_reconfirm_isolated()` (currently a bare
 numbered entry in `FINDINGS.md` (see entries 8 and 9 there for the expected
 format/rigor — cite what you actually tested, not what you assume).
 
-## 3. (Minor, optional) The post-secret-attach stop/start restart is an intermittent hang
+## 3. RESOLVED (2026-09-20) — bounded retry-with-backoff added to the post-secret-attach restart
+
+**No action needed. Kept as a closed record.** The stop/start cycle is no
+longer inlined in each caller; both `sandbox_runner.py:133` (CyberGym) and
+`exploitgym_adapter.py:723` (ExploitGym) now delegate to the shared
+`restart_after_secret_attach()` helper (`common.py:144`), which implements
+exactly the requested bounded retry-with-backoff: `RESTART_AFTER_SECRET_ATTACH_MAX_ATTEMPTS`
+= 3 attempts, `RESTART_AFTER_SECRET_ATTACH_BASE_DELAY_S` = 5.0s doubling per
+retry, `RESTART_AFTER_SECRET_ATTACH_TIMEOUT_S` = 120s per `stop()`/`start()`
+(`common.py:139-141`). It catches `DaytonaTimeoutError`, retries the full cycle,
+and **re-raises on the final attempt** so a persistent (non-transient) hang
+still fails the trial rather than being papered over — the exact guardrail this
+issue asked for. Covered by `tests/test_core.py:174,187`
+(`restart_after_secret_attach` success and exhausted-retry paths).
+
+The original description is kept below as the record of the symptom.
 
 Both `sandbox_runner.py:134-135` (CyberGym) and `exploitgym_adapter.py:341-342`
 (ExploitGym) do the identical `sandbox.stop(timeout=120)` →
@@ -348,7 +361,14 @@ independent isolated oracle itself returned the real 1/0 verdict. The original
 issue — preparation being attempted only after the network cut and collapsing
 both raw arms to exit 127 — is fixed across all three known affected tasks.
 
-## 6. (Build) Independently re-verify stage3/stage4 under network isolation, not just stage1/stage2
+## 6. RESOLVED (2026-09-20), LIVE-VERIFIED — independently re-verify stage3/stage4 under network isolation
+
+Implemented in the shared `solver_agent.py` oracle: four isolated arms now
+run, stages 3/4 use `validation_results.json`, and distinct
+`isolated_stage3`/`isolated_stage4` fields flow through both providers.
+Disagreements fold into `oracle_mismatch`. A live Modal
+`freetype2/arvo_368` patch-only trial agreed `passed/passed` and completed
+`success`; see FINDINGS #19.
 
 `_isolated_oracle_script`'s `run_arm(stage)` (`solver_agent.py:519`) only
 ever calls it with `stage=1` (vulnerable build) and `stage=2` (patched
