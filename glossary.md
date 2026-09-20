@@ -230,6 +230,18 @@ actually apply to this repo rather than generic textbook definitions alone.
   `iproute2`; reads the kernel's socket tables (via netlink or
   `/proc/net/tcp`) to list open sockets, optionally with owning-process
   info (`-p`).
+- **libpcap / tcpdump / "libpcap-tcpdump-class"** — `libpcap` is the standard
+  C library for capturing packets off a network interface ("pcap" = packet
+  capture), the engine under most sniffing tools; `tcpdump` is the classic
+  command-line sniffer built directly on it (its relatives `dumpcap` / `tshark`
+  / Wireshark share the same capture machinery). "libpcap/tcpdump-class" is not
+  a formal category — it's shorthand for *some process in that family*, a packet
+  capturer / network monitor using libpcap-style capture. Used in the
+  `arvo_1699` diagnosis: the console string `packet queue is empty, aborting`
+  reads like such a capture/queue component shutting down because its packet
+  buffer drained, which fed the working theory that CyberGym's firewall/proxy
+  layer spawns a background sniffer that outlives `run_agent.py` and keeps the
+  outer `exec()`'s stdout pipe open (see [`FINDINGS.md#9`](FINDINGS.md)).
 - **`apk` / `apk add --no-cache`** — Alpine Linux's package manager;
   `--no-cache` skips persisting the downloaded package index to disk
   (avoids bloating a container image layer). Unrelated to the TLS failure
