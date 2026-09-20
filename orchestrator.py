@@ -38,6 +38,7 @@ import asyncio
 import os
 import sys
 import time
+from pathlib import Path
 from collections import defaultdict
 from typing import Any, Optional
 
@@ -480,6 +481,8 @@ async def cmd_exploitgym_run(args: argparse.Namespace) -> None:
     if not tasks:
         raise RuntimeError("ExploitGym task selection is empty")
 
+    output_path = Path(args.output) if getattr(args, "output", None) else None
+
     sem = asyncio.Semaphore(args.max_parallel)
     results: list[ExploitGymTrialResult] = []
     progress_by_key: dict[tuple[str, int], ExploitGymTrialResult] = {}
@@ -525,7 +528,7 @@ async def cmd_exploitgym_run(args: argparse.Namespace) -> None:
             for job in asyncio.as_completed(jobs):
                 result = await job
                 results.append(result)
-                _write_exploitgym_results(results, config, complete=False)
+                _write_exploitgym_results(results, config, complete=False, output_path=output_path)
                 log.info(
                     "ExploitGym progress %d/%d: %s t%d -> %s",
                     len(results), len(jobs), result.task, result.trial,
@@ -554,9 +557,10 @@ async def cmd_exploitgym_run(args: argparse.Namespace) -> None:
                 complete=False,
                 status="interrupted",
                 run_error="orchestrator cancelled while awaiting a trial",
+                output_path=output_path,
             )
             raise
-    _write_exploitgym_results(results, config, complete=True)
+    _write_exploitgym_results(results, config, complete=True, output_path=output_path)
 
 
 def _write_exploitgym_results(
@@ -566,6 +570,7 @@ def _write_exploitgym_results(
     *,
     status: str | None = None,
     run_error: str | None = None,
+    output_path: Path | None = None,
 ) -> None:
     by_task: dict[str, list[ExploitGymTrialResult]] = defaultdict(list)
     for result in results:
@@ -586,25 +591,29 @@ def _write_exploitgym_results(
         }
     n_tasks = len(by_task)
     costs = [item.solver_cost_usd for item in results if item.solver_cost_usd is not None]
-    atomic_write_json(
-        EXPLOITGYM_RESULTS_JSON,
-        {
-            "status": status or ("complete" if complete else "live"),
-            "generated_at": time.time(),
-            "config": config,
-            "run_error": run_error,
-            "n_trials": len(results),
-            "pass_at_k": {
-                "k": config["k"],
-                "n_tasks": n_tasks,
-                "pass_at_1": pass1 / n_tasks if n_tasks else None,
-                "pass_at_k": passk / n_tasks if n_tasks else None,
-                "per_task": per_task,
-            },
-            "total_solver_cost_usd": sum(costs) if costs else None,
-            "trials": [item.to_json() for item in results],
+    payload = {
+        "status": status or ("complete" if complete else "live"),
+        "generated_at": time.time(),
+        "config": config,
+        "run_error": run_error,
+        "n_trials": len(results),
+        "pass_at_k": {
+            "k": config["k"],
+            "n_tasks": n_tasks,
+            "pass_at_1": pass1 / n_tasks if n_tasks else None,
+            "pass_at_k": passk / n_tasks if n_tasks else None,
+            "per_task": per_task,
         },
-    )
+        "total_solver_cost_usd": sum(costs) if costs else None,
+        "trials": [item.to_json() for item in results],
+    }
+    # Always refresh the fixed path the dashboard reads (overwritten each run).
+    atomic_write_json(EXPLOITGYM_RESULTS_JSON, payload)
+    # Optionally keep a durable per-run copy so this run's results survive the
+    # next invocation overwriting EXPLOITGYM_RESULTS_JSON.
+    if output_path is not None:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        atomic_write_json(output_path, payload)
 
 
 # --------------------------------------------------------------------------
@@ -991,6 +1000,15 @@ def build_parser() -> argparse.ArgumentParser:
         "--allow-non-userspace",
         action="store_true",
         help="opt in to kernel/V8 tasks; requires a compatible custom snapshot",
+    )
+    p_eg.add_argument(
+        "--output",
+        default=None,
+        help=(
+            "also write this run's results JSON to this path, in addition to the "
+            "default results/exploitgym_results.json (which is overwritten every "
+            "run); use it to keep a durable per-run copy"
+        ),
     )
     p_eg.set_defaults(func=cmd_exploitgym_run)
 
