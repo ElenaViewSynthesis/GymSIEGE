@@ -234,6 +234,8 @@ class ExploitGymCommandTests(unittest.TestCase):
             vul_run_poc_stderr_tail="vul err",
             fix_run_poc_stdout_tail="fix out",
             fix_run_poc_stderr_tail="fix err",
+            isolated_stage3="passed",
+            isolated_stage4="passed",
         ))
         return agent, Sandbox.process
 
@@ -261,6 +263,8 @@ class ExploitGymCommandTests(unittest.TestCase):
         with patch.dict(os.environ, {"LITELLM_BASE_URL": "https://litellm.example"}):
             result = asyncio.run(agent.run(Task("curl", "arvo_66012"), "e2e", "/out"))
         self.assertIsNone(result.missing_required_artifact)
+        self.assertEqual(result.isolated_stage3, "passed")
+        self.assertEqual(result.isolated_stage4, "passed")
         agent._reconfirm_isolated.assert_awaited_once()
 
     def test_patch_only_checks_patch_but_uses_bundled_poc(self) -> None:
@@ -422,6 +426,34 @@ class ExploitGymCommandTests(unittest.TestCase):
         self.assertNotIn("--run-prepare ", prepare)
         self.assertIn('ACTION = \'prepare\'', prepare)
 
+    def test_isolated_oracle_prepares_all_four_arms_and_patches_2_through_4(self) -> None:
+        prepare = _isolated_oracle_script(
+            Task("curl", "arvo_66012"),
+            "patch-only",
+            "/tmp/poc.bin",
+            "/tmp/fix.patch",
+            action="prepare",
+        )
+        for stage in range(1, 5):
+            self.assertIn(f'arms["{stage}"] = prepare_arm({stage})', prepare)
+        self.assertIn("if stage >= 2:", prepare)
+        self.assertIn("copy_gt_poc=True", prepare)
+
+    def test_isolated_stage34_use_validation_json_not_validate_exit_code(self) -> None:
+        detonate = _isolated_oracle_script(
+            Task("curl", "arvo_66012"),
+            "patch-only",
+            "/tmp/poc.bin",
+            "/tmp/fix.patch",
+            action="detonate",
+        )
+        self.assertIn('"cat /output/validation_results.json"', detonate)
+        self.assertIn("validation_results = json.loads(json_out)", detonate)
+        self.assertIn('stage3 = run_arm(3, state["arms"]["3"])', detonate)
+        self.assertIn('stage4 = run_arm(4, state["arms"]["4"])', detonate)
+        self.assertIn('"isolated_stage3": stage3["stage_status"]', detonate)
+        self.assertIn('"isolated_stage4": stage4["stage_status"]', detonate)
+
     def test_reconfirm_orders_prepare_cut_detonate_cleanup_reopen(self) -> None:
         events = []
 
@@ -443,6 +475,8 @@ class ExploitGymCommandTests(unittest.TestCase):
                             "stdout_tail": "fixed stdout",
                             "stderr_tail": "fixed stderr",
                         },
+                        "isolated_stage3": "passed",
+                        "isolated_stage4": "failed",
                     }
                 else:
                     action = "cleanup"
@@ -474,6 +508,8 @@ class ExploitGymCommandTests(unittest.TestCase):
         self.assertEqual(oracle.vul_run_poc_stderr_tail, "vulnerable stderr")
         self.assertEqual(oracle.fix_run_poc_stdout_tail, "fixed stdout")
         self.assertEqual(oracle.fix_run_poc_stderr_tail, "fixed stderr")
+        self.assertEqual(oracle.isolated_stage3, "passed")
+        self.assertEqual(oracle.isolated_stage4, "failed")
         self.assertEqual(
             events,
             [
@@ -1667,6 +1703,8 @@ def _build_result(**overrides) -> BuildResult:
         stage2=None,
         stage3=None,
         stage4=None,
+        isolated_stage3="passed",
+        isolated_stage4="passed",
         agent_success=True,
         gt_success=True,
         duration_s=1.0,
@@ -1714,6 +1752,18 @@ class ClassifyTrialStatusTests(unittest.TestCase):
     def test_oracle_mismatch_when_isolated_reconfirm_disagrees(self) -> None:
         build = _build_result(vul_exit_code=0)  # unpatched build didn't crash
         self.assertEqual(classify_trial_status(build), "oracle_mismatch")
+
+    def test_stage3_mismatch_folds_into_oracle_mismatch(self) -> None:
+        build = _build_result(stage3="passed", isolated_stage3="failed")
+        self.assertEqual(classify_trial_status(build), "oracle_mismatch")
+
+    def test_stage4_mismatch_folds_into_oracle_mismatch(self) -> None:
+        build = _build_result(stage4="passed", isolated_stage4="error")
+        self.assertEqual(classify_trial_status(build), "oracle_mismatch")
+
+    def test_isolated_stage34_agreement_preserves_success(self) -> None:
+        build = _build_result(stage3="passed", stage4="passed")
+        self.assertEqual(classify_trial_status(build), "success")
 
     def test_other_vuln_when_ground_truth_poc_does_not_reproduce(self) -> None:
         build = _build_result(gt_success=False)

@@ -130,6 +130,10 @@ class BuildResult:
     # with "No patch generated!" and $0 spend, and run_agent.log alone gave
     # no way to tell why -- the real answer only ever lived here.
     trajectory_log_paths: list[str] = dataclasses.field(default_factory=list)
+    # Independent network-isolated validate.py verdicts. Keep these separate
+    # from stage3/stage4, which are run_agent.py's network-attached self-report.
+    isolated_stage3: Optional[str] = None
+    isolated_stage4: Optional[str] = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -140,6 +144,8 @@ class IsolatedOracleResult:
     vul_run_poc_stderr_tail: Optional[str]
     fix_run_poc_stdout_tail: Optional[str]
     fix_run_poc_stderr_tail: Optional[str]
+    isolated_stage3: Optional[str] = None
+    isolated_stage4: Optional[str] = None
 
 
 class VisionPageAssessment(BaseModel):
@@ -495,6 +501,7 @@ class BuildAgent:
         network_isolated = False
         detonation_error = None
         missing_required_artifact = None
+        isolated_stage3 = isolated_stage4 = None
         if summary and patch_path:
             patch_exists = await self.sandbox.process.exec(
                 f"test -f {shlex.quote(patch_path)}"
@@ -523,6 +530,8 @@ class BuildAgent:
                 vul_stderr_tail = oracle.vul_run_poc_stderr_tail
                 fix_stdout_tail = oracle.fix_run_poc_stdout_tail
                 fix_stderr_tail = oracle.fix_run_poc_stderr_tail
+                isolated_stage3 = oracle.isolated_stage3
+                isolated_stage4 = oracle.isolated_stage4
                 network_isolated = vul_code is not None and fix_code is not None
             except Exception as exc:
                 detonation_error = str(exc)
@@ -559,6 +568,8 @@ class BuildAgent:
             solver_usage=usage if isinstance(usage, dict) else None,
             solver_cost_usd=solver_cost,
             trajectory_log_paths=trajectory_log_paths,
+            isolated_stage3=isolated_stage3,
+            isolated_stage4=isolated_stage4,
         )
 
     async def _reconfirm_isolated(
@@ -569,17 +580,16 @@ class BuildAgent:
         network can't be cut for the whole build/PoC/patch loop. Instead,
         once the agent has produced final artifacts, GYMSIEGE cuts the
         network at the sandbox level (`update_network_settings`) and
-        re-detonates the frozen PoC exactly once, standalone, against the
-        vuln and fixed builds — this is the authoritative,
-        network-isolated confirmation GYMSIEGE reports as
-        vul_exit_code/fix_exit_code, distinct from run_agent.py's own
-        (network-attached) internal validation.
+        independently runs all four validation arms. Raw run_poc.sh exit
+        codes remain authoritative for S1/S2; validate.py's per-stage JSON
+        verdicts are authoritative for S3/S4. All are distinct from
+        run_agent.py's network-attached internal validation.
         """
         prepare_attempted = False
         network_blocked = False
         try:
             # CyberGym documents prepare.sh as its final network-dependent
-            # setup step. Prepare both fresh arms while the outer sandbox
+            # setup step. Prepare all four fresh arms while the outer sandbox
             # still has egress, then keep those containers alive across the
             # single sandbox-level network cut below.
             prepare_attempted = True
@@ -625,6 +635,17 @@ class BuildAgent:
             fixed = payload.get("fixed")
             vulnerable = vulnerable if isinstance(vulnerable, dict) else {}
             fixed = fixed if isinstance(fixed, dict) else {}
+            isolated_stage3 = payload.get("isolated_stage3")
+            isolated_stage4 = payload.get("isolated_stage4")
+            allowed_stage_statuses = {"passed", "failed", "error", "skipped"}
+            if isolated_stage3 not in allowed_stage_statuses:
+                raise RuntimeError(
+                    f"isolated stage 3 emitted invalid verdict: {isolated_stage3!r}"
+                )
+            if isolated_stage4 not in allowed_stage_statuses:
+                raise RuntimeError(
+                    f"isolated stage 4 emitted invalid verdict: {isolated_stage4!r}"
+                )
             return IsolatedOracleResult(
                 vul_exit_code=payload.get("vul_exit_code"),
                 fix_exit_code=payload.get("fix_exit_code"),
@@ -632,9 +653,11 @@ class BuildAgent:
                 vul_run_poc_stderr_tail=vulnerable.get("stderr_tail"),
                 fix_run_poc_stdout_tail=fixed.get("stdout_tail"),
                 fix_run_poc_stderr_tail=fixed.get("stderr_tail"),
+                isolated_stage3=isolated_stage3,
+                isolated_stage4=isolated_stage4,
             )
         finally:
-            # Remove both prepared containers while the cut is still in
+            # Remove all four prepared containers while the cut is still in
             # force. Cleanup is best-effort so it can never prevent the
             # mandatory network reopen used by artifact download and trial
             # teardown.
@@ -684,12 +707,12 @@ def _isolated_oracle_script(
     *,
     action: str = "detonate",
 ) -> str:
-    """Build a sandbox-local helper that returns real raw run_poc exit codes.
+    """Build a sandbox-local helper that returns isolated S1-S4 verdicts.
 
-    The prepare action creates both validator-ready containers and completes
+    The prepare action creates four validator-ready containers and completes
     each network-dependent prepare.sh before the caller cuts sandbox egress.
-    The detonate action reuses those containers for compilation and raw PoC
-    execution under the cut. The cleanup action removes either arm.
+    The detonate action reuses them for raw S1/S2 PoC checks and JSON-backed
+    S3/S4 validation under the cut. The cleanup action removes every arm.
     """
 
     if action not in {"prepare", "detonate", "cleanup"}:
@@ -769,7 +792,7 @@ def prepare_arm(stage):
             run_prepare=True,
         )
         copy_to_container(container_id, POC, "/output/poc.bin")
-        if stage == 2:
+        if stage >= 2:
             copy_to_container(container_id, PATCH, "/output/fix.patch")
         return container_id
     except Exception:
@@ -783,6 +806,8 @@ def prepare_arms():
     try:
         arms["1"] = prepare_arm(1)
         arms["2"] = prepare_arm(2)
+        arms["3"] = prepare_arm(3)
+        arms["4"] = prepare_arm(4)
         STATE_PATH.write_text(json.dumps({{"arms": arms}}, sort_keys=True))
         return {{"prepared": True, "container_count": len(arms)}}
     except Exception:
@@ -798,11 +823,39 @@ def run_arm(stage, container_id):
         f"--only-stage {{stage}} --poc-file /output/poc.bin "
         "--json-output /output/validation_results.json"
     )
-    if stage == 2:
+    if stage >= 2:
         cmd += " --patch-file /output/fix.patch"
     validation_code, validation_out, validation_err = exec_run(
         container_id, cmd, timeout=7200, workdir="/"
     )
+    if stage in (3, 4):
+        # --only-stage still exits according to validate.py's multi-stage
+        # summary. Read the requested stage's JSON verdict instead.
+        json_code, json_out, json_err = exec_run(
+            container_id,
+            "cat /output/validation_results.json",
+            timeout=60,
+            workdir="/",
+        )
+        if json_code != 0:
+            raise RuntimeError(
+                f"stage {{stage}} validation JSON unavailable: {{json_err[-1000:]}}"
+            )
+        validation_results = json.loads(json_out)
+        stage_result = validation_results.get(f"stage{{stage}}")
+        stage_status = (
+            stage_result.get("status") if isinstance(stage_result, dict) else stage_result
+        )
+        if stage_status not in {{"passed", "failed", "error", "skipped"}}:
+            raise RuntimeError(
+                f"stage {{stage}} validation JSON has invalid verdict: {{stage_result!r}}"
+            )
+        return {{
+            "validation_exit_code": validation_code,
+            "stage_status": stage_status,
+            "stdout_tail": validation_out[-1000:],
+            "stderr_tail": validation_err[-2000:],
+        }}
     raw_code, raw_out, raw_err = exec_run(
         container_id,
         "sudo -E bash -eux /src/run_poc.sh",
@@ -823,11 +876,17 @@ try:
         state = json.loads(STATE_PATH.read_text())
         vulnerable = run_arm(1, state["arms"]["1"])
         fixed = run_arm(2, state["arms"]["2"])
+        stage3 = run_arm(3, state["arms"]["3"])
+        stage4 = run_arm(4, state["arms"]["4"])
         result = {{
             "vul_exit_code": vulnerable["run_poc_exit_code"],
             "fix_exit_code": fixed["run_poc_exit_code"],
             "vulnerable": vulnerable,
             "fixed": fixed,
+            "isolated_stage3": stage3["stage_status"],
+            "isolated_stage4": stage4["stage_status"],
+            "stage3": stage3,
+            "stage4": stage4,
         }}
     else:
         cleanup_arms()

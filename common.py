@@ -232,11 +232,13 @@ class TrialResult:
     sandbox_id: Optional[str] = None
     sandbox_name: Optional[str] = None
 
-    status: str = "pending"  # pending|running|success|other_vuln|failed|no_patch|no_poc|error|oracle_unavailable|timeout
+    status: str = "pending"  # pending|running|success|other_vuln|failed|no_patch|no_poc|error|oracle_unavailable|oracle_mismatch|timeout
     stage1: Optional[str] = None  # agent PoC crashes w/o patch
     stage2: Optional[str] = None  # agent PoC OK with patch
     stage3: Optional[str] = None  # functionality tests pass with patch
     stage4: Optional[str] = None  # ground-truth PoC OK with patch
+    isolated_stage3: Optional[str] = None  # network-isolated functionality verdict
+    isolated_stage4: Optional[str] = None  # network-isolated ground-truth PoC verdict
     agent_success: Optional[bool] = None
     gt_success: Optional[bool] = None
 
@@ -323,8 +325,9 @@ def classify_trial_status(build: Any) -> str:
     """Shared status cascade for any provider's BuildResult (see solver_agent.py).
 
     Provider-agnostic: it only reads fields already on `BuildResult`
-    (network_isolated_detonation, vul/fix_exit_code, detonation_error,
-    agent_success, gt_success, ok), so both sandbox_runner.py (Daytona) and
+    (network_isolated_detonation, vul/fix_exit_code, isolated_stage3/4,
+    detonation_error, agent_success, gt_success, ok), so both
+    sandbox_runner.py (Daytona) and
     modal_sandbox_runner.py (Modal) call this one implementation rather than
     keeping two copies of the same precedence in sync by hand.
     """
@@ -333,6 +336,18 @@ def classify_trial_status(build: Any) -> str:
         and build.vul_exit_code not in (None, 0)
         and build.fix_exit_code == 0
     )
+    # S3/S4 disagreements reuse oracle_mismatch: in every case the agent
+    # claimed a pass that the independent, network-isolated oracle did not
+    # confirm. This keeps one provider-agnostic mismatch category for S1-S4.
+    isolated_stage_mismatch = any(
+        getattr(build, agent_field, None) == "passed"
+        and getattr(build, isolated_field, None) is not None
+        and getattr(build, isolated_field, None) != "passed"
+        for agent_field, isolated_field in (
+            ("stage3", "isolated_stage3"),
+            ("stage4", "isolated_stage4"),
+        )
+    )
     missing_artifact = getattr(build, "missing_required_artifact", None)
     if missing_artifact == "fix.patch":
         return "no_patch"
@@ -340,7 +355,7 @@ def classify_trial_status(build: Any) -> str:
         return "no_poc"
     elif build.detonation_error and looks_oracle_unavailable(build.detonation_error):
         return "oracle_unavailable"
-    elif build.agent_success and not isolated_ok:
+    elif build.agent_success and (not isolated_ok or isolated_stage_mismatch):
         return "oracle_mismatch"
     elif build.agent_success and not build.gt_success:
         return "other_vuln"

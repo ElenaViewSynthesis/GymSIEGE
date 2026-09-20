@@ -201,6 +201,8 @@ async def run_trial(
         result.t_build_s = time.monotonic() - t_b0
 
         result.stage1, result.stage2, result.stage3, result.stage4 = build.stage1, build.stage2, build.stage3, build.stage4
+        result.isolated_stage3 = build.isolated_stage3
+        result.isolated_stage4 = build.isolated_stage4
         result.agent_success, result.gt_success = build.agent_success, build.gt_success
         result.vul_exit_code, result.fix_exit_code = build.vul_exit_code, build.fix_exit_code
         result.vul_run_poc_stdout_tail = build.vul_run_poc_stdout_tail
