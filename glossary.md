@@ -181,7 +181,7 @@ actually apply to this repo rather than generic textbook definitions alone.
   and carry `X-Linked-Size`. File size is irrelevant — a 1.1 KB
   `poc.bin` redirects and survives. Confirmed 2026-09-03 by
   `hf_header_probe.py`; tracked in
-  [`DAYTONA_HUGGINGFACE_EGRESS_ISSUE.md`](DAYTONA_HUGGINGFACE_EGRESS_ISSUE.md).
+  [`reference/DAYTONA_HUGGINGFACE_EGRESS_ISSUE.md`](reference/DAYTONA_HUGGINGFACE_EGRESS_ISSUE.md).
 - **Xet** — Hugging Face's current storage backend for large files,
   using chunk-level deduplication; **Git LFS is the legacy path it
   replaced**, not the other way round. `sunblaze-ucb/cybergym-e2e` is
@@ -213,7 +213,7 @@ actually apply to this repo rather than generic textbook definitions alone.
   [`HUGGINGFACE_HOSTS.md`](HUGGINGFACE_HOSTS.md).
 - **TLS** — Transport Layer Security; the encrypted-handshake protocol
   that was failing for package fetches inside the nested Alpine build
-  container (`DAYTONA_BAKE_ISSUE.md`).
+  container (`reference/DAYTONA_BAKE_ISSUE.md`).
 - **CA bundle** — the set of trusted root certificates a TLS client
   validates a server's certificate against; mounting the outer sandbox's
   CA bundle into the nested container did not fix the TLS failure.

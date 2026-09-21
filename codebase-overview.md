@@ -137,7 +137,7 @@ or from `Content-Length` only when the response is *not* a redirect
 (`file_download.py:1645-1648`), so the bake's 20 plain-git `crash.log` files
 (direct `200`, no `X-Linked-Size`) abort while its 40 LFS/Xet-backed
 `src.tgz`/`poc.bin` files redirect and survive. Details in
-[`DAYTONA_HUGGINGFACE_EGRESS_ISSUE.md`](DAYTONA_HUGGINGFACE_EGRESS_ISSUE.md).
+[`reference/DAYTONA_HUGGINGFACE_EGRESS_ISSUE.md`](reference/DAYTONA_HUGGINGFACE_EGRESS_ISSUE.md).
 Note also that this dataset is Xet-backed, so `huggingface_hub`'s real payload
 path is Xet rather than the CDN redirect (`file_download.py:1777`); Xet is
 Hugging Face's *current* backend and Git LFS the legacy one, not the reverse.

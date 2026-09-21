@@ -80,7 +80,7 @@ HTTPS from a container nested inside a Daytona sandbox's own Docker daemon
 does not reliably reach the internet the way the outer sandbox's own HTTPS
 traffic does.
 
-`DAYTONA_BAKE_ISSUE.md` (the support prompt for this) records that neither
+`reference/DAYTONA_BAKE_ISSUE.md` (the support prompt for this) records that neither
 `--network host` on the nested container nor mounting the outer sandbox's CA
 bundle into it fixed the TLS failure, and that falling back to plain HTTP for
 the Alpine mirror isn't viable because the CDN returns a hard 403 for HTTP
@@ -93,7 +93,7 @@ inside any nested container at all. It builds static `socat` and OpenBSD
 Node.js's official prebuilt glibc release instead of letting ExploitGym's own
 installer build Node from source in a nested container. The underlying
 Daytona nested-egress/TLS question itself remains open — see
-`DAYTONA_BAKE_ISSUE.md` — GYMSIEGE just no longer depends on it for the
+`reference/DAYTONA_BAKE_ISSUE.md` — GYMSIEGE just no longer depends on it for the
 userspace-only bake path.
 
 ### Suggested fixes
@@ -116,7 +116,7 @@ Ranked by how contained/low-risk each option is:
    bridge fails — serving a pre-fetched copy of the Alpine package index, and
    point `apk`'s repository config at that instead of
    `dl-cdn.alpinelinux.org`.
-4. **File `DAYTONA_BAKE_ISSUE.md`'s questions with Daytona support.**
+4. **File `reference/DAYTONA_BAKE_ISSUE.md`'s questions with Daytona support.**
    Questions 1-2 there (whether nested Docker-in-Docker containers are
    expected to get outbound HTTPS at all, and how the egress proxy/DNS/CA
    should propagate into the nested bridge) are the only path to an actual

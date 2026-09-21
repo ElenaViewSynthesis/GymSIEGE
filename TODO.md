@@ -9,7 +9,7 @@ NVD/CNA disagreement found across all 27 kernelCTF CVEs (see
 Last updated: 2026-09-02 (Europe/London)
 
 This is the restart/handoff document for a new terminal or Codex session. Read
-this file, `README.md`, and `DAYTONA_BAKE_ISSUE.md` before running Daytona.
+this file, `README.md`, and `reference/DAYTONA_BAKE_ISSUE.md` before running Daytona.
 Do not assume any terminal process from the previous session is still alive.
 
 ## Current verified state
@@ -41,7 +41,7 @@ Do not assume any terminal process from the previous session is still alive.
   aborts the entire `snapshot_download`. The bootstrap now measures which
   files are unsizable, excludes them via `ignore_patterns`, and fetches them
   directly with git-blob-SHA-1 verification against the ETag. Full write-up in
-  `DAYTONA_HUGGINGFACE_EGRESS_ISSUE.md` and
+  `reference/DAYTONA_HUGGINGFACE_EGRESS_ISSUE.md` and
   `txt/daytona-content-length-bug-report.txt`.
 - Validated at `--limit 1` and `--limit 3` (`written == verified == expected`).
   **The full 20-task bake has not yet been re-run since the fix**, so
@@ -182,10 +182,10 @@ At handoff, these tracked files were modified but not committed:
     reviewed tri-state/error-safe preflight fix before it is safe to run.
 - `README.md`
   - documents gated CyberGym-E2E access and Hugging Face Secret setup.
-- `DAYTONA_HUGGINGFACE_EGRESS_ISSUE.md`
+- `reference/DAYTONA_HUGGINGFACE_EGRESS_ISSUE.md`
   - draft Daytona issue for the redirect/CDN failure; it still needs the
     evidence/wording corrections in the next-step sequence below.
-- `DAYTONA_BAKE_ISSUE.md`
+- `reference/DAYTONA_BAKE_ISSUE.md`
   - updated Daytona support prompt with the successful snapshot architecture,
     restored-service secret issue, and long-running control-call problem.
 
@@ -422,7 +422,7 @@ above. `user:cybergym/arvo_18224`, `user:cybergym/arvo_42298`,
 `user:cybergym/arvo_62183`, `user:cybergym/arvo_11896`, and
 `user:nofuzz/CVE-2021-43848` are all **done** — see their update notes
 above. Nothing left to repeat the block for; the only remaining Run 1 item
-is the deliberately-excluded `arvo_66311` (see `long-arvo-tasks.md` for its
+is the deliberately-excluded `arvo_66311` (see `reference/long-arvo-tasks.md` for its
 separate 3-hour-timeout recipe).
 
 - **Actual spend across this batch:** $0 for every glibc-wall task
@@ -595,7 +595,7 @@ new tests are added.
     following the redirect.
 - [ ] Give the diagnostic sandbox an immediate 60-minute TTL and a bounded,
       cancellation-safe delete path. Run only one diagnostic sandbox.
-- [ ] Correct `DAYTONA_HUGGINGFACE_EGRESS_ISSUE.md` before filing:
+- [ ] Correct `reference/DAYTONA_HUGGINGFACE_EGRESS_ISSUE.md` before filing:
   - describe target-managed egress as a hypothesis until the probe proves it;
   - state the SDK's documented Secret behavior: `hosts` scopes where the real
     value may be substituted for an opaque placeholder; it is not a network
@@ -709,7 +709,7 @@ PYTHONUNBUFFERED=1 .venv/bin/python orchestrator.py reap
 
 Record the result in `results/reap_log.json`. If even the dry-run list remains
 silent again, do not start another sandbox. Capture elapsed time and use the
-questions in `DAYTONA_BAKE_ISSUE.md` for Daytona support. The safety TTL should
+questions in `reference/DAYTONA_BAKE_ISSUE.md` for Daytona support. The safety TTL should
 eventually reap an already-created trial sandbox, but a create operation that
 never returned may require Daytona control-plane confirmation.
 
@@ -718,7 +718,7 @@ never returned may require Daytona control-plane confirmation.
 After tests and cleanup verification:
 
 ```bash
-git diff -- DAYTONA_BAKE_ISSUE.md exploitgym_adapter.py orchestrator.py tests/test_core.py
+git diff -- reference/DAYTONA_BAKE_ISSUE.md exploitgym_adapter.py orchestrator.py tests/test_core.py
 git status --short
 ```
 
@@ -853,7 +853,7 @@ launching duplicate trials.
       per-sandbox block-all mutation because restriction is target-managed.
       Preserve the distinction between upstream ExploitGym firewall isolation
       and Daytona's organization-level policy.
-- [ ] Link `TODO.md` and the revised `DAYTONA_BAKE_ISSUE.md` from the README.
+- [ ] Link `TODO.md` and the revised `reference/DAYTONA_BAKE_ISSUE.md` from the README.
 - [ ] Record Daytona SDK version, snapshot name/state, task-image digest, model
       ID, OpenAI project identity (non-secret identifier only), and Git commit
       in every publication run manifest.
@@ -1177,9 +1177,9 @@ the canary task if anything in a CyberGym run needs a quick sanity check.
 - Completed task artifact:
   `artifacts/exploitgym/user_nofuzz_CVE-2021-32132/trial-1/` (ignored by Git)
 - Cleanup history: `results/reap_log.json` (ignored by Git)
-- Daytona support prompt: `DAYTONA_BAKE_ISSUE.md`
+- Daytona support prompt: `reference/DAYTONA_BAKE_ISSUE.md`
 - Focused Hugging Face/CDN issue draft:
-  `DAYTONA_HUGGINGFACE_EGRESS_ISSUE.md`
+  `reference/DAYTONA_HUGGINGFACE_EGRESS_ISSUE.md`
 - `AsyncDaytona`/`AsyncSandbox` usage map, isolated PoC re-detonation, and the
   telemetry/OOM-proxy caveat above: `codebase-overview.md`
 
@@ -1349,7 +1349,7 @@ The next checkpoint is complete when all of the following are true:
       the same guard.
 - [ ] The one-sandbox Hugging Face diagnostic identifies DNS, TLS, HTTP redirect,
       or policy as the exact failure boundary and confirms cleanup.
-- [ ] `DAYTONA_HUGGINGFACE_EGRESS_ISSUE.md` matches that evidence and accurately
+- [ ] `reference/DAYTONA_HUGGINGFACE_EGRESS_ISSUE.md` matches that evidence and accurately
       distinguishes Secret substitution hosts from network/domain allowlists.
 - [ ] A size-safe CyberGym architecture is selected and documented; the full
       approximately 160 GB dataset is not mirrored or baked.

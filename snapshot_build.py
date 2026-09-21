@@ -293,7 +293,7 @@ print("[hf_hosts] " + json.dumps(host_observation, sort_keys=True), flush=True)
 
 # Exclude exactly the measured set. ignore_patterns matches literal paths as
 # well as globs, so this excludes what was observed to be unsizable rather
-# than a guessed extension. See DAYTONA_HUGGINGFACE_EGRESS_ISSUE.md.
+# than a guessed extension. See reference/DAYTONA_HUGGINGFACE_EGRESS_ISSUE.md.
 snapshot_download(
     repo_id="{dataset}",
     repo_type="dataset",

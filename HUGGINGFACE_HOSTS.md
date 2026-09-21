@@ -12,7 +12,7 @@ signed URLs, query strings, or Secret placeholders.
 > egress works. The bake fails because sandbox responses arrive with
 > `Content-Length` removed and `Transfer-Encoding` added, which leaves the 20
 > directly-served `crash.log` files with no resolvable size. Tracked in
-> [`DAYTONA_HUGGINGFACE_EGRESS_ISSUE.md`](DAYTONA_HUGGINGFACE_EGRESS_ISSUE.md).
+> [`reference/DAYTONA_HUGGINGFACE_EGRESS_ISSUE.md`](reference/DAYTONA_HUGGINGFACE_EGRESS_ISSUE.md).
 > This file is retained as the record of the Secret's configured scope, not as
 > an open investigation.
 
