@@ -47,6 +47,12 @@ from common import (
     sandbox_secret_refs,
 )
 from solver_agent import ModelConfig, Solver
+from observability import (
+    begin_trial_trace,
+    stage_abort_current,
+    stage_finish,
+    stage_start,
+)
 
 log = get_logger("sandbox_runner")
 
@@ -99,6 +105,7 @@ async def run_trial(
     warm_sandbox=None,
     record: bool = True,
     result: TrialResult | None = None,
+    session_id: str | None = None,
 ) -> TrialResult:
     started_at = datetime.now(timezone.utc).isoformat()
     name = f"{SANDBOX_NAME_PREFIX}-{task.safe_name}-{mode}-t{trial}-{int(time.time())}"
@@ -110,16 +117,25 @@ async def run_trial(
             provisioning=provisioning,
         )
     result.started_at = started_at
+    result.sandbox_name = name
+    trace = begin_trial_trace(
+        result,
+        model=(model.litellm_model_id if model else ModelConfig().litellm_model_id),
+        provider="daytona",
+        session_id=session_id,
+    )
     append_event({"type": "trial_start", "task": task.path, "mode": mode, "trial": trial, "sandbox_name": name})
 
     t_total0 = time.monotonic()
     sandbox = None
     rec_handle = None
     try:
+        stage_start(result, "snapshot_restore")
         sandbox, t_create = await _create_sandbox(daytona, provisioning, name, warm_sandbox=warm_sandbox)
         result.sandbox_id = getattr(sandbox, "id", None)
         result.sandbox_name = name
         result.t_create_s = t_create
+        stage_finish(result, "snapshot_restore")
         log.info("[%s] sandbox %s ready in %.1fs (provisioning=%s)", task.path, result.sandbox_id, t_create, provisioning)
 
         # Arm the safety net immediately, not at the end of a successful run.
@@ -129,6 +145,7 @@ async def run_trial(
         # Values are Daytona organization-secret *names*, never plaintext.
         secrets = sandbox_secret_refs(("LITELLM_MASTER_KEY",))
         if secrets:
+            stage_start(result, "secret_attach")
             await sandbox.update_secrets(secrets)
             await restart_after_secret_attach(sandbox, task.path)
             # A stop/start cycle does not necessarily preserve the
@@ -136,6 +153,7 @@ async def run_trial(
             # restart. Same pattern already used for the bake sandbox in
             # snapshot_build.py.
             await sandbox.set_autostop_interval(0)
+            stage_finish(result, "secret_attach")
 
         # Non-secret provider routing is safe to update directly.
         import os
@@ -147,6 +165,7 @@ async def run_trial(
         if provider_env:
             await sandbox.update_env(provider_env)
 
+        stage_start(result, "docker_start")
         docker = await sandbox.process.exec(
             # `gymsiege-toolchain` has no `sudo` binary at all -- confirmed
             # live 2026-09-11 ("sudo: command not found"), which made every
@@ -171,6 +190,7 @@ async def run_trial(
         )
         if getattr(docker, "exit_code", 1) != 0:
             raise RuntimeError("Docker daemon unavailable after snapshot restore")
+        stage_finish(result, "docker_start")
 
         solver = Solver(sandbox, model=model)
 
@@ -183,6 +203,7 @@ async def run_trial(
                 log.warning("[%s] recording.start failed (continuing without recording): %s", task.path, e)
 
         # --- research phase (computer-use) ---
+        stage_start(result, "research")
         t_r0 = time.monotonic()
         try:
             research = await solver.research(task, OUT_DIR)
@@ -193,12 +214,17 @@ async def run_trial(
             log.warning("[%s] research phase failed, continuing to build phase: %s", task.path, e)
             result.research_mode = "skipped"
             result.research_success = False
+            stage_finish(result, "research", "error")
+        else:
+            stage_finish(result, "research")
         result.t_research_s = time.monotonic() - t_r0
 
         # --- build/PoC/patch phase (headless, real oracle) ---
+        stage_start(result, "evaluation")
         t_b0 = time.monotonic()
         build = await solver.build(task, mode, OUT_DIR)
         result.t_build_s = time.monotonic() - t_b0
+        stage_finish(result, "evaluation")
 
         result.stage1, result.stage2, result.stage3, result.stage4 = build.stage1, build.stage2, build.stage3, build.stage4
         result.isolated_stage3 = build.isolated_stage3
@@ -217,6 +243,7 @@ async def run_trial(
         result.status = common.classify_trial_status(build)
 
         # --- telemetry ---
+        stage_start(result, "result_collection")
         try:
             latest = await sandbox.get_metrics_latest()
             result.metrics_latest = _metrics_to_dict(latest)
@@ -276,13 +303,23 @@ async def run_trial(
                 log.info("[%s] recording saved: %s (%.1fs)", task.path, local_path, getattr(done, "duration_seconds", 0))
             except Exception as e:
                 log.warning("[%s] recording stop/download failed: %s", task.path, e)
+        stage_finish(result, "result_collection")
 
+    except asyncio.CancelledError:
+        result.failure_stage = result.last_stage
+        result.status = "interrupted"
+        result.error = f"trial cancelled during stage={result.last_stage or 'unknown'}"
+        stage_abort_current(result, "interrupted")
+        raise
     except Exception as e:
+        result.failure_stage = result.last_stage
         result.status = "error"
         result.error = f"{e}\n{traceback.format_exc(limit=5)}"
+        stage_abort_current(result, "error")
         log.error("[%s] trial errored: %s", task.path, e)
 
     finally:
+        stage_start(result, "cleanup")
         if sandbox is not None:
             # A sweep-level wait_for() can cancel the build before the normal
             # telemetry block. Fetch one bounded final sample before deletion
@@ -316,6 +353,12 @@ async def run_trial(
                 except Exception:
                     pass
 
+        stage_finish(
+            result,
+            "cleanup",
+            "complete" if result.cleanup_destroyed else "ttl_backstop",
+        )
+
         result.t_total_s = time.monotonic() - t_total0
         result.finished_at = datetime.now(timezone.utc).isoformat()
 
@@ -323,6 +366,7 @@ async def run_trial(
             "type": "trial_end", "task": task.path, "mode": mode, "trial": trial,
             "status": result.status, "t_total_s": result.t_total_s,
         })
+        trace.close(result)
 
     return result
 

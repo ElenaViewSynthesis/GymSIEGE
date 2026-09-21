@@ -282,6 +282,10 @@ class TrialResult:
     error: Optional[str] = None
     started_at: Optional[str] = None
     finished_at: Optional[str] = None
+    last_stage: Optional[str] = None
+    failure_stage: Optional[str] = None
+    failure_reason: Optional[str] = None
+    stage_timings: dict[str, dict[str, Any]] = dataclasses.field(default_factory=dict)
 
     def to_json(self) -> dict[str, Any]:
         return dataclasses.asdict(self)

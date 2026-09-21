@@ -16,6 +16,7 @@ import common
 import modal_sandbox_runner
 import modal_exploitgym_build
 import modal_exploitgym_runner
+import observability
 from common import (
     SNAPSHOT_NAME,
     Task,
@@ -75,6 +76,130 @@ from solver_agent import (
     VALIDATOR_DEPENDENCY_CHECK,
     _isolated_oracle_script,
 )
+
+
+class _FakeObservation:
+    def __init__(self) -> None:
+        self.updates = []
+        self.children = []
+        self.scores = []
+        self.ended = False
+
+    def update(self, **kwargs):
+        self.updates.append(kwargs)
+        return self
+
+    def end(self, **kwargs):
+        self.ended = True
+        return self
+
+    def start_observation(self, **kwargs):
+        child = _FakeObservation()
+        child.created_with = kwargs
+        self.children.append(child)
+        return child
+
+    def score(self, **kwargs):
+        self.scores.append(kwargs)
+
+
+class _FakeContext:
+    def __init__(self, value=None) -> None:
+        self.value = value
+
+    def __enter__(self):
+        return self.value
+
+    def __exit__(self, *_args):
+        return False
+
+
+class _FakeLangfuseClient:
+    def __init__(self, authenticated=True) -> None:
+        self.authenticated = authenticated
+        self.auth_calls = 0
+        self.flush_calls = 0
+        self.root = _FakeObservation()
+        self.root_args = None
+
+    def auth_check(self):
+        self.auth_calls += 1
+        return self.authenticated
+
+    def start_as_current_observation(self, **kwargs):
+        self.root_args = kwargs
+        return _FakeContext(self.root)
+
+    def flush(self):
+        self.flush_calls += 1
+
+
+class TrialObservabilityTests(unittest.TestCase):
+    def tearDown(self) -> None:
+        observability._reset_tracing_for_tests()
+
+    def test_failed_trial_maps_to_error_stage_output_cost_and_score(self) -> None:
+        client = _FakeLangfuseClient()
+        observability.initialize_tracing(client)
+        result = ExploitGymTrialResult("user:cybergym/arvo_1", 2, "codex", "model-x")
+        result.status = "error"
+        result.failure_stage = "evaluation"
+        result.failure_reason = "agent process failed"
+        result.error = "token=super-secret https://signed.invalid/?secret=yes\ntraceback"
+        result.solver_cost_usd = 1.25
+
+        with patch("langfuse.propagate_attributes", return_value=_FakeContext()):
+            trace = observability.begin_trial_trace(
+                result, model="model-x", provider="daytona", session_id="run-123"
+            )
+            observability.stage_start(result, "evaluation")
+            observability.stage_finish(result, "evaluation", "error")
+            trace.close(result)
+
+        self.assertEqual(client.auth_calls, 1)
+        self.assertEqual(client.flush_calls, 1)
+        self.assertEqual(client.root_args["name"], "exploitgym-trial")
+        root_update = client.root.updates[-1]
+        self.assertEqual(root_update["output"]["status"], "error")
+        self.assertEqual(root_update["output"]["solver_cost_usd"], 1.25)
+        cost_summary = next(
+            child for child in client.root.children
+            if child.created_with["name"] == "record-solver-cost"
+        )
+        self.assertEqual(
+            cost_summary.created_with["cost_details"],
+            {"total": 1.25, "solver_cost_usd": 1.25},
+        )
+        self.assertEqual(client.root.scores, [{"name": "exploited", "value": 0.0}])
+        stage = client.root.children[0]
+        self.assertEqual(stage.updates[-1]["level"], "ERROR")
+        self.assertIsInstance(stage.updates[-1]["output"]["duration_s"], float)
+        self.assertNotIn("super-secret", str(stage.updates[-1]))
+        self.assertTrue(stage.ended)
+
+    def test_auth_failure_disables_once_without_raising(self) -> None:
+        client = _FakeLangfuseClient(authenticated=False)
+        self.assertIsNone(observability.initialize_tracing(client))
+        self.assertIsNone(observability.initialize_tracing(client))
+        self.assertEqual(client.auth_calls, 1)
+
+    def test_missing_credentials_leave_result_and_stage_recording_intact(self) -> None:
+        result = TrialResult("curl/arvo_1", "patch-only", 1, "snapshot")
+        with patch.dict(
+            os.environ,
+            {"LANGFUSE_PUBLIC_KEY": "", "LANGFUSE_SECRET_KEY": ""},
+            clear=False,
+        ):
+            trace = observability.begin_trial_trace(
+                result, model="model-x", provider="daytona", session_id="run-123"
+            )
+            observability.stage_start(result, "evaluation")
+            result.status = "success"
+            observability.stage_finish(result, "evaluation")
+            trace.close(result)
+        self.assertEqual(result.status, "success")
+        self.assertEqual(result.stage_timings["evaluation"]["status"], "complete")
+        self.assertIsInstance(result.stage_timings["evaluation"]["duration_s"], float)
 
 
 class TaskParsingTests(unittest.TestCase):

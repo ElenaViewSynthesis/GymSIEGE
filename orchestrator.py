@@ -75,6 +75,7 @@ from exploitgym_adapter import (
 )
 from sandbox_runner import run_trial
 from solver_agent import ModelConfig
+from observability import begin_trial_trace, initialize_tracing, new_run_id
 
 log = get_logger("orchestrator")
 
@@ -214,6 +215,8 @@ def _budget_skipped_result(task: Task, mode: str, trial: int, guard: BudgetGuard
 
 async def cmd_run(args: argparse.Namespace) -> None:
     require_env("DAYTONA_API_KEY")
+    initialize_tracing()
+    run_id = new_run_id()
     tasks = load_tasks(common.ROOT / args.tasks_file)
     if args.limit:
         tasks = tasks[: args.limit]
@@ -245,6 +248,7 @@ async def cmd_run(args: argparse.Namespace) -> None:
                 daytona, task, mode, trial,
                 provisioning=args.provisioning, model=model, warm_sandbox=warm_sandbox,
                 record=not args.no_record,
+                session_id=run_id,
             )
             await budget.record(result)
             return result
@@ -276,6 +280,7 @@ async def cmd_run(args: argparse.Namespace) -> None:
                 "max_parallel": args.max_parallel, "provisioning": args.provisioning,
                 "agent": args.agent, "model_provider": args.model_provider,
                 "model": _selected_model_id(model),
+                "run_id": run_id,
             }
             for coro in asyncio.as_completed(coros):
                 result = await coro
@@ -408,8 +413,14 @@ async def _run_exploitgym_job(
     """Apply the fleet-level deadline and preserve progress on timeout."""
 
     started = time.monotonic()
+    trace = begin_trial_trace(
+        progress,
+        model=args.model,
+        provider="daytona",
+        session_id=getattr(args, "run_id", None),
+    )
     try:
-        return await asyncio.wait_for(
+        result = await asyncio.wait_for(
             run_exploitgym_trial(
                 daytona,
                 task,
@@ -424,6 +435,7 @@ async def _run_exploitgym_job(
             ),
             timeout=args.trial_timeout,
         )
+        return result
     except asyncio.TimeoutError:
         progress.status = "timeout"
         progress.success = False
@@ -446,6 +458,8 @@ async def _run_exploitgym_job(
             progress.cleanup_ttl_set,
         )
         return progress
+    finally:
+        trace.close(progress)
 
 
 def _selected_exploitgym_tasks(args: argparse.Namespace) -> list[ExploitGymTask]:
@@ -470,6 +484,8 @@ def _selected_exploitgym_tasks(args: argparse.Namespace) -> list[ExploitGymTask]
 
 async def cmd_exploitgym_run(args: argparse.Namespace) -> None:
     require_env("DAYTONA_API_KEY")
+    initialize_tracing()
+    args.run_id = new_run_id()
     validate_exploitgym_credentials(args.agent)
     if args.timeout <= 0 or args.trial_timeout <= 0:
         raise ValueError("--timeout and --trial-timeout must be positive")
@@ -505,6 +521,7 @@ async def cmd_exploitgym_run(args: argparse.Namespace) -> None:
         "trial_timeout_s": args.trial_timeout,
         "cleanup_timeout_s": args.cleanup_timeout,
         "profile": "exp.hardened",
+        "run_id": args.run_id,
         "upstream_firewall_required": True,
         "upstream_llm_proxy_required": True,
     }

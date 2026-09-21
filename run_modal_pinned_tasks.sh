@@ -21,6 +21,7 @@ set -uo pipefail  # deliberately not -e: one task's failing exit code must
 cd "$(dirname "$0")"
 
 mkdir -p results/modal_trials
+run_id="${GYMSIEGE_RUN_ID:-gymsiege-modal-$(date -u +%Y%m%dT%H%M%SZ)-$$}"
 
 while IFS= read -r line; do
   task="${line%%#*}"                       # strip trailing "# note"
@@ -33,6 +34,7 @@ while IFS= read -r line; do
   # every task must still get its own attempt regardless of earlier results.
   .venv/bin/python modal_sandbox_runner.py --task "$task" --mode patch-only \
     --output "results/modal_trials/${safe}.json" \
+    --run-id "$run_id" \
     2>&1 | tee "results/modal_trials/${safe}.log" || true
 done < txt/tasks.pinned.txt
 

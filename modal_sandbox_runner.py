@@ -89,6 +89,14 @@ from solver_agent import (
     ModelConfig,
     Solver,
 )
+from observability import (
+    begin_trial_trace,
+    initialize_tracing,
+    new_run_id,
+    stage_abort_current,
+    stage_finish,
+    stage_start,
+)
 
 log = get_logger("modal_sandbox_runner")
 
@@ -310,6 +318,7 @@ async def run_trial(
     litellm_secret_name: str = DEFAULT_LITELLM_SECRET,
     record: bool = False,
     result: TrialResult | None = None,
+    session_id: str | None = None,
 ) -> TrialResult:
     started_at = datetime.now(timezone.utc).isoformat()
     name = f"{SANDBOX_NAME_PREFIX}-modal-{task.safe_name}-{mode}-t{trial}-{int(time.time())}"
@@ -317,6 +326,13 @@ async def run_trial(
         result = TrialResult(task=task.path, mode=mode, trial=trial, provisioning=provisioning)
     result.provider = "modal"
     result.started_at = started_at
+    result.sandbox_name = name
+    trace = begin_trial_trace(
+        result,
+        model=(model.litellm_model_id if model else ModelConfig().litellm_model_id),
+        provider="modal",
+        session_id=session_id,
+    )
     append_event({
         "type": "trial_start", "task": task.path, "mode": mode, "trial": trial,
         "sandbox_name": name, "provider": "modal",
@@ -332,13 +348,17 @@ async def run_trial(
     sandbox = None
     adapter = None
     try:
+        stage_start(result, "secret_attach")
         secrets = _trial_secrets(modal_mod, litellm_secret_name)
+        stage_finish(result, "secret_attach")
+        stage_start(result, "snapshot_restore")
         sandbox, t_create = await _create_sandbox(
             modal_mod, app, provisioning, manifest["snapshot_image_id"], secrets
         )
         result.sandbox_id = sandbox.object_id
         result.sandbox_name = name
         result.t_create_s = t_create
+        stage_finish(result, "snapshot_restore")
         log.info(
             "[%s] Modal sandbox %s ready in %.1fs (provisioning=%s)",
             task.path, result.sandbox_id, t_create, provisioning,
@@ -358,16 +378,20 @@ async def run_trial(
             log.warning("[%s] set_tags failed (non-fatal): %s", task.path, exc)
 
         adapter = ModalSandboxAdapter(sandbox)
+        stage_start(result, "docker_start")
         await _wait_for_docker(adapter.process, task.path)
+        stage_finish(result, "docker_start")
 
         solver = Solver(adapter, model=model, remote_dir=REMOTE_REPO_DIR)
         # No computer-use/GUI surface on Modal -- see module docstring.
         result.research_mode = "skipped"
         result.research_success = None
 
+        stage_start(result, "evaluation")
         t_b0 = time.monotonic()
         build = await solver.build(task, mode, OUT_DIR)
         result.t_build_s = time.monotonic() - t_b0
+        stage_finish(result, "evaluation")
 
         result.stage1, result.stage2, result.stage3, result.stage4 = (
             build.stage1, build.stage2, build.stage3, build.stage4
@@ -387,6 +411,7 @@ async def run_trial(
         result.solver_cost_usd = build.solver_cost_usd
         result.status = common.classify_trial_status(build)
 
+        stage_start(result, "result_collection")
         telemetry = await _probe_telemetry(adapter.process, task.path)
         if telemetry:
             result.metrics_latest = telemetry
@@ -427,13 +452,23 @@ async def run_trial(
                     log.warning("[%s] trajectory log %s download failed: %s", task.path, remote_traj, exc)
             if local_traj:
                 result.trajectory_local_paths = local_traj
+        stage_finish(result, "result_collection")
 
+    except asyncio.CancelledError:
+        result.failure_stage = result.last_stage
+        result.status = "interrupted"
+        result.error = f"trial cancelled during stage={result.last_stage or 'unknown'}"
+        stage_abort_current(result, "interrupted")
+        raise
     except Exception as exc:
+        result.failure_stage = result.last_stage
         result.status = "error"
         result.error = f"{exc}\n{traceback.format_exc(limit=5)}"
+        stage_abort_current(result, "error")
         log.error("[%s] Modal trial errored: %s", task.path, exc)
 
     finally:
+        stage_start(result, "cleanup")
         if sandbox is not None:
             if adapter is not None and not result.metrics_latest:
                 # Mirrors sandbox_runner.py's _capture_telemetry_bounded: take
@@ -458,12 +493,19 @@ async def run_trial(
                     task.path, result.sandbox_id, exc,
                 )
 
+        stage_finish(
+            result,
+            "cleanup",
+            "complete" if result.cleanup_destroyed else "ttl_backstop",
+        )
+
         result.t_total_s = time.monotonic() - t_total0
         result.finished_at = datetime.now(timezone.utc).isoformat()
         append_event({
             "type": "trial_end", "task": task.path, "mode": mode, "trial": trial,
             "status": result.status, "t_total_s": result.t_total_s, "provider": "modal",
         })
+        trace.close(result)
 
     return result
 
@@ -487,11 +529,17 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["gpt-5.6-luna", "gpt-5.6-sol", "gpt-daybreak-blue-latest"],
     )
     parser.add_argument("--output", type=Path, default=None, help="write the TrialResult JSON here")
+    parser.add_argument(
+        "--run-id",
+        default=None,
+        help="Langfuse session id shared by every trial in one batch",
+    )
     return parser
 
 
 def main() -> None:
     args = build_parser().parse_args()
+    initialize_tracing()
     try:
         import modal
     except ImportError as exc:
@@ -521,6 +569,7 @@ def main() -> None:
             provisioning=args.provisioning,
             model=model,
             litellm_secret_name=args.litellm_secret,
+            session_id=args.run_id or new_run_id(),
         )
     )
     payload = result.to_json()
