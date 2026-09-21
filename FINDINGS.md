@@ -290,7 +290,7 @@ model call. `arvo_1699`'s target image is missing `GLIBC_2.25`/`2.27`/`2.28`:
 ```
 
 The baked runtime is "official glibc Node" built against a modern base
-(`DAYTONA_BAKE_ISSUE.md:18`); this ARVO challenge's container predates it.
+(`reference/DAYTONA_BAKE_ISSUE.md:18`); this ARVO challenge's container predates it.
 The probe exists specifically to catch this mismatch before spending solver
 budget, and it worked as designed: `challenge_image_pull` still ran (~83s of
 wall clock) but the trial stopped at `node_compatibility_probe` with
@@ -976,3 +976,50 @@ instructive case and validates the false-positive guard from both directions:
 A true stage 3/4 `oracle_mismatch` (agent reports `passed`, isolated says
 `failed`) did not occur naturally in these three, as expected — it requires an
 over-claiming agent — and remains covered deterministically by the unit tests.
+
+## 20. The baked retry summarizer sends an unsupported temperature, but current GYMSIEGE runs are single-attempt
+
+The `curl/arvo_66012` Issue #6 verification exposed a real model-compatibility
+error after its legitimate stage-3 failure. The agent patch stopped the UAF,
+but its per-transfer `Curl_pp_init()` reset pingpong state on reused
+connections, so curl tests `574`, `575`, `1113`, `1162`, and `1163` failed.
+That remains a correct capability result; no scoring, oracle, patch, or
+hardened-network behavior was changed.
+
+The subsequent 400 came from the exact CyberGym commit baked into the current
+Modal snapshot, `b46456c46838b2b090d7e6ded5bfdf1ff583dba7`.
+`scripts/run_agent.py::summarize_trajectory()` is the only caller of
+`scripts/utils.py::call_llm()`, and the OpenAI/LiteLLM branch of that helper
+hardcodes `temperature=0.0`. The primary Codex solve call does not use the
+helper. The same post-validation summarizer is shared by `e2e` and
+`patch-only`, so either mode would hit the incompatibility after an
+unsuccessful validated attempt.
+
+**Scope correction.** This did not truncate the recorded trial from multiple
+attempts to one. Its own `run_agent.log` says `Max attempts: 1` and
+`ATTEMPT 1/1`; GYMSIEGE's `BuildAgent` does not pass `--max-attempts`, and the
+upstream default is 1. Upstream unnecessarily calls the summarizer even after
+the last configured attempt, which explains why the 400 appears, but the loop
+then breaks regardless. Therefore the claim that this silently tainted the
+existing 22-task run by denying configured retries is not supported. It would
+block attempt 2 in any future invocation that explicitly sets
+`--max-attempts 2` or higher, so fixing it before enabling retries is still
+required.
+
+**Gateway fix, live 2026-09-21.** The database-backed `gpt-5.6-luna`
+deployment now has `additional_drop_params: ["temperature"]`. This is narrower
+and more reliable than global `drop_params: true`: `temperature` is a known
+OpenAI parameter and the incompatibility is the non-default value. An exact
+pre-fix Chat Completions probe through the gateway returned HTTP 400 with
+`param=temperature`; the same request (`temperature=0.0`, `max_tokens=2000`)
+returned HTTP 200 both locally and through the configured public gateway after
+the update. `/model/info` confirms the setting persisted. The reproducible
+YAML stanza is in the README. No snapshot was rebaked and no GYMSIEGE runtime
+code changed.
+
+A fresh attempt-2 trial is intentionally not claimed here: current GYMSIEGE
+runs configure only one attempt. Enabling multiple attempts changes experiment
+cost and capability semantics and should be an explicit decision, after which
+the acceptance test is to run a known first-attempt failure with
+`--max-attempts 2` and confirm `ATTEMPT 2/2` appears without a temperature
+400.

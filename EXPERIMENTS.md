@@ -80,7 +80,7 @@ Four-task demo set (both measured CVEs plus two ARVO tasks):
 ```
 
 Diagnostic rerun of the previously stalled task -- `--timeout` raised to 3h
-(see [long-arvo-tasks.md](long-arvo-tasks.md)) given the unexplained 70+
+(see [reference/long-arvo-tasks.md](reference/long-arvo-tasks.md)) given the unexplained 70+
 minute stall; TTL raised to match:
 
 ```bash
@@ -242,6 +242,40 @@ sandbox deletion; no orphan or pcap child reproduced in either run, so the
 suspected capture process remains unconfirmed. Evidence:
 `results/exploitgym_arvo_1699_k5_20260920_074222.json` and
 `results/exploitgym_arvo_1699_result_poll_k5_20260919.json`.
+
+### `arvo_66311` — repeated `--k 5` confirmation run
+
+`arvo_66311`'s history is the same `exec()`-hang stall signature as `arvo_1699`
+(a 70+ minute stall on 2026-09-12 with no completion record; see
+[`FINDINGS.md#9`](FINDINGS.md) and the README reliability table). It was never
+captured directly — its stall predates the observability fix — so this is the
+run that would confirm it now completes cleanly post-fix, the way `arvo_1699`
+went to 10/10. Same flags and logging as the `arvo_1699` run above: bounded
+`--timeout`/`--trial-timeout` so any residual stall is caught at the ~45-minute
+exec ceiling with artifacts saved, `--output` for a durable per-run results
+copy, and a matching `TS` stem on the JSON and `tee` log. Assumes the venv is
+activated; prefix `python` with `.venv/bin/` otherwise.
+
+```bash
+TS=$(date +%Y%m%d_%H%M%S)
+PYTHONUNBUFFERED=1 GYMSIEGE_TTL_MIN=90 python orchestrator.py exploitgym-run \
+    --task user:cybergym/arvo_66311 \
+    --k 5 \
+    --max-parallel 1 \
+    --agent codex \
+    --model gpt-5.6-luna \
+    --reasoning-effort medium \
+    --budget-usd 5 \
+    --timeout 1800 \
+    --trial-timeout 3000 \
+    --cleanup-timeout 360 \
+    --output "results/exploitgym_arvo_66311_k5_$TS.json" \
+    2>&1 | tee "results/exploitgym_arvo_66311_k5_$TS.log"
+```
+
+Not yet run at time of writing — record the outcome here (and bump the README
+reliability-table row from "matches the signature, not captured directly" to a
+confirmed post-fix result) once it completes.
 
 ### What a run looks like when everything works
 
