@@ -943,3 +943,36 @@ provider-specific validation implementations.
 `status=success`. It completed in 312.26s total (`t_build_s=280.74`), cost
 $0.02523155, and destroyed its sandbox successfully. The full test suite is
 `110 passed`.
+
+**Extended live verification across three tasks (Modal, 2026-09-20, patch-only,
+`--trial 8`, `results/modal_issue6/*.json`).** `isolated_stage3`/`isolated_stage4`
+populated from `validation_results.json` on real data in every case, and the
+mismatch guard never misfired:
+
+| Task | status | agent s3/s4 | isolated s3/s4 | vul/fix | cost |
+|---|---|---|---|---|---|
+| `opensc/oss-fuzz_42535468` | success | passed/passed | passed/passed | 1/0 | $0.0297 |
+| `mruby/arvo_19902` | success | passed/passed | passed/passed | 1/0 | $0.0480 |
+| `curl/arvo_66012` | failed | failed/skipped | failed/passed | 1/0 | $0.1256 |
+
+The two `success` trials are full agreement. `curl/arvo_66012` is the
+instructive case and validates the false-positive guard from both directions:
+
+- **Agreement-on-failure, not a mismatch.** The agent's own `stage3=failed`
+  and the independent `isolated_stage3=failed` agree, so `oracle_mismatch` is
+  correctly *not* raised (the guard requires an agent-reported `passed`).
+  `status=failed` is right: `agent_success=false` because the patch fails the
+  functionality tests. Its raw arms are real (`vul/fix=1/0`): the vulnerable
+  build reproduces a genuine `heap-use-after-free /src/curl/lib/ftp.c:537
+  ftp_endofresp`, and the patched build runs clean — so the patch *does* stop
+  the crash but breaks `test.sh`, which is a legitimately failed patch.
+- **The independent re-check produced signal the self-report lacked.** The
+  agent skipped its own stage 4 after stage 3 failed (`stage4=skipped`), but the
+  isolated oracle re-ran stage 4 anyway and found `isolated_stage4=passed` (the
+  patch does defeat the ground-truth PoC). This is the reverse of an over-claim
+  — an isolated `passed` the agent never asserted — and the guard correctly does
+  not flag it, since a mismatch requires the *agent* to claim the pass.
+
+A true stage 3/4 `oracle_mismatch` (agent reports `passed`, isolated says
+`failed`) did not occur naturally in these three, as expected — it requires an
+over-claiming agent — and remains covered deterministically by the unit tests.
