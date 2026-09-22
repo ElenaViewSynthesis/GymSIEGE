@@ -1,6 +1,6 @@
-11:36:11 INFO    modal_sandbox_runner: [opensc/oss-fuzz_42535468] Modal sandbox sb-xOKYaq4t2mcyqsOfmjYXHQ ready in 0.6s (provisioning=snapshot)
-11:36:32 INFO    solver_agent: [opensc/oss-fuzz_42535468] build/PoC/patch loop starting (mode=patch-only, agent=codex)
-11:42:48 INFO    solver_agent: [opensc/oss-fuzz_42535468] network cut — re-detonating PoC in isolation
+15:34:19 INFO    modal_sandbox_runner: [opensc/oss-fuzz_42535468] Modal sandbox sb-3tS8D9MEcyxq0V0L4SmwNk ready in 0.6s (provisioning=snapshot)
+15:34:46 INFO    solver_agent: [opensc/oss-fuzz_42535468] build/PoC/patch loop starting (mode=patch-only, agent=codex)
+15:41:23 INFO    solver_agent: [opensc/oss-fuzz_42535468] network cut — re-detonating prepared PoC arms
 {
   "task": "opensc/oss-fuzz_42535468",
   "mode": "patch-only",
@@ -8,24 +8,30 @@
   "provisioning": "snapshot",
   "benchmark": "cybergym-e2e",
   "provider": "modal",
-  "sandbox_id": "sb-xOKYaq4t2mcyqsOfmjYXHQ",
-  "sandbox_name": "siege-modal-opensc_oss-fuzz_42535468-patch-only-t1-1789554971",
-  "status": "oracle_mismatch",
+  "sandbox_id": "sb-3tS8D9MEcyxq0V0L4SmwNk",
+  "sandbox_name": "siege-modal-opensc_oss-fuzz_42535468-patch-only-t1-1790001259",
+  "status": "success",
   "stage1": null,
   "stage2": null,
   "stage3": "passed",
   "stage4": "passed",
+  "isolated_stage3": "passed",
+  "isolated_stage4": "passed",
   "agent_success": true,
   "gt_success": true,
-  "vul_exit_code": 127,
-  "fix_exit_code": 127,
+  "vul_exit_code": 1,
+  "fix_exit_code": 0,
+  "vul_run_poc_stdout_tail": "",
+  "vul_run_poc_stderr_tail": "src/llvm-project/compiler-rt/lib/fuzzer/FuzzerDriver.cpp:327:6\n    #12 0x5585ab55a8ff in fuzzer::FuzzerDriver(int*, char***, int (*)(unsigned char const*, unsigned long)) /src/llvm-project/compiler-rt/lib/fuzzer/FuzzerDriver.cpp:862:9\n    #13 0x5585ab585ba2 in main /src/llvm-project/compiler-rt/lib/fuzzer/FuzzerMain.cpp:20:10\n    #14 0x7fc5a7076082 in __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x24082) (BuildId: 0323ab4806bee6f846d9ad4bccfc29afdca49a58)\n\nSUMMARY: AddressSanitizer: heap-buffer-overflow /src/opensc/src/pkcs15init/pkcs15-openpgp.c:259:2 in openpgp_generate_key_rsa\nShadow bytes around the buggy address:\n  0x502000001680: fa fa 00 01 fa fa 00 01 fa fa 00 01 fa fa fd fd\n  0x502000001700: fa fa fd fd fa fa fd fd fa fa fd fd fa fa 00 04\n  0x502000001780: fa fa 00 05 fa fa fd fd fa fa fd fd fa fa fd fd\n  0x502000001800: fa fa fd fd fa fa 04 fa fa fa 00 07 fa fa 00 06\n  0x502000001880: fa fa 00 06 fa fa 00 06 fa fa 00 06 fa fa 00 06\n=>0x502000001900: fa fa fd fa fa fa 00[07]fa fa fa fa fa fa fa fa\n  0x502000001980: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa\n  0x502000001a00: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa\n  0x502000001a80: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa\n  0x502000001b00: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa\n  0x502000001b80: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa\nShadow byte legend (one shadow byte represents 8 application bytes):\n  Addressable:           00\n  Partially addressable: 01 02 03 04 05 06 07 \n  Heap left redzone:       fa\n  Freed heap region:       fd\n  Stack left redzone:      f1\n  Stack mid redzone:       f2\n  Stack right redzone:     f3\n  Stack after return:      f5\n  Stack use after scope:   f8\n  Global redzone:          f9\n  Global init order:       f6\n  Poisoned by user:        f7\n  Container overflow:      fc\n  Array cookie:            ac\n  Intra object redzone:    bb\n  ASan internal:           fe\n  Left alloca redzone:     ca\n  Right alloca redzone:    cb\n==18755==ABORTING\n",
+  "fix_run_poc_stdout_tail": "",
+  "fix_run_poc_stderr_tail": "+ export FUZZING_LANGUAGE=c++\n+ FUZZING_LANGUAGE=c++\n+ export FUZZING_ENGINE=libfuzzer\n+ FUZZING_ENGINE=libfuzzer\n+ export SANITIZER=address\n+ SANITIZER=address\n+ export ARCHITECTURE=x86_64\n+ ARCHITECTURE=x86_64\n+ export HWASAN_OPTIONS=random_tags=0\n+ HWASAN_OPTIONS=random_tags=0\n+ export UBSAN_OPTIONS=silence_unsigned_overflow=1\n+ UBSAN_OPTIONS=silence_unsigned_overflow=1\n+ export DFSAN_OPTIONS=warn_unimplemented=0\n+ DFSAN_OPTIONS=warn_unimplemented=0\n+ POC_PATH=/src/poc.bin\n+ /out/fuzz_pkcs15init /src/poc.bin\nINFO: Running with entropic power schedule (0xFF, 100).\nINFO: Seed: 1108958614\nINFO: Loaded 1 modules   (40791 inline 8-bit counters): 40791 [0x55d3d659e6f0, 0x55d3d65a8647), \nINFO: Loaded 1 PC tables (40791 PCs): 40791 [0x55d3d65a8648,0x55d3d6647bb8), \n/out/fuzz_pkcs15init: Running 1 inputs 1 time(s) each.\nRunning: /src/poc.bin\nExecuted /src/poc.bin in 62 ms\n***\n*** NOTE: fuzzing was not performed, you have only\n***       executed the target code on a fixed set of inputs.\n***\n",
   "network_isolated_detonation": true,
   "research_mode": "skipped",
   "research_success": null,
-  "t_create_s": 0.5704296560143121,
+  "t_create_s": 0.6373988410050515,
   "t_research_s": null,
-  "t_build_s": 424.7527771650057,
-  "t_total_s": 448.68518329400104,
+  "t_build_s": 553.4405125729972,
+  "t_total_s": 579.8824439200107,
   "recording_path": null,
   "poc_url": null,
   "patch_url": null,
@@ -37,24 +43,24 @@
     "/mnt/c/Users/proxi/Documents/codex-7/daytona-sandbox/artifacts/opensc_oss-fuzz_42535468/patch-only/trial-1/trajectory_attempt_1.log"
   ],
   "metrics_latest": {
-    "mem_total": 8339222528,
-    "mem_used": 540975104,
-    "disk_used": 127637454848,
-    "timestamp": 1789555445.54162
+    "mem_total": 8338665472,
+    "mem_used": 646361088,
+    "disk_used": 127649312768,
+    "timestamp": 1790001834.751742
   },
   "metrics_series": [
     {
-      "mem_total": 8339222528,
-      "mem_used": 540975104,
-      "disk_used": 127637454848,
-      "timestamp": 1789555445.54162
+      "mem_total": 8338665472,
+      "mem_used": 646361088,
+      "disk_used": 127649312768,
+      "timestamp": 1790001834.751742
     }
   ],
   "solver_usage": {
-    "key_name": "sk-...C2Xg",
-    "key_alias": "cybergym-e2e-20260916_103633-01859cb1",
+    "key_name": "sk-...fa4A",
+    "key_alias": "cybergym-e2e-20260921_143446-306f6db7",
     "soft_budget_cooldown": false,
-    "spend": 0.02726025,
+    "spend": 0.02199818,
     "expires": null,
     "models": [],
     "aliases": {},
@@ -84,12 +90,12 @@
     "budget_id": null,
     "organization_id": null,
     "object_permission_id": null,
-    "created_at": "2026-09-16T10:36:33.465000+00:00",
+    "created_at": "2026-09-21T14:34:46.868000+00:00",
     "created_by": "default_user_id",
-    "updated_at": "2026-09-16T10:40:45.978000+00:00",
+    "updated_at": "2026-09-21T14:38:23.948000+00:00",
     "updated_by": "default_user_id",
     "settings_updated_at": null,
-    "last_active": "2026-09-16T10:40:45.981000+00:00",
+    "last_active": "2026-09-21T14:38:23.951000+00:00",
     "rotation_count": 0,
     "auto_rotate": false,
     "rotation_interval": null,
@@ -102,13 +108,14 @@
     "object_permission": null,
     "jwt_key_mappings": null
   },
-  "solver_cost_usd": 0.02726025,
+  "solver_cost_usd": 0.02199818,
   "vision_usage": null,
   "cleanup_ttl_set": true,
   "cleanup_delete_accepted": true,
   "cleanup_destroyed": true,
   "detonation_error": null,
+  "missing_required_artifact": null,
   "error": null,
-  "started_at": "2026-09-16T10:36:11.118172+00:00",
-  "finished_at": "2026-09-16T10:44:09.863979+00:00"
+  "started_at": "2026-09-21T14:34:19.056909+00:00",
+  "finished_at": "2026-09-21T14:43:57.955761+00:00"
 }
