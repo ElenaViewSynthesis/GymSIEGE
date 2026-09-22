@@ -438,7 +438,9 @@ target is unreachable), bring the real compose stack back up with:
 
 Gitignored (`.gitignore`), not project tooling — it just `cd`s into
 `litellm-gateway/` (this machine's absolute path, hardcoded) and runs
-`docker compose up -d` there. Restart the tunnel separately if it's also
+`docker compose --env-file ../.env.local up -d` there. The env file is used
+for Compose substitution; only variables explicitly listed in the compose
+service enter the gateway container. Restart the tunnel separately if it's also
 down: `docker start cloudflared-tunnel`, then check its logs for a fresh
 `trycloudflare.com` hostname (quick tunnels don't keep their old one across
 a restart) and update `LITELLM_BASE_URL` in `.env.local` to match.
@@ -556,6 +558,46 @@ Notes on entries that aren't a single clean run:
 | `libdwarf/arvo_56454` (rerun) | 4.7 min | `oracle_mismatch` | 0 / 0 | reproduced identically, ruled out flakiness |
 | `libdwarf/arvo_56454` (diagnostics) | 4.1 min | `oracle_mismatch` | 0 / 0 | added stdout/stderr tails — found the real root cause, `FINDINGS.md#13` |
 | `mruby/arvo_53183` (postfix) | 8.5 min | `success` | 1 / 0 | combined #7+#8 fix confirmation — real ASan crash on the vulnerable arm |
+
+### Running a single Modal task standalone
+
+`run_modal_pinned_tasks.sh` loops the whole pinned set; to run one task on its
+own — a re-run, a spot check, or isolating a single result away from an
+in-flight batch — call `modal_sandbox_runner.py` directly. Use a distinct
+`--output` with a `TS` stem so it can't clobber a batch result at
+`results/modal_trials/<task>.json`, and pass `--run-id` to group this trial's
+Langfuse trace (Layer 1) and its gateway generations (Layer 2) under one named
+session:
+
+```bash
+TS=$(date +%Y%m%d_%H%M%S)
+PYTHONUNBUFFERED=1 python modal_sandbox_runner.py \
+    --task ghostscript/arvo_45320 \
+    --mode patch-only \
+    --run-id "gymsiege-ghostscript-$TS" \
+    --output "results/modal_ghostscript_$TS.json" \
+    2>&1 | tee "results/modal_ghostscript_$TS.log"
+```
+
+Assumes the venv is activated and the LiteLLM gateway is reachable (CyberGym
+routes its agent calls through it). Defaults: `--trial 1`,
+`--provisioning snapshot`, `--model-provider litellm` (`gpt-5.6-luna`); omitting
+`--run-id` auto-generates one via `new_run_id()`.
+
+The same shape runs any pinned task — e.g. `arrow/arvo_41221`, the `no_patch`
+case (agent produces no `fix.patch`, $0 spend, isolated oracle skipped —
+[`FINDINGS.md#17`](FINDINGS.md)); a re-run is a variance check on whether the
+agent generates a patch this time:
+
+```bash
+TS=$(date +%Y%m%d_%H%M%S)
+PYTHONUNBUFFERED=1 python modal_sandbox_runner.py \
+    --task arrow/arvo_41221 \
+    --mode patch-only \
+    --run-id "gymsiege-arrow-$TS" \
+    --output "results/modal_arrow_$TS.json" \
+    2>&1 | tee "results/modal_arrow_$TS.log"
+```
 
 ## 5. Dashboard and cleanup
 

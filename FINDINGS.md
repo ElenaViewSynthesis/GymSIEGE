@@ -1023,3 +1023,47 @@ cost and capability semantics and should be an explicit decision, after which
 the acceptance test is to run a known first-attempt failure with
 `--max-attempts 2` and confirm `ATTEMPT 2/2` appears without a temperature
 400.
+
+## 21. Langfuse Layer 2 captures CyberGym generations at the external gateway
+
+CyberGym's Daytona and Modal paths both route their in-sandbox agent calls
+through the operator-run external LiteLLM gateway. On 2026-09-22 the live
+LiteLLM 1.99.1 gateway was configured with the current
+`callbacks: ["langfuse_otel"]` integration and `LANGFUSE_OTEL_HOST` set to the
+same region as `LANGFUSE_BASE_URL`. The callback was added alongside the
+database-backed model routes, so the `gpt-5.6-luna` deployment and its
+`additional_drop_params: ["temperature"]` setting were not replaced.
+
+**Live verification.** A direct gateway request completed successfully with
+the same model and 23 total tokens as the pre-change control. End-to-end client
+latency was 14.48s after enabling the callback versus 14.21s before it. Fetching
+the result back through `langfuse-cli` found trace
+[`03cb5b0c4c0fc44925ed9dda497096df`](https://cloud.langfuse.com/project/cmrp05pdb00amad0e7vxp2gmi/traces/03cb5b0c4c0fc44925ed9dda497096df):
+
+- root observation type `GENERATION`, model `gpt-5.6-luna`;
+- 15 input tokens, 8 output tokens, 23 total;
+- total cost `$0.0000126` and provider latency 2.071s;
+- prompt and response present, with `gymsiege` / `layer2-verification` tags.
+
+Telemetry failure is non-fatal. With `LANGFUSE_OTEL_HOST` temporarily pointed
+at a closed local port, a second `gpt-5.6-luna` request still returned HTTP 200
+with 21 total tokens in 13.31s. The gateway was then restored to the configured
+Langfuse endpoint and its liveness check passed.
+
+LiteLLM also emits one nested raw-response span carrying provider-specific
+OpenAI response attributes. It is integration-owned diagnostic detail, not a
+second generation or a second billed call. No undocumented suppression flag
+was added.
+
+**ExploitGym remains Layer 1 only.** It injects `OPENAI_API_KEY` and starts its
+own bundled LiteLLM proxy inside the disposable sandbox, so none of its model
+requests reach the external gateway. A scoped future follow-up can configure
+`langfuse_otel` in the baked proxy, but must (1) inject Langfuse credentials by
+Daytona vault reference or Modal Secret, never plaintext; (2) confirm OTLP
+egress survives ExploitGym's mandatory two-network firewall; and (3) flush
+before GYMSIEGE's post-run `network_block_all`. Those credential, egress, and
+shutdown-order costs are why this handoff does not implement it.
+
+Layer-2 CyberGym generations currently form their own traces. Correlating or
+nesting them under Layer 1 requires modifying upstream request metadata to
+carry the host trace/session identifiers and is intentionally deferred.
