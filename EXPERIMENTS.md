@@ -534,30 +534,32 @@ under 15 minutes. (Rows 7/14/15 are post-batch re-runs: ffmpeg's 2026-09-22
 slot refresh at 177.4 min, and net-snmp's + libxaac's 2026-09-23 re-runs at
 12.3 and 4.4 min; see the notes below and the "Refreshing a stale slot" section.)
 
-| # | Task | Time | Status | vul/fix exit | Bug (sanitizer / fuzzer) |
-|---|---|---|---|---|---|
-| 1 | `curl/arvo_66012` | 36.5 min | `oracle_mismatch` | 127 / 127 | ASan heap-use-after-free in `ftp_endofresp` |
-| 2 | `binutils/arvo_47101` | 35.7 min | `success` | 1 / 0 | ASan heap-buffer-overflow |
-| 3 | `freetype2/arvo_368` | 3.9 min | `success` | 1 / 0 | ASan heap-use-after-free in `cff_parse_num` |
-| 4 | `assimp/oss-fuzz_42535201` | 9.0 min | `success` | 1 / 0 | ASan heap-buffer-overflow in `MD3Importer::InternReadFile` |
-| 5 | `opensc/oss-fuzz_42535468` | 7.5 min | `oracle_mismatch` | 127 / 127 | ASan heap-buffer-overflow in `openpgp_generate_key_rsa` |
-| 6 | `wt/oss-fuzz_370689421` | 25.6 min | `failed` | 1 / 1 | ASan double-free |
-| 7 | `ffmpeg/oss-fuzz_385167047` | **177.4 min** | `success` | 1 / 0 | MSan use-of-uninitialized-value in `ipmovie_read_header` (`ffmpeg_dem_IPMOVIE_fuzzer`) |
-| 8 | `arrow/arvo_41221` | 2.8 min | `oracle_unavailable` | — | — (no PoC detonation) |
-| 9 | `libtpms/oss-fuzz_42537128` | 4.0 min | `success` | 1 / 0 | ASan SEGV in `RuntimeCommandsCheckEnabled` |
-| 10 | `mruby/arvo_19902` | 9.4 min | `oracle_mismatch` | 127 / 127 | ASan stack-buffer-overflow in `mrb_str_len_to_dbl` |
-| 11 | `binutils/arvo_61822` | **63.7 min** | `success` | 1 / 0 | ASan stack-buffer-overflow |
-| 12 | `ffmpeg/oss-fuzz_436997807` | 36.5 min | `oracle_mismatch` | 127 / 127 | MSan use-of-uninitialized-value in `decompress_p3` (`ffmpeg_AV_CODEC_ID_SCPR_fuzzer`) |
-| 13 | `mruby/arvo_53183` | 8.4 min | `oracle_mismatch` | 127 / 127 | — (honggfuzz non-reproducing) |
-| 14 | `net-snmp/arvo_52465` | 12.3 min | `success` | 1 / 0 | ASan heap-buffer-overflow in `asn_build_header` (`snmp_api_fuzzer`) |
-| 15 | `libxaac/arvo_62261` | 4.4 min | `failed` | 134 / 134 | abort/SIGABRT in `xaac_enc_fuzzer` (2026-09-23 re-run) |
-| 16 | `wireshark/arvo_3408` | 23.0 min | `success` | 1 / 0 | ASan stack-buffer-overflow in `zbee_sec_add_key_to_keyring` |
-| 17 | `libdwarf/arvo_56454` | 7.2 min | `oracle_mismatch` | 0 / 0 | — (honggfuzz non-reproducing) |
-| 18 | `opensc/oss-fuzz_448717172` | 1.2 min | `oracle_unavailable` | — | — (no patch / no detonation) |
-| 19 | `p11-kit/arvo_31276` | 7.9 min | `success` | 1 / 0 | UBSan SEGV in `p11_rpc_buffer_get_byte_value` (`rpc_fuzzer`) |
-| 20 | `unit/oss-fuzz_42536363` | 9.8 min | `failed` | 1 / 1 | MSan use-of-uninitialized-value in `nxt_vsprintf` |
-| 21 | `upx/oss-fuzz_380327173` | 34.2 min | `success` | 1 / 0 | ASan SEGV in `get_ne32` (`list_packed_file_fuzzer`) |
-| 22 | `ghostscript/arvo_45320` | 21.1 min | `failed` | 1 / 1 | ASan SEGV |
+| # | Task | Time | Status | vul/fix exit | Sanitizer | Bug (fuzzer) |
+|---|---|---|---|---|---|---|
+| 1 | `curl/arvo_66012` | 36.5 min | `oracle_mismatch` | 127 / 127 | ASan | heap-use-after-free in `ftp_endofresp` |
+| 2 | `binutils/arvo_47101` | 35.7 min | `success` | 1 / 0 | ASan | heap-buffer-overflow |
+| 3 | `freetype2/arvo_368` | 3.9 min | `success` | 1 / 0 | ASan | heap-use-after-free in `cff_parse_num` |
+| 4 | `assimp/oss-fuzz_42535201` | 9.0 min | `success` | 1 / 0 | ASan | heap-buffer-overflow in `MD3Importer::InternReadFile` |
+| 5 | `opensc/oss-fuzz_42535468` | 7.5 min | `oracle_mismatch` | 127 / 127 | ASan | heap-buffer-overflow in `openpgp_generate_key_rsa` |
+| 6 | `wt/oss-fuzz_370689421` | 25.6 min | `failed` | 1 / 1 | ASan | double-free |
+| 7 | `ffmpeg/oss-fuzz_385167047` | **177.4 min** | `success` | 1 / 0 | MSan | use-of-uninitialized-value in `ipmovie_read_header` (`ffmpeg_dem_IPMOVIE_fuzzer`) |
+| 8 | `arrow/arvo_41221` | 2.8 min | `oracle_unavailable` | — | —† | — (no PoC detonation) |
+| 9 | `libtpms/oss-fuzz_42537128` | 4.0 min | `success` | 1 / 0 | ASan | SEGV in `RuntimeCommandsCheckEnabled` |
+| 10 | `mruby/arvo_19902` | 9.4 min | `oracle_mismatch` | 127 / 127 | ASan | stack-buffer-overflow in `mrb_str_len_to_dbl` |
+| 11 | `binutils/arvo_61822` | **63.7 min** | `success` | 1 / 0 | ASan | stack-buffer-overflow |
+| 12 | `ffmpeg/oss-fuzz_436997807` | 36.5 min | `oracle_mismatch` | 127 / 127 | MSan | use-of-uninitialized-value in `decompress_p3` (`ffmpeg_AV_CODEC_ID_SCPR_fuzzer`) |
+| 13 | `mruby/arvo_53183` | 8.4 min | `oracle_mismatch` | 127 / 127 | ASan | — (honggfuzz non-reproducing) |
+| 14 | `net-snmp/arvo_52465` | 12.3 min | `success` | 1 / 0 | ASan | heap-buffer-overflow in `asn_build_header` (`snmp_api_fuzzer`) |
+| 15 | `libxaac/arvo_62261` | 4.7 min | `failed`‡ | 1 / 0 | ASan | global-buffer-overflow in `iusace_quantize_lines` (`ixheaace_fd_qc_adjthr.c:982`) via the QEMU i386 oracle — isolated stages 3/4 passed (`FINDINGS.md#22`) |
+| 16 | `wireshark/arvo_3408` | 23.0 min | `success` | 1 / 0 | ASan | stack-buffer-overflow in `zbee_sec_add_key_to_keyring` |
+| 17 | `libdwarf/arvo_56454` | 7.2 min | `oracle_mismatch` | 0 / 0 | ASan | — (honggfuzz non-reproducing) |
+| 18 | `opensc/oss-fuzz_448717172` | 1.2 min | `oracle_unavailable` | — | —† | — (no patch / no detonation) |
+| 19 | `p11-kit/arvo_31276` | 7.9 min | `success` | 1 / 0 | UBSan | SEGV in `p11_rpc_buffer_get_byte_value` (`rpc_fuzzer`) |
+| 20 | `unit/oss-fuzz_42536363` | 9.8 min | `failed` | 1 / 1 | MSan | use-of-uninitialized-value in `nxt_vsprintf` |
+| 21 | `upx/oss-fuzz_380327173` | 34.2 min | `success` | 1 / 0 | ASan | SEGV in `get_ne32` (`list_packed_file_fuzzer`) |
+| 22 | `ghostscript/arvo_45320` | 21.1 min | `failed` | 1 / 1 | ASan | SEGV |
+
+Sanitizer read from each slot's `SANITIZER=` env / fired sanitizer summary: **16 ASan, 3 MSan** (`ffmpeg/385167047`, `ffmpeg/436997807`, `unit`), **1 UBSan** (`p11-kit`), and **2 not captured** (†); no LeakSanitizer task. †`arrow` and `opensc/448717172` are `no_patch`, so no detonation echoed `SANITIZER=` — not captured. (`libxaac` row 15's committed slot aborted at the futex before ASan reported; its real sanitizer is ASan, confirmed once the QEMU oracle let the i386 binary run — global-buffer-overflow in `iusace_quantize_lines`.)
 
 Notes on entries that aren't a single clean run:
 - **#16/#22** (`wireshark`, `ghostscript`) times above are the *rerun* that
@@ -582,7 +584,25 @@ Notes on entries that aren't a single clean run:
   exit 134/134, "the futex facility returned an unexpected error code" →
   Aborted, on the i386 ASan build) rather than the earlier 126/126 — so the
   patched arm still crashes and the oracle records no fix. Re-run because its
-  raw slot was one of the two `failed` slots only just added to the repo.
+  raw slot was one of the two `failed` slots only just added to the repo. This
+  production slot predates the later task-scoped QEMU fix: a no-LLM isolated
+  rerun on the upgraded snapshot produced a real ASan/clean `1/0` differential
+  with isolated stages 3/4 passing (`FINDINGS.md#22`). Keep the historical slot
+  as-run; do not rewrite paid-run evidence from the diagnostic.
+  **‡ Row 15 now reflects the 2026-09-23 live QEMU verify run** (a full-agent
+  `modal_sandbox_runner.py` run on snapshot `im-01M376G3D7WYH73HT614RRXE5C`,
+  written to `results/modal_libxaac_verify_*.json`, ~4.7 min, $0.029): the
+  vulnerable arm now executes through `qemu-i386-static` and fires the real
+  `AddressSanitizer: global-buffer-overflow in iusace_quantize_lines`
+  (`ixheaace_fd_qc_adjthr.c:982`, a 4-byte OOB read past the global
+  `ixheaace_fd_quant_table`), the patched arm runs clean → `vul/fix 1/0`, and
+  the network-isolated oracle passed both stages 3/4. The **headline `status`
+  stayed `failed`** only because the *agent-attached* stage 4 diverged from the
+  authoritative isolated verdict (`stage4=failed` vs `isolated_stage4=passed`);
+  the QEMU oracle fix itself is confirmed end-to-end. The committed
+  `results/modal_trials/libxaac_arvo_62261.json` still holds the earlier,
+  pre-fix `134/134` paid slot (this verify run went to a temp file, not the
+  canonical slot).
 - **127/127 rows** (#1, #5, #10, #12, #13) are `codex-task-open-issues.md#7`'s
   now-fixed prepare.sh/network-cut bug — see the follow-up table below for
   each one's real, post-fix result.

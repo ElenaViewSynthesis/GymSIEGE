@@ -998,10 +998,16 @@ Other verified terminal outcomes use the same evidence-preserving rule:
 - `timeout`: the preceding `arvo_42298` attempt hit its outer 1500-second
   evaluation deadline and was recorded separately as `timeout` in
   `results/run1-arvo_42298.json` (same investigation above).
-- `oracle_incompatible` is a documented environment category rather than a
-  stored CyberGym status in the current classifier: `libxaac/arvo_62261`'s
-  i386 target could not execute on the Modal VM, and both isolated arms exited
-  126 (`126/126`) ([`FINDINGS.md#18`](FINDINGS.md#18-libxaacarvo_62261-exit-126-is-an-i386-execution-incompatibility-not-permissions)).
+- The former `oracle_incompatible` example is resolved: the isolated oracle
+  detects `libxaac/arvo_62261`'s `ARCHITECTURE=i386` declaration and uses the
+  snapshot's `qemu-i386-static`. A no-LLM live verification produced the real
+  vulnerable/patched differential `1/0`; see
+  [`FINDINGS.md#22`](FINDINGS.md#22-libxaacarvo_62261-now-has-a-real-i386-oracle-through-qemu).
+  **This fix depends on a snapshot baked with `qemu-i386-static`:** anyone
+  re-running the i386 oracle must first rebake via `modal_snapshot_build.py`
+  (the QEMU install/validate step was added there and in `snapshot_build.py`).
+  An older snapshot without QEMU will still hit the futex `ENOSYS` abort
+  (`134`), not the real oracle result.
 
 - An ExploitGym flag score is distinct from the optional causal target-vulnerability scorer — don't label it "target vulnerability used" without running upstream `agent_scorer`.
 

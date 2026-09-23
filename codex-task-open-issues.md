@@ -643,7 +643,7 @@ produced the same result in sandbox `sb-67tuz4wuacITRcgOIomaqt`:
 no isolated oracle, and successful cleanup. The raw copy exception did not
 recur in either task. Full evidence: `FINDINGS.md#17`.
 
-## 10. INVESTIGATED (2026-09-18) — `libxaac/arvo_62261` is an i386/VM oracle incompatibility, not an executable-bit defect
+## 10. RESOLVED (2026-09-23) — `libxaac/arvo_62261` uses task-scoped QEMU for its i386 oracle
 
 A no-LLM isolated-oracle rerun used the retained production `fix.patch` on
 recipe-v2 snapshot `im-01M2RQB74W4A582AJ9Q77KEBCG`. It reproduced
@@ -662,13 +662,18 @@ suggested missing-`+x` mechanism and makes a `chmod` override incorrect. The
 task deliberately builds i386 while the Modal VM cannot execute that target;
 the identical unpatched/patched failure supplies no differential oracle
 signal. No GYMSIEGE code or task override was added. This task is documented
-as `oracle_incompatible` on the current Modal VM/runtime. See
-`FINDINGS.md#18` for the live record.
+as `oracle_incompatible` on that runtime. The follow-up live probe found the
+native compat `futex` syscall returning `ENOSYS` even with seccomp disabled.
+The isolated oracle now detects `ARCHITECTURE=i386` and runs the target through
+the snapshot's `qemu-i386-static`; a no-LLM verification produced a real 1/0
+vulnerable/fixed differential with isolated stages 3/4 passing. See
+`FINDINGS.md#22` and
+`results/modal_oracle_diagnostics/libxaac_arvo_62261_qemu.json`.
 
 ## Constraints for all of the above
 
 - `tests/` is plain `unittest` (`python -m unittest discover -s tests`, or
-  `pytest tests/ -q` — both work, `pytest` is in `requirements.txt`). 98
+  `pytest tests/ -q` — both work, `pytest` is in `requirements.txt`). 114
   tests currently pass; whatever you change must not break them.
 - Don't touch `.env.local` (real secrets, gitignored) or print any of its
   values.

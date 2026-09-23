@@ -886,7 +886,7 @@ isolated oracle`. Both original production reproducers therefore live-confirm
 the corrected classification, and neither surfaces the former raw copy
 exception.
 
-## 18. `libxaac/arvo_62261` exit 126 is an i386 execution incompatibility, not permissions
+## 18. `libxaac/arvo_62261` exit 126 was an i386 execution incompatibility, not permissions
 
 The stale production record had `126/126` isolated exit codes but null output
 tails. A no-LLM rerun on 2026-09-18 used its retained production `fix.patch`
@@ -913,7 +913,8 @@ PoC reaches it. Both arms fail identically, so there is no vulnerable/fixed
 differential to score. This is documented as `oracle_incompatible` for this
 task on the current Modal snapshot. No GYMSIEGE detonation change or per-task
 override was made; fabricating a sanitizer-crash code would be less honest
-than retaining the captured `126/126` evidence.
+than retaining the captured `126/126` evidence. This historical diagnosis is
+superseded by the task-scoped QEMU fix and live `1/0` verification in §22.
 
 ## 19. Stage 3 and stage 4 are now independently re-verified under network isolation
 
@@ -1067,3 +1068,39 @@ shutdown-order costs are why this handoff does not implement it.
 Layer-2 CyberGym generations currently form their own traces. Correlating or
 nesting them under Layer 1 requires modifying upstream request metadata to
 carry the host trace/session identifiers and is intentionally deferred.
+
+## 22. `libxaac/arvo_62261` now has a real i386 oracle through QEMU
+
+**Status: fixed and live-verified 2026-09-23 without an LLM call.** A bounded
+Modal diagnostic inspected a freshly built `xaac_enc_fuzzer`: ELF32 Intel 80386,
+dynamically linked through `/lib/ld-linux.so.2`, with all required `/lib32`
+dependencies present. Native `strace` identified the actual abort boundary:
+
+    futex(..., FUTEX_WAKE_PRIVATE, 2147483647) = -1 ENOSYS
+    The futex facility returned an unexpected error code.
+
+The same syscall returned `ENOSYS` with Docker seccomp disabled, so the nested
+container profile is not responsible. The current Modal VM kernel loads the
+i386 ELF but does not implement its compat futex syscall. The earlier 126 and
+current 134 were observed from the same filesystem snapshot ID; therefore the
+shift came from Modal's platform-supplied VM/runtime, not a base-image or
+GYMSIEGE permission change. The older runtime rejected the ELF, while the
+current runtime reaches 32-bit glibc and fails at futex initialization.
+
+The snapshot now installs `qemu-user-static`. `_isolated_oracle_script` detects
+the task's explicit `ARCHITECTURE=i386`, copies `qemu-i386-static` only into
+those arms, and prefixes the post-build PoC command. Stage 4 is independently
+rerun through the same route because upstream `validate.py` restores `/src`
+before validation. No task name is hardcoded and x86_64 commands are unchanged.
+
+The real network-isolated oracle on snapshot
+`im-01M376G3D7WYH73HT614RRXE5C` produced vulnerable/fixed exits **1/0** in
+82.81s. The vulnerable arm reported the expected ASan global-buffer-overflow in
+`iusace_quantize_lines`; the retained patch ran cleanly, and isolated stages 3
+and 4 both passed. The compact record is
+`results/modal_oracle_diagnostics/libxaac_arvo_62261_qemu.json`.
+
+Two unrelated x86_64 controls used their ordinary `/out/...` commands:
+`p11-kit/arvo_31276` remained 1/0 with stages 3/4 passing, and
+`libdwarf/arvo_56454` remained 0/0 with its existing non-reproducing oracle
+interpretation. Every diagnostic sandbox was terminated.

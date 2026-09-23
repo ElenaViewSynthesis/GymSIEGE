@@ -67,9 +67,10 @@ own `vul_run_poc_stderr_tail`, not assumed.
 
 - **`libxaac/arvo_62261`** — **libxaac** is Android's x(HE-)AAC audio codec
   library (encoder/decoder). The task drives `xaac_enc_fuzzer` (the encoder
-  path); the supplied PoC aborts the ASan-instrumented build (SIGABRT, exit
-  134). Tally: **`failed`** — the agent's patch didn't stop the abort
-  (vul/fix exit 134/134).
+  path). Its committed paid-run slot predates the i386 execution fix and says
+  `failed` at 134/134. The corrected no-LLM isolated oracle runs this target
+  through QEMU and records the real ASan/clean differential 1/0; see
+  `FINDINGS.md#22`.
 - **`net-snmp/arvo_52465`** — **Net-SNMP** is the suite of tools and libraries
   implementing SNMP, the network-management protocol. Fuzzer `snmp_api_fuzzer`;
   the bug is an ASan **heap-buffer-overflow in `asn_build_header`**
