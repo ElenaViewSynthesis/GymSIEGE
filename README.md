@@ -72,6 +72,73 @@ What `run_modal_pinned_tasks.sh` includes:
 
 **Real cost / time:** one real Modal sandbox and real LiteLLM/LLM spend per task, serially. The last full batch (2026-09-21/22, plus 2026-09-23 re-runs) cost **~$1.28** and took **~9.0 hours of wall time (541.5 min summed)** — dominated by a few slow-compile outliers (ffmpeg/oss-fuzz_385167047 at 177.4 min, binutils/arvo_61822 at 63.7 min), with the median task under 15 minutes. Per-task completion times and the 15/3/2/2 status tally are in [EXPERIMENTS.md](EXPERIMENTS.md#full-22-task-modal-production-run--actual-completion-times-2026-09-16). It **overwrites the canonical `results/modal_trials/` slots in place**, so commit or copy anything you want to keep first.
 
+#### Reproduce the full 920-task master run on Modal
+
+> For the condensed, copy-paste run recipe (regenerate shards → bake 12
+> snapshots → run three shards concurrently), see
+> [**EXPERIMENTS.md § Run the full 920-task set with sharding**](EXPERIMENTS.md#run-the-full-920-task-set-with-sharding).
+> This section keeps the full "why": the capacity measurement, the sharding
+> rationale, and the per-shard image/task inventory.
+
+Do **not** point `modal_snapshot_build.py` at the unsharded master list. At the
+pinned CyberGym revision, the 920 tasks resolve to **509 distinct build-image
+references across 139 projects**. Registry metadata totals **1,463.870 GB of
+compressed image bytes**, while the pinned Hugging Face tree contributes
+**159.452 GB** of task data. The current 18-image bake provides the physical
+calibration: 36.190 GB registry-compressed became 111.2 GB in Docker storage,
+a 3.0727× ratio. Applying that measured ratio gives a conservative planning
+estimate of **4,657.455 GB (4.236 TiB)** for Docker plus task data. One Modal
+VM Sandbox is capped at 512 GiB, so a single master snapshot cannot fit.
+
+These figures are a capacity estimate, not a claim that 4.236 TiB of unique
+layers was pulled: registry `full_size` counts each image independently, while
+Docker can deduplicate shared layers. The complete inputs, digests, byte counts,
+calibration, and task-to-image mapping are recorded in
+`reference/cybergym_modal_capacity.json`. They are deliberately conservative
+because an underestimated snapshot fails late and expensively.
+
+The committed plan keeps every shared image and all of its tasks in one place,
+then balances image groups into **12 shards**. Each shard projects to
+387.195–389.157 GB (360.6–362.5 GiB), leaving approximately 149.5 GiB or more
+under Modal's cap for the base filesystem, Docker metadata, validator-image
+builds, and trial workspace. Task counts are intentionally uneven (41–391):
+balancing storage matters; balancing task count would duplicate large images.
+Regenerate and validate the deterministic task files with:
+
+```bash
+.venv/bin/python modal_master_shards.py
+```
+
+Bake each shard into a distinct, non-canonical manifest. Start serially; only
+raise bake parallelism after checking the Modal account's concurrency quota and
+Docker Hub throttling. This leaves the pinned-22 `results/modal_snapshot.json`
+untouched:
+
+```bash
+for shard in $(seq -w 1 12); do
+  .venv/bin/python modal_snapshot_build.py \
+    --tasks-file "txt/modal_master_shards/shard-${shard}.txt" \
+    --output "results/modal_snapshot.master-shard-${shard}.json"
+done
+```
+
+After all manifests have independently passed the builder's restore
+verification, shards may run in parallel sandboxes. Choose concurrency from
+the account quota and LiteLLM budget; `-P 3` below is an example, not a measured
+safe maximum:
+
+```bash
+seq -w 1 12 | xargs -P 3 -I{} \
+  env GYMSIEGE_MASTER_SHARD={} bash run_modal_master_tasks.sh
+```
+
+The shard runner writes to
+`results/modal_trials/master-shard-<NN>/`, so shards cannot overwrite each
+other or the pinned batch. Every task still makes a real paid model call. No
+920-task bake or solver subset was launched while producing this capacity plan;
+before a production sweep, run one representative task from each newly baked
+shard and record its actual wall time, disk telemetry, and cost.
+
 To run a **single task with custom arguments** instead of the whole batch, call the runner directly:
 
 ```bash

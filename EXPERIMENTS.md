@@ -1,5 +1,112 @@
 # GYMSIEGE experiment runbook
 
+## CyberGym 920-task project and image inventory
+
+The 139 projects are the distinct CyberGym/OSS-Fuzz target projects represented
+by the 920 tasks:
+
+arduinojson, arrow, assimp, bind9, binutils, boringssl, botan, c-blosc2,
+capstone, clamav, cpython3, curl, cyclonedds, dav1d, duckdb, elfutils, exiv2,
+faad2, ffmpeg, file, flac, flatbuffers, fluent-bit, fmt, freetype2, fribidi,
+gdal, gdbm, ghostscript, glib, gpac, gpsd, gstreamer, h2o, h3, haproxy,
+harfbuzz, hdf5, hiredis, hoextdown, hostap, htslib, hunspell, igraph,
+imagemagick, irssi, jq, json-c, jsoncpp, kamailio, kmime, lcms, leptonica,
+libaom, libarchive, libavc, libbpf, libcoap, libconfig, libdwarf, libexif,
+libgit2, libheif, libhevc, libical, libidn2, libjpeg-turbo, libjxl, liblouis,
+libpcap, libphonenumber, libplist, libraw, librawspeed, libsndfile, libspectre,
+libspng, libssh, libssh2, libtpms, libultrahdr, libvips, libwebp,
+libwebsockets, libxaac, libxml2, libxslt, lldpd, lua, mapserver, matio, md4c,
+miniz, mongoose, mosquitto, mruby, mupdf, net-snmp, ntopng, oatpp, open62541,
+openexr, openjpeg, opensc, opensips, openssl, openthread, p11-kit,
+pcapplusplus, pcre2, php, qpdf, quickjs, radare2, readstat, selinux, skcms,
+sleuthkit, spice-usbredir, sudoers, swift-protobuf, tinygltf, tinysparql, unit,
+upx, uriparser, util-linux, uwebsockets, wamr, wasm3, wavpack, wireshark,
+wolfmqtt, wolfssl, wt, yara, zeek, zlib, and zstd.
+
+### What the 509 images mean
+
+The 509 are nested Docker build images, not Modal VM snapshots. CyberGym selects
+one of these Docker images for each task. A Modal filesystem snapshot stores many
+of them.
+
+The 920-task distribution is:
+
+| Tasks using an image | Number of images | Tasks covered |
+| ---: | ---: | ---: |
+| 1 | 487 | 487 |
+| 2 | 8 | 16 |
+| 3 | 2 | 6 |
+| 4 | 3 | 12 |
+| 5 | 2 | 10 |
+| 7 | 2 | 14 |
+| 10 | 2 | 20 |
+| 11 | 1 | 11 |
+| 101 | 1 | 101 |
+| 243 | 1 | 243 |
+| **Total** | **509** | **920** |
+
+### Docker images per proposed Modal snapshot
+
+The 12-shard plan currently maps them like this:
+
+| Modal snapshot | Docker images | CyberGym tasks |
+| ---: | ---: | ---: |
+| 01 | 41 | 52 |
+| 02 | 42 | 43 |
+| 03 | 45 | 391 |
+| 04 | 45 | 47 |
+| 05 | 46 | 55 |
+| 06 | 41 | 41 |
+| 07 | 41 | 52 |
+| 08 | 41 | 44 |
+| 09 | 42 | 56 |
+| 10 | 42 | 42 |
+| 11 | 41 | 51 |
+| 12 | 42 | 46 |
+
+Shard 03 has 391 tasks because the plan keeps shared images intact and balances
+disk usage, not task runtime. For faster parallel completion, the two heavily
+shared base-builder images could be duplicated across multiple snapshots and
+their 344 tasks distributed more evenly. That would trade some extra storage for
+substantially better wall-time balance.
+
+The complete mapping is in `reference/cybergym_modal_capacity.json`.
+
+## Run the full 920-task set with sharding
+
+Run these commands from the repository root, inside a WSL terminal (see the
+note below). Each shard uses its own snapshot manifest and results directory,
+so the pinned-22 snapshot (`results/modal_snapshot.json`) and outputs are never
+touched.
+
+```bash
+# 1. Regenerate and validate the deterministic 12-shard task files.
+.venv/bin/python modal_master_shards.py
+
+# 2. Bake all 12 shard snapshots sequentially.
+# Each manifest is separate; results/modal_snapshot.json remains untouched.
+for shard in $(seq -w 1 12); do
+  PYTHONUNBUFFERED=1 .venv/bin/python modal_snapshot_build.py \
+    --tasks-file "txt/modal_master_shards/shard-${shard}.txt" \
+    --output "results/modal_snapshot.master-shard-${shard}.json" \
+    2>&1 | tee "results/modal_snapshot.master-shard-${shard}.log"
+done
+
+# 3. After every bake succeeds, run three shards concurrently until all
+# 920 tasks have been attempted.
+batch_ts="$(date -u +%Y%m%dT%H%M%SZ)"
+seq -w 1 12 | xargs -P 3 -I{} \
+  env GYMSIEGE_MASTER_SHARD={} \
+  GYMSIEGE_RUN_ID="gymsiege-master-${batch_ts}-shard-{}" \
+  bash run_modal_master_tasks.sh
+```
+
+`-P 3` runs three shards concurrently. Each shard reads its corresponding
+`results/modal_snapshot.master-shard-NN.json` manifest and writes to
+`results/modal_trials/master-shard-NN/`. `run_modal_master_tasks.sh` refuses a
+shard whose manifest has not been baked yet, so step 3 must follow a successful
+step 2.
+
 Every command below must run **inside a WSL terminal**, not native Windows
 PowerShell/Git-Bash/cmd. `.venv` was created under WSL (`.venv/bin/python` is
 a real interpreter there); from native Windows shells that same path resolves

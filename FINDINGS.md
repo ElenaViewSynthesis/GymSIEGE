@@ -1151,3 +1151,42 @@ logs are deliberately not redistributed. Finally, the current ASan harness
 uses `detect_leaks=0`; even if a later dataset revision adds an LSan candidate,
 its leak oracle will require a separate, explicitly scoped `detect_leaks=1`
 change before running it.
+
+## 24. The 920-task master requires sharded Modal snapshots
+
+This was a metadata-only capacity trial: no master snapshot and no paid solver
+trial was launched. At CyberGym-E2E source revision
+`b46456c46838b2b090d7e6ded5bfdf1ff583dba7`, all 920 master tasks resolve
+successfully to 509 distinct build-image references across 139 projects. Their
+registry-reported compressed sizes total **1,463.870 GB**. The gated dataset at
+Hub revision `3aee406e4e915e32527fea16de7f002630fa8c76` contains
+**159.452 GB** across the task payload files; only file metadata was read for
+this measurement.
+
+The existing 22-task measurement supplies an empirical storage conversion:
+its 18 images total 36.190 GB registry-compressed and occupy 111.2 GB in the
+baked Docker state, or 3.0727×. Applying that ratio to the master inventory and
+then adding exact dataset bytes projects **4,657.455 GB (4.236 TiB)**. This is a
+conservative planning estimate rather than a physical unique-layer pull:
+registry `full_size` includes shared layers once per image, and sharing can
+differ between the 18-image baseline and the 509-image master set. It is still
+decisive: a single snapshot is not a credible fit for Modal's 512 GiB VM disk.
+
+`reference/cybergym_modal_capacity.json` records every input image digest,
+compressed byte count, task payload bytes, calibration value, and image/task
+mapping. `modal_master_shards.py` uses deterministic largest-first bin packing
+while keeping all tasks that share an image together. The resulting 12 files
+under `txt/modal_master_shards/` cover every master task exactly once. Their
+projected payloads span 387.195–389.157 GB (360.6–362.5 GiB), preserving at
+least about 149.5 GiB below the 512 GiB ceiling for filesystem and build
+headroom. Task counts range from 41 to 391 because two shared base-builder
+images cover 344 tasks; keeping those groups intact avoids duplicating them.
+
+Each shard must be baked to
+`results/modal_snapshot.master-shard-<NN>.json`, never the pinned manifest.
+`run_modal_master_tasks.sh` requires `GYMSIEGE_MASTER_SHARD=01..12` and writes
+to a shard-specific result directory, making controlled parallel execution
+possible without cross-shard or pinned-result overwrites. The README contains
+the complete bake and parallel-run commands. A representative smoke task per
+baked shard remains mandatory before a paid 920-task sweep; no per-task rate is
+claimed from this sizing-only trial.
