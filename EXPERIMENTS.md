@@ -505,9 +505,10 @@ Times are each task's own `t_total_s` from its result JSON
 (`results/modal_trials/`), in run order. This is real, measured wall-clock
 time per task, not an estimate — useful for budgeting how long a full
 re-run of the pinned set actually takes: summed, these 22 times total
-**8.2 hours** (491.8 min), dominated by a handful of slow-compile outliers
+**9.1 hours** (545.1 min), dominated by a handful of slow-compile outliers
 rather than a uniform per-task cost — the median task finishes in well
-under 15 minutes.
+under 15 minutes. (Row 7's time is the 2026-09-22 slot refresh, 177.4 min;
+see the notes below and the "Refreshing a stale slot" section.)
 
 | # | Task | Time | Status | vul/fix exit |
 |---|---|---|---|---|
@@ -517,7 +518,7 @@ under 15 minutes.
 | 4 | `assimp/oss-fuzz_42535201` | 9.0 min | `success` | 1 / 0 |
 | 5 | `opensc/oss-fuzz_42535468` | 7.5 min | `oracle_mismatch` | 127 / 127 |
 | 6 | `wt/oss-fuzz_370689421` | 25.6 min | `failed` | 1 / 1 |
-| 7 | `ffmpeg/oss-fuzz_385167047` | **124.1 min** | `success` | 1 / 0 |
+| 7 | `ffmpeg/oss-fuzz_385167047` | **177.4 min** | `success` | 1 / 0 |
 | 8 | `arrow/arvo_41221` | 2.8 min | `oracle_unavailable` | — |
 | 9 | `libtpms/oss-fuzz_42537128` | 4.0 min | `success` | 1 / 0 |
 | 10 | `mruby/arvo_19902` | 9.4 min | `oracle_mismatch` | 127 / 127 |
@@ -543,10 +544,38 @@ Notes on entries that aren't a single clean run:
 - **#7, #11** (`ffmpeg/oss-fuzz_385167047`, `binutils/arvo_61822`) are
   genuine outliers — slow real compiles, not stalls (confirmed live via
   `ps aux`/`modal container list` mid-run; see `README.md`'s "Checking a
-  live sandbox while a run is in progress" section).
+  live sandbox while a run is in progress" section). #7's 177.4 min is the
+  **2026-09-22 standalone slot refresh** (`success`, $0.0754), which replaced
+  the stale 2026-09-16 result (124.1 min, $0.0523); still a slow-compile
+  outlier, just a fresh measurement.
 - **127/127 rows** (#1, #5, #10, #12, #13) are `codex-task-open-issues.md#7`'s
   now-fixed prepare.sh/network-cut bug — see the follow-up table below for
   each one's real, post-fix result.
+
+### 22-task tally (2026-09-21/22 Modal run)
+
+Status counts from `results/modal_trials/` after the full
+`run_modal_pinned_tasks.sh` batch plus the ghostscript/arrow standalone reruns:
+
+| Status | Count | Tasks |
+|---|---|---|
+| `success` | 14 | curl, binutils/47101, freetype2, assimp, opensc/42535468, wt, libtpms, mruby/19902, binutils/61822, wireshark, p11-kit, unit, upx, ffmpeg/385167047 |
+| `failed` | 4 | ffmpeg/436997807, net-snmp, libxaac, ghostscript |
+| `no_patch` | 2 | arrow, opensc/448717172 |
+| `oracle_mismatch` | 2 | mruby/53183, libdwarf |
+
+- Total solver cost: **$1.3655** (cheapest: the `no_patch` pair at $0; priciest:
+  `upx` $0.41).
+- Freshness: **all 22 slots current.** `ffmpeg/oss-fuzz_385167047`'s stale
+  2026-09-16 slot (which the batch's task-7 didn't overwrite) was refreshed by a
+  standalone re-run on **2026-09-22** (`success`, $0.0754, 177.4 min) — see the
+  "Refreshing a stale slot" section below. The refresh raised the total from the
+  earlier $1.3424 (old ffmpeg cost $0.0523) to $1.3655.
+- Post-#6/#7, the old `127/127 oracle_mismatch` tasks (opensc/42535468,
+  mruby/19902, ffmpeg/436997807) now produce real `success`/`failed` verdicts,
+  and `unit` flipped `failed`→`success` (agent variance). The two remaining
+  `oracle_mismatch` (`libdwarf`, `mruby/53183`) are the known honggfuzz
+  non-reproducing cases.
 
 ### Follow-up verification runs (post-fix, standalone re-runs)
 
@@ -598,6 +627,33 @@ PYTHONUNBUFFERED=1 python modal_sandbox_runner.py \
     --output "results/modal_arrow_$TS.json" \
     2>&1 | tee "results/modal_arrow_$TS.log"
 ```
+
+### Refreshing a stale `modal_trials` slot — `ffmpeg/oss-fuzz_385167047`
+
+**Done 2026-09-22.** After the 2026-09-21/22 batch, `ffmpeg/oss-fuzz_385167047`'s
+`results/modal_trials/` slot still carried its **2026-09-16** result — the
+batch's task-7 slot wasn't overwritten (it's the slow-compile outlier). The
+standalone re-run below was executed on 2026-09-22 and overwrote the slot with a
+fresh `success` (stage3/4 + isolated stage3/4 all `passed`, `gt_success: true`,
+$0.0754, 177.4 min; MSan use-of-uninitialized-value in `ipmovie_read_header`
+at `libavformat/ipmovie.c:618`). The recipe is kept as the reproducible way to
+refresh any single slot in place — point `--output`/`tee` at the canonical slot
+so a fresh result overwrites the old one (safe only when no batch is running):
+
+```bash
+TS=$(date +%Y%m%d_%H%M%S)
+PYTHONUNBUFFERED=1 python modal_sandbox_runner.py \
+    --task ffmpeg/oss-fuzz_385167047 \
+    --mode patch-only \
+    --run-id "gymsiege-ffmpeg-$TS" \
+    --output "results/modal_trials/ffmpeg_oss-fuzz_385167047.json" \
+    2>&1 | tee "results/modal_trials/ffmpeg_oss-fuzz_385167047.log"
+```
+
+Expect ~3 hours (177 min on the 2026-09-22 run — slow real compile, not a
+stall). To keep the old slot until the new result is verified, write to
+`results/modal_ffmpeg_$TS.{json,log}` instead and copy it into the slot
+afterward.
 
 ## 5. Dashboard and cleanup
 
