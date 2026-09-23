@@ -1104,3 +1104,50 @@ Two unrelated x86_64 controls used their ordinary `/out/...` commands:
 `p11-kit/arvo_31276` remained 1/0 with stages 3/4 passing, and
 `libdwarf/arvo_56454` remained 0/0 with its existing non-reproducing oracle
 interpretation. Every diagnostic sandbox was terminated.
+
+## 23. The full CyberGym task list now has a reproducible sanitizer index
+
+The 920-task upstream list is preserved in
+`reference/cybergym_tasks.master.txt` from CyberGym-E2E commit
+`b46456c46838b2b090d7e6ded5bfdf1ff583dba7`; its unheaded body is Git blob
+`6344ed3edec0f058908e98139e7dc641aad74d12`. The gated Hugging Face dataset
+does not use the upstream repository's Git history, so the crash-log corpus is
+separately pinned to its actual immutable Hub revision
+`3aee406e4e915e32527fea16de7f002630fa8c76`. Treating the upstream SHA as the
+Hub revision returns 404 and would not be reproducible.
+
+`cybergym_task_index.py` downloads only
+`projects/*/*/crash.log` and writes the deterministic, task-sorted derived
+index at `reference/cybergym_task_index.jsonl`. The raw gated files remain in
+the gitignored `results/cybergym_index/`; no `src.tgz`, `poc.bin`, or blanket
+dataset clone is used. The pinned Hub tree contains 914 crash logs for the 920
+tasks. Parsing fired sanitizer summaries produced:
+
+- **682 ASan**
+- **186 MSan**
+- **35 UBSan**
+- **0 LSan**
+- **17 unknown** (six missing logs and eleven present logs with no recognized
+  fired-sanitizer summary)
+
+Accordingly, the explicit LeakSanitizer candidate list is **empty**: none of
+the 914 logs contains `LeakSanitizer`, `detected memory leaks`, `Direct leak`,
+or `Indirect leak`, so there is no identifying line to report. This is a
+classification of the pinned crash corpus, not proof that none of the programs
+can leak.
+
+The pinned-22 cross-check is consistent with the run evidence. Dataset crash
+metadata classifies the set as 18 ASan, 3 MSan, and 1 UBSan. The completed-run
+table reports 16 ASan, 3 MSan, 1 UBSan, and 2 not-captured because
+`arrow/arvo_41221` and `opensc/oss-fuzz_448717172` ended as `no_patch` before a
+trial detonation could echo their sanitizer. Their source crash logs identify
+both as ASan, accounting exactly for the two-row difference; no pinned task is
+LSan.
+
+Regenerate with `.venv/bin/python cybergym_task_index.py`. Offline parsing can
+be repeated with `--offline` after the narrow corpus has been downloaded. The
+dataset exposes no card/license metadata at the pinned revision, so raw gated
+logs are deliberately not redistributed. Finally, the current ASan harness
+uses `detect_leaks=0`; even if a later dataset revision adds an LSan candidate,
+its leak oracle will require a separate, explicitly scoped `detect_leaks=1`
+change before running it.

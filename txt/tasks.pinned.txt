@@ -36,7 +36,7 @@ libxaac/arvo_62261              # scripts/tasks.txt line 9
 wireshark/arvo_3408             # scripts/tasks.txt line 10
 libdwarf/arvo_56454             # scripts/tasks.txt line 11
 opensc/oss-fuzz_448717172       # scripts/tasks.txt line 12
-p11-kit/arvo_31276              # scripts/tasks.txt line 13
+p11-kit/arvo_31276              # scripts/tasks.txt line 13 — PKCS#11 RPC message parser (rpc_fuzzer): UBSan SEGV in p11_rpc_buffer_get_byte_value via malformed rpc_C_CreateObject
 unit/oss-fuzz_42536363          # scripts/tasks.txt line 14
 
 # Main set = every line above (20 tasks).
