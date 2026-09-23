@@ -46,12 +46,14 @@ Do not assume any terminal process from the previous session is still alive.
   generation capture (FINDINGS #21).
 - Test suite: **113 pass** (was 22).
 
-**Latest production run -- 22-task Modal set, 2026-09-21/22.** 14 `success`,
-4 `failed`, 2 `no_patch`, 2 `oracle_mismatch`; ~= $1.37 total (full tally in
-`EXPERIMENTS.md`). `ffmpeg/oss-fuzz_385167047`'s stale 2026-09-16 slot was
-refreshed by a standalone re-run on 2026-09-22 (`success`, $0.0754, ~177 min;
-MSan use-of-uninitialized-value in `ipmovie_read_header`), so all 22 slots are
-now current.
+**Latest production run -- 22-task Modal set, 2026-09-21/22 (+ 2026-09-23
+re-runs).** 15 `success`, 3 `failed`, 2 `no_patch`, 2 `oracle_mismatch`;
+~= $1.28 total (full tally in `EXPERIMENTS.md`). Three slots were refreshed
+after the batch, so all 22 are current: `ffmpeg/oss-fuzz_385167047` (2026-09-22,
+`success`, $0.0754, ~177 min — replacing a stale 2026-09-16 slot),
+`net-snmp/arvo_52465` (2026-09-23, flipped `failed`->`success`), and
+`libxaac/arvo_62261` (2026-09-23, still `failed`). The net-snmp flip is what
+moved the tally to 15 success / 3 failed.
 
 **Open / remaining work.**
 - **Issue #2 (open):** this Daytona account rejects the per-sandbox
@@ -1095,7 +1097,7 @@ to **22** (`upx/oss-fuzz_380327173` and `ghostscript/arvo_45320` added
 Driven by codebase size and agent iterations, not image size — so the Risk
 column is **ranked inference, not measurement**. It predates any real cost data:
 the 22-task Modal run (2026-09-21/22, full tally in `EXPERIMENTS.md`) has since
-produced per-task outcomes and a ~$1.37 total, so this ranking is now a
+produced per-task outcomes and a ~$1.28 total, so this ranking is now a
 historical *a priori* estimate, not the only signal available.
 
 The Description column is the **open-source project each task's target

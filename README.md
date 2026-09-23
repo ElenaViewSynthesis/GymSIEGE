@@ -34,7 +34,59 @@ python orchestrator.py exploitgym-run \
 
 Roughly $0.65 and ~5 minutes, based on the one measured trial. For the full four-task demo set (both CVEs plus two ARVO tasks) use `--tasks-file txt/exploitgym_tasks.demo.txt`.
 
+For full control over model, effort, budget, and the agent/trial timeouts:
+
+```bash
+python orchestrator.py exploitgym-run \
+    --task user:nofuzz/CVE-2022-23308 \
+    --k 5 --max-parallel 1 \
+    --agent codex \
+    --model gpt-5.6-luna \
+    --reasoning-effort medium \
+    --budget-usd 5 \
+    --timeout 1800 \
+    --trial-timeout 3000 \
+    --cleanup-timeout 360 \
+    --output "results/exploitgym_CVE-2022-23308_$(date -u +%Y%m%dT%H%M%SZ).json"
+```
+
+Flags: `--task` (repeatable) or `--tasks-file`; `--k` (trials per task, default 3); `--max-parallel` (keep at 1 on this account — see below); `--model` (`gpt-5.6-luna` | `gpt-5.6-sol` | `gpt-daybreak-blue-latest`); `--reasoning-effort` (`low` | `medium` | `high` | `xhigh` | `max` | `auto`); `--budget-usd` (hard per-task proxy cap, default 5); `--timeout` (agent/evaluator seconds, default 3600); `--trial-timeout` (outer deadline covering restore, image pull, evaluation, artifacts, and cleanup, default 7200); `--cleanup-timeout`; `--limit`; `--allow-non-userspace`; `--output` (durable per-run copy — `results/exploitgym_results.json` is overwritten every run).
+
 **Keep `--max-parallel 1` on this Daytona account.** Each ExploitGym sandbox is 4 vCPU / 8 GiB, and the org-wide hard ceiling is 10 vCPU / 10 GiB total, so only one fits at a time — `--max-parallel 1` = one 4 vCPU / 8 GiB sandbox at a time, well under the ceiling (~25–35 min for six tasks run serially). Higher values fail fast per over-quota task with `Total CPU/memory limit exceeded. Maximum allowed: 10 / 10GiB`, recorded as `ERROR - harness/platform failure` (not a capability result, and no sandbox leaks — the adapter checks and none are created). Modal has no equivalent ceiling, but only hosts the CyberGym provider today.
+
+#### Run all 22 pinned tasks on Modal (CyberGym)
+
+CyberGym runs on Modal (no 10 GiB snapshot ceiling). **Estimated sandbox disk-image storage:** the baked filesystem snapshot holds every task's build environment — **~111 GB of Docker layers** (22 tasks across 18 sanitizer / base-builder images) **plus ~4 GB of task dataset, ≈115 GB total** — far past Daytona's hard 10 GiB per-sandbox cap, which is why CyberGym runs here and not on Daytona. Each per-trial restore then reports **~119 GiB of disk in use** (restored image plus working state). Budget disk accordingly if you re-bake (`modal_snapshot_build.py`). The repo ships a batch runner, `run_modal_pinned_tasks.sh`, that runs the whole pinned set end to end. From a **WSL** terminal at the repo root (`.venv` set up, `LITELLM_BASE_URL` in `.env.local`):
+
+```bash
+bash run_modal_pinned_tasks.sh
+```
+
+What `run_modal_pinned_tasks.sh` includes:
+
+- Reads every task in `txt/tasks.pinned.txt` (22 tasks), stripping trailing `# …` notes and skipping blank/comment-only lines.
+- Invokes `modal_sandbox_runner.py` once per task, **sequentially**, in **patch-only** mode — it's a standalone loop, not `orchestrator.py`, because `modal_sandbox_runner.py` has no `--tasks-file`/`--k`/parallelism of its own.
+- Writes each result to `results/modal_trials/<project>_<task>.json` with the full run log alongside as `.log` (creating `results/modal_trials/` if missing).
+- Tags every trial in the batch with one shared Langfuse `--run-id`; override it with `GYMSIEGE_RUN_ID="my-id" bash run_modal_pinned_tasks.sh`.
+- Runs under `set -uo pipefail` with a per-task `|| true`, so one task's failing exit code (`error`/`oracle_unavailable`) never aborts the rest of the batch.
+
+**Real cost / time:** one real Modal sandbox and real LiteLLM/LLM spend per task, serially. The last full batch (2026-09-21/22, plus 2026-09-23 re-runs) cost **~$1.28** and took **~9.0 hours of wall time (541.5 min summed)** — dominated by a few slow-compile outliers (ffmpeg/oss-fuzz_385167047 at 177.4 min, binutils/arvo_61822 at 63.7 min), with the median task under 15 minutes. Per-task completion times and the 15/3/2/2 status tally are in [EXPERIMENTS.md](EXPERIMENTS.md#full-22-task-modal-production-run--actual-completion-times-2026-09-16). It **overwrites the canonical `results/modal_trials/` slots in place**, so commit or copy anything you want to keep first.
+
+To run a **single task with custom arguments** instead of the whole batch, call the runner directly:
+
+```bash
+PYTHONUNBUFFERED=1 .venv/bin/python modal_sandbox_runner.py \
+    --task libxaac/arvo_62261 \
+    --mode patch-only \
+    --litellm-model-id gpt-5.6-luna \
+    --provisioning snapshot \
+    --trial 1 \
+    --run-id "gymsiege-modal-$(date -u +%Y%m%dT%H%M%SZ)" \
+    --output "results/modal_trials/libxaac_arvo_62261.json" \
+    2>&1 | tee "results/modal_trials/libxaac_arvo_62261.log"
+```
+
+Flags `modal_sandbox_runner.py` accepts: `--task` (required, `project/task_id`), `--mode` (`patch-only` | `e2e`), `--litellm-model-id` (`gpt-5.6-luna` | `gpt-5.6-sol` | `gpt-daybreak-blue-latest`), `--provisioning` (`snapshot` | `cold`), `--trial`, `--agent` (`codex`), `--model-provider` (`litellm`), `--run-id`, `--output`, plus `--app` / `--manifest` / `--litellm-secret` for the Modal image. **Note:** there is no `--budget`/`--timeout`/`--k` on this runner (unlike Daytona's `orchestrator.py exploitgym-run`) — the per-run spend cap comes from the LiteLLM key's `max_budget`, and the Modal sandbox lifetime is set in code, not on the CLI.
 
 #### Available ARVO tasks
 

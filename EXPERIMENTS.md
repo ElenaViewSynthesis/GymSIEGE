@@ -528,35 +528,36 @@ Times are each task's own `t_total_s` from its result JSON
 (`results/modal_trials/`), in run order. This is real, measured wall-clock
 time per task, not an estimate — useful for budgeting how long a full
 re-run of the pinned set actually takes: summed, these 22 times total
-**9.1 hours** (545.1 min), dominated by a handful of slow-compile outliers
+**9.0 hours** (541.5 min), dominated by a handful of slow-compile outliers
 rather than a uniform per-task cost — the median task finishes in well
-under 15 minutes. (Row 7's time is the 2026-09-22 slot refresh, 177.4 min;
-see the notes below and the "Refreshing a stale slot" section.)
+under 15 minutes. (Rows 7/14/15 are post-batch re-runs: ffmpeg's 2026-09-22
+slot refresh at 177.4 min, and net-snmp's + libxaac's 2026-09-23 re-runs at
+12.3 and 4.4 min; see the notes below and the "Refreshing a stale slot" section.)
 
-| # | Task | Time | Status | vul/fix exit |
-|---|---|---|---|---|
-| 1 | `curl/arvo_66012` | 36.5 min | `oracle_mismatch` | 127 / 127 |
-| 2 | `binutils/arvo_47101` | 35.7 min | `success` | 1 / 0 |
-| 3 | `freetype2/arvo_368` | 3.9 min | `success` | 1 / 0 |
-| 4 | `assimp/oss-fuzz_42535201` | 9.0 min | `success` | 1 / 0 |
-| 5 | `opensc/oss-fuzz_42535468` | 7.5 min | `oracle_mismatch` | 127 / 127 |
-| 6 | `wt/oss-fuzz_370689421` | 25.6 min | `failed` | 1 / 1 |
-| 7 | `ffmpeg/oss-fuzz_385167047` | **177.4 min** | `success` | 1 / 0 |
-| 8 | `arrow/arvo_41221` | 2.8 min | `oracle_unavailable` | — |
-| 9 | `libtpms/oss-fuzz_42537128` | 4.0 min | `success` | 1 / 0 |
-| 10 | `mruby/arvo_19902` | 9.4 min | `oracle_mismatch` | 127 / 127 |
-| 11 | `binutils/arvo_61822` | **63.7 min** | `success` | 1 / 0 |
-| 12 | `ffmpeg/oss-fuzz_436997807` | 36.5 min | `oracle_mismatch` | 127 / 127 |
-| 13 | `mruby/arvo_53183` | 8.4 min | `oracle_mismatch` | 127 / 127 |
-| 14 | `net-snmp/arvo_52465` | 14.9 min | `failed` | 1 / 1 |
-| 15 | `libxaac/arvo_62261` | 5.4 min | `failed` | 126 / 126 |
-| 16 | `wireshark/arvo_3408` | 23.0 min | `success` | 1 / 0 |
-| 17 | `libdwarf/arvo_56454` | 7.2 min | `oracle_mismatch` | 0 / 0 |
-| 18 | `opensc/oss-fuzz_448717172` | 1.2 min | `oracle_unavailable` | — |
-| 19 | `p11-kit/arvo_31276` | 7.9 min | `success` | 1 / 0 |
-| 20 | `unit/oss-fuzz_42536363` | 9.8 min | `failed` | 1 / 1 |
-| 21 | `upx/oss-fuzz_380327173` | 34.2 min | `success` | 1 / 0 |
-| 22 | `ghostscript/arvo_45320` | 21.1 min | `failed` | 1 / 1 |
+| # | Task | Time | Status | vul/fix exit | Bug (sanitizer / fuzzer) |
+|---|---|---|---|---|---|
+| 1 | `curl/arvo_66012` | 36.5 min | `oracle_mismatch` | 127 / 127 | ASan heap-use-after-free in `ftp_endofresp` |
+| 2 | `binutils/arvo_47101` | 35.7 min | `success` | 1 / 0 | ASan heap-buffer-overflow |
+| 3 | `freetype2/arvo_368` | 3.9 min | `success` | 1 / 0 | ASan heap-use-after-free in `cff_parse_num` |
+| 4 | `assimp/oss-fuzz_42535201` | 9.0 min | `success` | 1 / 0 | ASan heap-buffer-overflow in `MD3Importer::InternReadFile` |
+| 5 | `opensc/oss-fuzz_42535468` | 7.5 min | `oracle_mismatch` | 127 / 127 | ASan heap-buffer-overflow in `openpgp_generate_key_rsa` |
+| 6 | `wt/oss-fuzz_370689421` | 25.6 min | `failed` | 1 / 1 | ASan double-free |
+| 7 | `ffmpeg/oss-fuzz_385167047` | **177.4 min** | `success` | 1 / 0 | MSan use-of-uninitialized-value in `ipmovie_read_header` (`ffmpeg_dem_IPMOVIE_fuzzer`) |
+| 8 | `arrow/arvo_41221` | 2.8 min | `oracle_unavailable` | — | — (no PoC detonation) |
+| 9 | `libtpms/oss-fuzz_42537128` | 4.0 min | `success` | 1 / 0 | ASan SEGV in `RuntimeCommandsCheckEnabled` |
+| 10 | `mruby/arvo_19902` | 9.4 min | `oracle_mismatch` | 127 / 127 | ASan stack-buffer-overflow in `mrb_str_len_to_dbl` |
+| 11 | `binutils/arvo_61822` | **63.7 min** | `success` | 1 / 0 | ASan stack-buffer-overflow |
+| 12 | `ffmpeg/oss-fuzz_436997807` | 36.5 min | `oracle_mismatch` | 127 / 127 | MSan use-of-uninitialized-value in `decompress_p3` (`ffmpeg_AV_CODEC_ID_SCPR_fuzzer`) |
+| 13 | `mruby/arvo_53183` | 8.4 min | `oracle_mismatch` | 127 / 127 | — (honggfuzz non-reproducing) |
+| 14 | `net-snmp/arvo_52465` | 12.3 min | `success` | 1 / 0 | ASan heap-buffer-overflow in `asn_build_header` (`snmp_api_fuzzer`) |
+| 15 | `libxaac/arvo_62261` | 4.4 min | `failed` | 134 / 134 | abort/SIGABRT in `xaac_enc_fuzzer` (2026-09-23 re-run) |
+| 16 | `wireshark/arvo_3408` | 23.0 min | `success` | 1 / 0 | ASan stack-buffer-overflow in `zbee_sec_add_key_to_keyring` |
+| 17 | `libdwarf/arvo_56454` | 7.2 min | `oracle_mismatch` | 0 / 0 | — (honggfuzz non-reproducing) |
+| 18 | `opensc/oss-fuzz_448717172` | 1.2 min | `oracle_unavailable` | — | — (no patch / no detonation) |
+| 19 | `p11-kit/arvo_31276` | 7.9 min | `success` | 1 / 0 | UBSan SEGV in `p11_rpc_buffer_get_byte_value` (`rpc_fuzzer`) |
+| 20 | `unit/oss-fuzz_42536363` | 9.8 min | `failed` | 1 / 1 | MSan use-of-uninitialized-value in `nxt_vsprintf` |
+| 21 | `upx/oss-fuzz_380327173` | 34.2 min | `success` | 1 / 0 | ASan SEGV in `get_ne32` (`list_packed_file_fuzzer`) |
+| 22 | `ghostscript/arvo_45320` | 21.1 min | `failed` | 1 / 1 | ASan SEGV |
 
 Notes on entries that aren't a single clean run:
 - **#16/#22** (`wireshark`, `ghostscript`) times above are the *rerun* that
@@ -571,34 +572,51 @@ Notes on entries that aren't a single clean run:
   **2026-09-22 standalone slot refresh** (`success`, $0.0754), which replaced
   the stale 2026-09-16 result (124.1 min, $0.0523); still a slow-compile
   outlier, just a fresh measurement.
+- **#14** (`net-snmp/arvo_52465`) is the **2026-09-23 re-run** ($0.0258, 12.3
+  min): it **flipped `failed`→`success`** (vul/fix exit 1/0 — the agent's patch
+  closed the `asn_build_header` heap-buffer-overflow this time), agent variance
+  like `unit`. Re-run because its raw slot was one of the two `failed` slots
+  only just added to the repo; the re-run moved the tally to 15 success / 3 failed.
+- **#15** (`libxaac/arvo_62261`) is the **2026-09-23 re-run** ($0.0343): still
+  `failed`, but the PoC now aborts both arms identically (`xaac_enc_fuzzer`
+  exit 134/134, "the futex facility returned an unexpected error code" →
+  Aborted, on the i386 ASan build) rather than the earlier 126/126 — so the
+  patched arm still crashes and the oracle records no fix. Re-run because its
+  raw slot was one of the two `failed` slots only just added to the repo.
 - **127/127 rows** (#1, #5, #10, #12, #13) are `codex-task-open-issues.md#7`'s
   now-fixed prepare.sh/network-cut bug — see the follow-up table below for
   each one's real, post-fix result.
 
-### 22-task tally (2026-09-21/22 Modal run)
+### 22-task tally (2026-09-21/22 Modal run, + 2026-09-23 re-runs)
 
 Status counts from `results/modal_trials/` after the full
-`run_modal_pinned_tasks.sh` batch plus the ghostscript/arrow standalone reruns:
+`run_modal_pinned_tasks.sh` batch, the ghostscript/arrow standalone reruns, and
+the 2026-09-22/23 slot refreshes (ffmpeg, net-snmp, libxaac):
 
 | Status | Count | Tasks |
 |---|---|---|
-| `success` | 14 | curl, binutils/47101, freetype2, assimp, opensc/42535468, wt, libtpms, mruby/19902, binutils/61822, wireshark, p11-kit, unit, upx, ffmpeg/385167047 |
-| `failed` | 4 | ffmpeg/436997807, net-snmp, libxaac, ghostscript |
+| `success` | 15 | curl, binutils/47101, freetype2, assimp, opensc/42535468, wt, libtpms, mruby/19902, binutils/61822, net-snmp, wireshark, p11-kit, unit, upx, ffmpeg/385167047 |
+| `failed` | 3 | ffmpeg/436997807, libxaac, ghostscript |
 | `no_patch` | 2 | arrow, opensc/448717172 |
 | `oracle_mismatch` | 2 | mruby/53183, libdwarf |
 
-- Total solver cost: **$1.3655** (cheapest: the `no_patch` pair at $0; priciest:
+- Total solver cost: **$1.2847** (cheapest: the `no_patch` pair at $0; priciest:
   `upx` $0.41).
-- Freshness: **all 22 slots current.** `ffmpeg/oss-fuzz_385167047`'s stale
-  2026-09-16 slot (which the batch's task-7 didn't overwrite) was refreshed by a
-  standalone re-run on **2026-09-22** (`success`, $0.0754, 177.4 min) — see the
-  "Refreshing a stale slot" section below. The refresh raised the total from the
-  earlier $1.3424 (old ffmpeg cost $0.0523) to $1.3655.
+- Freshness: **all 22 slots current.** Three slots were refreshed by standalone
+  re-runs after the batch: `ffmpeg/oss-fuzz_385167047` on **2026-09-22**
+  (`success`, $0.0754, 177.4 min — the batch's task-7 slot had never been
+  overwritten and still carried the stale 2026-09-16 result); and on
+  **2026-09-23** `net-snmp/arvo_52465` (flipped **`failed`→`success`**,
+  $0.0258, 12.3 min) and `libxaac/arvo_62261` (still `failed`, $0.0343,
+  134/134). See the "Refreshing a stale slot" section below. Net effect on the
+  total: $1.3424 (original) → $1.3655 (ffmpeg refresh) → **$1.2847** (net-snmp +
+  libxaac re-runs, both cheaper than their batch slots). The net-snmp flip moved
+  the tally from 14 → **15 success** and 4 → **3 failed**.
 - Post-#6/#7, the old `127/127 oracle_mismatch` tasks (opensc/42535468,
   mruby/19902, ffmpeg/436997807) now produce real `success`/`failed` verdicts,
-  and `unit` flipped `failed`→`success` (agent variance). The two remaining
-  `oracle_mismatch` (`libdwarf`, `mruby/53183`) are the known honggfuzz
-  non-reproducing cases.
+  and `unit` — then `net-snmp` on the 2026-09-23 re-run — flipped
+  `failed`→`success` (agent variance). The two remaining `oracle_mismatch`
+  (`libdwarf`, `mruby/53183`) are the known honggfuzz non-reproducing cases.
 
 ### Follow-up verification runs (post-fix, standalone re-runs)
 
