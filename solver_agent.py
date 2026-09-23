@@ -31,6 +31,7 @@ import dataclasses
 import asyncio
 import json
 import os
+import re
 import shlex
 import time
 from pathlib import Path
@@ -62,6 +63,15 @@ VALIDATOR_DEPENDENCY_CHECK = (
 ISOLATED_ORACLE_PREPARE_TIMEOUT_S = 4000
 ISOLATED_ORACLE_DETONATE_TIMEOUT_S = 16800
 ISOLATED_ORACLE_CLEANUP_TIMEOUT_S = 300
+I386_ARCHITECTURE_PATTERN = r"(?m)^\s*(?:export\s+)?ARCHITECTURE\s*=\s*['\"]?i386['\"]?\s*$"
+I386_QEMU_HOST_PATH = "/usr/bin/qemu-i386-static"
+I386_QEMU_CONTAINER_PATH = "/usr/local/bin/gymsiege-qemu-i386-static"
+
+
+def _run_poc_targets_i386(script: str) -> bool:
+    """Recognize an explicit i386 task declaration without task-name coupling."""
+
+    return re.search(I386_ARCHITECTURE_PATTERN, script) is not None
 
 # CVE/OSS-Fuzz report GYMSIEGE points the browser at for the research phase.
 # ARVO tasks map cleanly onto the ARVO metadata site; oss-fuzz tasks map onto
@@ -720,6 +730,7 @@ def _isolated_oracle_script(
 
     return f'''\
 import json
+import re
 import sys
 import traceback
 from pathlib import Path
@@ -745,6 +756,10 @@ validator_manifest = json.loads(Path({VALIDATOR_IMAGE_MANIFEST!r}).read_text())
 VALIDATOR_IMAGE = validator_manifest.get("images", {{}}).get(IMAGE)
 if not VALIDATOR_IMAGE:
     raise RuntimeError(f"no baked validator image for {{IMAGE}}")
+RUN_POC_PATH = SCRIPT_PATH / "run_poc.sh"
+IS_I386 = re.search({I386_ARCHITECTURE_PATTERN!r}, RUN_POC_PATH.read_text()) is not None
+I386_QEMU_HOST_PATH = Path({I386_QEMU_HOST_PATH!r})
+I386_QEMU_CONTAINER_PATH = {I386_QEMU_CONTAINER_PATH!r}
 
 BOOTSTRAP_COMMANDS = {set(VALIDATOR_BOOTSTRAP_COMMANDS)!r}
 DEPENDENCY_CHECK = {VALIDATOR_DEPENDENCY_CHECK!r}
@@ -778,6 +793,42 @@ def cleanup_arms():
     finally:
         STATE_PATH.unlink(missing_ok=True)
 
+def configure_i386_execution(container_id):
+    if not IS_I386:
+        return
+    if not I386_QEMU_HOST_PATH.is_file():
+        raise RuntimeError(
+            f"i386 oracle requires {{I386_QEMU_HOST_PATH}}; rebake the snapshot"
+        )
+    copy_to_container(
+        container_id,
+        I386_QEMU_HOST_PATH,
+        I386_QEMU_CONTAINER_PATH,
+    )
+    code, _, error = exec_run(
+        container_id,
+        f"chmod 0755 {{I386_QEMU_CONTAINER_PATH}}",
+        timeout=60,
+        workdir="/",
+    )
+    if code != 0:
+        raise RuntimeError(f"failed to configure i386 QEMU execution: {{error[-1000:]}}")
+
+def run_poc_command():
+    if not IS_I386:
+        return "sudo -E bash -eux /src/run_poc.sh"
+    # validate.py restores /src before each arm, so a prepare-time edit would
+    # be discarded. Generate an ephemeral runner only after validation has
+    # built the current arm's /out binary.
+    return (
+        "sed -E "
+        f"'s#^[[:space:]]*/out/#{{I386_QEMU_CONTAINER_PATH}} /out/#' "
+        "/src/run_poc.sh > /tmp/gymsiege-run-poc-i386.sh && "
+        "test \\\"$(grep -c gymsiege-qemu-i386-static /tmp/gymsiege-run-poc-i386.sh)\\\" -eq 1 && "
+        "chmod 0755 /tmp/gymsiege-run-poc-i386.sh && "
+        "sudo -E bash -eux /tmp/gymsiege-run-poc-i386.sh"
+    )
+
 def prepare_arm(stage):
     container_id = None
     try:
@@ -791,6 +842,7 @@ def prepare_arm(stage):
             scripts_dir=ROOT / "scripts",
             run_prepare=True,
         )
+        configure_i386_execution(container_id)
         copy_to_container(container_id, POC, "/output/poc.bin")
         if stage >= 2:
             copy_to_container(container_id, PATCH, "/output/fix.patch")
@@ -846,6 +898,16 @@ def run_arm(stage, container_id):
         stage_status = (
             stage_result.get("status") if isinstance(stage_result, dict) else stage_result
         )
+        if stage == 4 and IS_I386:
+            qemu_code, qemu_out, qemu_err = exec_run(
+                container_id,
+                run_poc_command(),
+                timeout=1200,
+                workdir="/src",
+            )
+            stage_status = "passed" if qemu_code == 0 else "failed"
+            validation_out += "\\n[i386 qemu stage4]\\n" + qemu_out
+            validation_err += "\\n[i386 qemu stage4]\\n" + qemu_err
         if stage_status not in {{"passed", "failed", "error", "skipped"}}:
             raise RuntimeError(
                 f"stage {{stage}} validation JSON has invalid verdict: {{stage_result!r}}"
@@ -858,7 +920,7 @@ def run_arm(stage, container_id):
         }}
     raw_code, raw_out, raw_err = exec_run(
         container_id,
-        "sudo -E bash -eux /src/run_poc.sh",
+        run_poc_command(),
         timeout=1200,
         workdir="/src",
     )

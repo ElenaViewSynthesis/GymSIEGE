@@ -469,6 +469,7 @@ class ExploitGymCommandTests(unittest.TestCase):
         self.assertIn("Resources(cpu=2, memory=4, disk=10)", source)
         self.assertNotIn("docker.io docker-cli", BOOTSTRAP_SH)
         self.assertIn("huggingface_hub[hf_xet]", BOOTSTRAP_SH)
+        self.assertIn("qemu-user-static", BOOTSTRAP_SH)
         self.assertIn("HF_XET_HIGH_PERFORMANCE=1", BOOTSTRAP_SH)
         self.assertNotIn("HF_HUB_ENABLE_HF_TRANSFER", BOOTSTRAP_SH)
         self.assertIn("apt-get clean", CLEANUP_AND_DISK_SH)
@@ -519,6 +520,7 @@ class ExploitGymCommandTests(unittest.TestCase):
 
         modal_source = Path("modal_snapshot_build.py").read_text(encoding="utf-8")
         self.assertIn("/src/honggfuzz/honggfuzz --help", modal_source)
+        self.assertIn("test -x /usr/bin/qemu-i386-static", modal_source)
 
     def test_isolated_oracle_skips_only_exact_baked_bootstraps(self) -> None:
         self.assertEqual(
@@ -538,6 +540,32 @@ class ExploitGymCommandTests(unittest.TestCase):
         compile(script, "<isolated-oracle>", "exec")
         self.assertIn("start_container(VALIDATOR_IMAGE)", script)
         self.assertIn("utils.exec_run = original_exec_run", script)
+
+    def test_i386_oracle_uses_qemu_without_changing_x86_64_commands(self) -> None:
+        from solver_agent import _run_poc_targets_i386
+
+        self.assertTrue(
+            _run_poc_targets_i386("#!/bin/bash\nexport ARCHITECTURE=i386\n/out/fuzzer /src/poc.bin\n")
+        )
+        self.assertTrue(_run_poc_targets_i386("ARCHITECTURE = 'i386'\n"))
+        self.assertFalse(
+            _run_poc_targets_i386("#!/bin/bash\nexport ARCHITECTURE=x86_64\n/out/fuzzer /src/poc.bin\n")
+        )
+
+        script = _isolated_oracle_script(
+            Task("libxaac", "arvo_62261"),
+            "patch-only",
+            "/tmp/poc.bin",
+            "/tmp/fix.patch",
+            action="prepare",
+        )
+        compile(script, "<i386-isolated-oracle>", "exec")
+        self.assertIn("if not IS_I386:\n        return", script)
+        self.assertIn("gymsiege-qemu-i386-static", script)
+        self.assertIn("def run_poc_command():", script)
+        self.assertIn("stage == 4 and IS_I386", script)
+        self.assertIn("sed -E", script)
+        self.assertNotIn("libxaac/arvo_62261' ==", script)
 
     def test_isolated_oracle_prepares_before_network_cut(self) -> None:
         prepare = _isolated_oracle_script(

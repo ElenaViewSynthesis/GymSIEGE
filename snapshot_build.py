@@ -160,6 +160,7 @@ $SUDO apt-get install -y --no-install-recommends \
     git curl ca-certificates build-essential \
     clang clang-tools llvm lld \
     python3 python3-pip python3-venv \
+    qemu-user-static \
     docker.io \
     xvfb xfce4 xfce4-terminal x11vnc novnc dbus-x11 \
     libx11-6 libxrandr2 libxext6 libxrender1 libxfixes3 libxss1 libxtst6 libxi6

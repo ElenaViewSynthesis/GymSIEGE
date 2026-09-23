@@ -129,6 +129,7 @@ set -euo pipefail
 docker info >/dev/null
 test -d {REMOTE_REPO_DIR}/data/projects
 test "$(git -C {REMOTE_REPO_DIR} rev-parse HEAD)" != ""
+test -x /usr/bin/qemu-i386-static
 python3 - <<'PY'
 import json
 from pathlib import Path
