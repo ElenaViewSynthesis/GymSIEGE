@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, patch
 from daytona.common.errors import DaytonaConnectionTimeoutError, DaytonaTimeoutError
 
 import common
+from cybergym_task_index import parse_crash_log, parse_task_lines
 import modal_sandbox_runner
 import modal_exploitgym_build
 import modal_exploitgym_runner
@@ -78,6 +79,53 @@ from solver_agent import (
 )
 
 
+class CyberGymTaskIndexTests(unittest.TestCase):
+    def test_parse_crash_log_recognizes_supported_sanitizers(self) -> None:
+        cases = (
+            ("SUMMARY: AddressSanitizer: heap-buffer-overflow /src/a.cc:4", "ASan", "heap-buffer-overflow /src/a.cc:4"),
+            ("SUMMARY: MemorySanitizer: use-of-uninitialized-value", "MSan", "use-of-uninitialized-value"),
+            ("SUMMARY: UndefinedBehaviorSanitizer: undefined-behavior a.c:7", "UBSan", "undefined-behavior a.c:7"),
+            ("ERROR: LeakSanitizer: detected memory leaks", "LSan", "detected memory leaks"),
+            ("Direct leak of 32 byte(s) in 1 object(s)", "LSan", "Direct leak of 32 byte(s) in 1 object(s)"),
+            ("Indirect-leak of 8 byte(s)", "LSan", "Indirect-leak of 8 byte(s)"),
+        )
+        for text, sanitizer, crash_type in cases:
+            with self.subTest(sanitizer=sanitizer):
+                parsed = parse_crash_log(text)
+                self.assertEqual(parsed.sanitizer, sanitizer)
+                self.assertEqual(parsed.crash_type, crash_type)
+
+    def test_parse_crash_log_prefers_leak_and_captures_headers(self) -> None:
+        parsed = parse_crash_log(
+            "SANITIZER=address\n"
+            "OSS-Fuzz crash type: Heap-buffer-overflow\n"
+            "SUMMARY: AddressSanitizer: heap-buffer-overflow foo.cc:1\n"
+            "==1==ERROR: LeakSanitizer: detected memory leaks\n"
+        )
+        self.assertEqual(parsed.sanitizer, "LSan")
+        self.assertEqual(parsed.declared_sanitizer, "address")
+        self.assertEqual(parsed.oss_fuzz_crash_type, "Heap-buffer-overflow")
+        self.assertIn("LeakSanitizer", parsed.evidence_line)
+
+    def test_parse_crash_log_prefers_stable_summary_over_error_address(self) -> None:
+        parsed = parse_crash_log(
+            "==1==ERROR: AddressSanitizer: heap-buffer-overflow on address 0x1234\n"
+            "SUMMARY: AddressSanitizer: heap-buffer-overflow /src/a.cc:4 in parse\n"
+        )
+        self.assertEqual(parsed.crash_type, "heap-buffer-overflow /src/a.cc:4 in parse")
+        self.assertTrue(parsed.evidence_line.startswith("SUMMARY:"))
+
+    def test_empty_crash_log_is_unknown(self) -> None:
+        self.assertEqual(parse_crash_log("").sanitizer, "unknown")
+        self.assertEqual(parse_crash_log(None).crash_type, "unknown")
+
+    def test_parse_task_lines_ignores_header_comments(self) -> None:
+        self.assertEqual(
+            parse_task_lines("# source_rev: abc\nfoo/arvo_1\nbar/arvo_2\n"),
+            ["foo/arvo_1", "bar/arvo_2"],
+        )
+
+
 class _FakeObservation:
     def __init__(self) -> None:
         self.updates = []
@@ -135,6 +183,11 @@ class _FakeLangfuseClient:
 
 
 class TrialObservabilityTests(unittest.TestCase):
+    def setUp(self) -> None:
+        # Other test classes can exercise tracing first when real credentials
+        # are configured; every singleton test must start from a clean state.
+        observability._reset_tracing_for_tests()
+
     def tearDown(self) -> None:
         observability._reset_tracing_for_tests()
 
