@@ -25,6 +25,8 @@ results/**/*.json
 results/*.ndjson
 results/**/*.ndjson
 !results/.gitkeep
+# Gated CyberGym-E2E crash logs used to regenerate the derived task index.
+results/cybergym_index/
 snapshot_build.metrics.json
 *.log
 
