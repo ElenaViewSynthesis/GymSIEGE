@@ -6025,10 +6025,14 @@
   "project_count": 139,
   "projected_docker_bytes": 4498003231420,
   "projected_total_bytes": 4657455105459,
-  "recommended_shards": 12,
+  "recommended_shards": 47,
   "registry_compressed_bytes": 1463870002343,
   "schema_version": 1,
-  "shard_target_bytes": 400000000000,
+  "shard_target_bytes": 100000000000,
+  "shard_target_basis": "100 GB keeps projected shards below the measured 256 GiB changed-data cap and, using shard-03's measured 3.04M inodes at 415 GB as a conservative linear calibration, below the measured 1,000,101-inode passing probe. The 1,500,151-inode probe failed at only 30 GB.",
+  "snapshot_changed_data_cap_bytes": 274877906944,
+  "snapshot_inode_fail": 1500151,
+  "snapshot_inode_pass": 1000101,
   "source_rev": "b46456c46838b2b090d7e6ded5bfdf1ff583dba7",
   "task_count": 920
 }

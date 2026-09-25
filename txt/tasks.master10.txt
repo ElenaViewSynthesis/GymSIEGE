@@ -1,0 +1,15 @@
+# 10 non-pinned CyberGym tasks selected from the 920-task master list.
+# All 10 resolve to 5 distinct build images (~39.5 GB projected), well under
+# the ~115 GB proven-safe Modal snapshot size -- a small, low-risk bake that
+# sidesteps the ~415 GB shard-03 snapshot that hit Modal error 463NTSTM.
+# Sanitizer mix: 2 UBSan, 3 MSan, 5 ASan (per reference/cybergym_task_index.jsonl).
+binutils/arvo_19702              # UBSan  undefined-behavior (crx-dis.c)
+c-blosc2/arvo_30113              # UBSan  SEGV
+arduinojson/arvo_24633           # MSan   use-of-uninitialized-value
+botan/arvo_6626                  # MSan   use-of-uninitialized-value
+capstone/arvo_13466              # MSan   use-of-uninitialized-value
+assimp/arvo_33238                # ASan   stack-buffer-overflow
+boringssl/arvo_55556             # ASan   heap-use-after-free
+clamav/arvo_23499                # ASan   heap-buffer-overflow
+cpython3/oss-fuzz_368076875      # ASan   heap-use-after-free
+dav1d/arvo_60432                 # ASan   SEGV

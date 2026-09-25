@@ -1,49 +1,18 @@
-# CyberGym master shard 08/12
+# CyberGym master shard 08/47
 # source_rev: b46456c46838b2b090d7e6ded5bfdf1ff583dba7
 # dataset_rev: 3aee406e4e915e32527fea16de7f002630fa8c76
-# projected_bytes: 387238213359
-# images: 41; tasks: 44
-arrow/arvo_41221
-assimp/arvo_57001
-binutils/arvo_40544
-binutils/arvo_43795
-binutils/arvo_56726
+# projected_bytes: 99252444807
+# images: 13; tasks: 13
+assimp/arvo_58770
+binutils/arvo_43434
 binutils/arvo_59488
-binutils/arvo_60532
-binutils/oss-fuzz_408254000
-binutils/oss-fuzz_410786957
-binutils/oss-fuzz_439479327
-binutils/oss-fuzz_449440793
-ffmpeg/oss-fuzz_383170476
-ffmpeg/oss-fuzz_385170375
-ffmpeg/oss-fuzz_42537586
-ffmpeg/oss-fuzz_42537600
 ffmpeg/oss-fuzz_42537735
-flac/oss-fuzz_42537169
-gdbm/arvo_38943
-ghostscript/arvo_42327
-ghostscript/arvo_43354
-ghostscript/arvo_44034
+ghostscript/arvo_42280
 ghostscript/arvo_44406
-ghostscript/arvo_56156
-ghostscript/arvo_58405
-h3/oss-fuzz_372515086
-harfbuzz/arvo_38878
-hdf5/arvo_58701
-leptonica/arvo_66279
-libphonenumber/oss-fuzz_413161357
-libultrahdr/oss-fuzz_42535447
-libxaac/arvo_61902
-libxml2/arvo_62886
-net-snmp/arvo_64315
-ntopng/arvo_61538
-opensc/arvo_46679
-opensc/arvo_50683
-opensc/arvo_53631
-opensc/arvo_60672
-opensc/arvo_63163
-pcapplusplus/arvo_43408
-selinux/arvo_45523
-sleuthkit/arvo_36955
-upx/arvo_65518
-zstd/arvo_43365
+ghostscript/arvo_53711
+harfbuzz/arvo_54482
+libxaac/arvo_61998
+mupdf/arvo_59418
+opensc/arvo_60971
+opensc/arvo_64215
+upx/arvo_65535

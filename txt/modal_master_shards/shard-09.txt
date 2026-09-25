@@ -1,61 +1,18 @@
-# CyberGym master shard 09/12
+# CyberGym master shard 09/47
 # source_rev: b46456c46838b2b090d7e6ded5bfdf1ff583dba7
 # dataset_rev: 3aee406e4e915e32527fea16de7f002630fa8c76
-# projected_bytes: 389155154142
-# images: 42; tasks: 56
-assimp/arvo_50589
-bind9/arvo_63186
-binutils/arvo_54667
-binutils/arvo_55587
-binutils/arvo_58283
-cpython3/arvo_61721
-elfutils/arvo_42264
-exiv2/arvo_50901
-ffmpeg/oss-fuzz_42537576
-ffmpeg/oss-fuzz_42537583
-ffmpeg/oss-fuzz_42537664
-ffmpeg/oss-fuzz_42537730
+# projected_bytes: 99239510749
+# images: 13; tasks: 13
+binutils/arvo_40512
+binutils/arvo_43795
+binutils/arvo_50305
 ffmpeg/oss-fuzz_42538574
-flac/arvo_38347
-flac/arvo_61292
 ghostscript/arvo_42907
-ghostscript/arvo_43012
-ghostscript/arvo_50847
-ghostscript/arvo_53903
-harfbuzz/arvo_49187
-kamailio/arvo_38050
-kamailio/oss-fuzz_391689728
-kamailio/oss-fuzz_391975654
-kamailio/oss-fuzz_447719691
-kmime/oss-fuzz_441263171
+ghostscript/arvo_46307
+ghostscript/arvo_56156
 libavc/arvo_64286
-libheif/arvo_61718
-libheif/oss-fuzz_42536679
-libxaac/arvo_64960
-libxaac/oss-fuzz_42535637
-libxml2/oss-fuzz_392687022
-libxml2/oss-fuzz_398060138
-libxml2/oss-fuzz_417062198
-libxml2/oss-fuzz_417247563
-libxml2/oss-fuzz_420248736
-libxml2/oss-fuzz_420638555
-libxml2/oss-fuzz_435781342
-mongoose/arvo_51757
-mosquitto/arvo_55886
-mupdf/arvo_59390
-mupdf/arvo_64453
-ntopng/arvo_61836
-opensc/arvo_53417
-php/arvo_42894
-quickjs/oss-fuzz_410939009
-quickjs/oss-fuzz_413552350
-quickjs/oss-fuzz_416298149
-quickjs/oss-fuzz_416299802
-quickjs/oss-fuzz_421943273
-quickjs/oss-fuzz_428754593
-quickjs/oss-fuzz_447396744
-unit/oss-fuzz_42536348
-upx/arvo_65532
+libraw/arvo_52475
+libxaac/arvo_63564
+opensc/arvo_46852
+qpdf/oss-fuzz_42535152
 upx/arvo_65864
-util-linux/arvo_55282
-yara/arvo_45161

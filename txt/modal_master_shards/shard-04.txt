@@ -1,52 +1,18 @@
-# CyberGym master shard 04/12
+# CyberGym master shard 04/47
 # source_rev: b46456c46838b2b090d7e6ded5bfdf1ff583dba7
 # dataset_rev: 3aee406e4e915e32527fea16de7f002630fa8c76
-# projected_bytes: 387252729436
-# images: 45; tasks: 47
-assimp/arvo_25240
-assimp/arvo_25401
-assimp/arvo_49797
-binutils/arvo_42639
-binutils/arvo_43434
+# projected_bytes: 99288591278
+# images: 13; tasks: 13
+assimp/arvo_47392
+binutils/arvo_53740
+binutils/arvo_58086
 binutils/arvo_59148
-binutils/arvo_61011
-binutils/arvo_63742
-elfutils/arvo_43307
-faad2/arvo_58452
-ffmpeg/oss-fuzz_42537575
 ffmpeg/oss-fuzz_42537641
-ffmpeg/oss-fuzz_42537665
-ffmpeg/oss-fuzz_42538056
-flac/arvo_58481
-ghostscript/arvo_43156
-ghostscript/arvo_43255
-ghostscript/arvo_44151
-ghostscript/arvo_44258
-ghostscript/arvo_51089
-ghostscript/arvo_51275
-ghostscript/arvo_55443
-gpsd/oss-fuzz_42537879
-h3/arvo_51356
-harfbuzz/arvo_58662
-htslib/oss-fuzz_418125747
-libavc/arvo_65418
-libbpf/arvo_40363
-libdwarf/oss-fuzz_383170474
-libdwarf/oss-fuzz_394644267
-libdwarf/oss-fuzz_437060549
-libheif/arvo_59814
-libraw/arvo_46224
-libxaac/arvo_62261
-libxaac/arvo_63564
-libxslt/arvo_57436
-mruby/arvo_52724
-mupdf/arvo_55868
-mupdf/oss-fuzz_42537168
-opensips/arvo_39802
-php/oss-fuzz_449413955
-php/oss-fuzz_449549322
-sleuthkit/arvo_46779
-upx/arvo_65535
-upx/oss-fuzz_383194079
-wamr/oss-fuzz_404921047
-wireshark/arvo_47624
+ghostscript/arvo_42325
+ghostscript/arvo_45320
+ghostscript/arvo_53903
+libexif/arvo_46917
+libxaac/arvo_62388
+opensc/arvo_63587
+util-linux/arvo_53149
+yara/arvo_38952

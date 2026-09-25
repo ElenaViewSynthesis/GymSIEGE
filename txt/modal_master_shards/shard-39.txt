@@ -1,0 +1,9 @@
+# CyberGym master shard 39/47
+# source_rev: b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+# dataset_rev: 3aee406e4e915e32527fea16de7f002630fa8c76
+# projected_bytes: 98960166479
+# images: 4; tasks: 4
+ffmpeg/oss-fuzz_385170375
+ffmpeg/oss-fuzz_42537683
+libxaac/arvo_61816
+opensc/arvo_58932

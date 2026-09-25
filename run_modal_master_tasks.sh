@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run one preplanned CyberGym master shard. Set GYMSIEGE_MASTER_SHARD=01..12.
+# Run one preplanned CyberGym master shard. Set GYMSIEGE_MASTER_SHARD=01..47.
 # Each shard uses its own snapshot manifest and results directory so parallel
 # shard processes cannot overwrite the pinned-22 outputs or one another.
 set -uo pipefail
@@ -7,8 +7,8 @@ set -uo pipefail
 cd "$(dirname "$0")"
 
 shard="${GYMSIEGE_MASTER_SHARD:-}"
-if [[ ! "$shard" =~ ^(0[1-9]|1[0-2])$ ]]; then
-  echo "set GYMSIEGE_MASTER_SHARD to 01..12" >&2
+if [[ ! "$shard" =~ ^(0[1-9]|[1-3][0-9]|4[0-7])$ ]]; then
+  echo "set GYMSIEGE_MASTER_SHARD to 01..47" >&2
   exit 2
 fi
 

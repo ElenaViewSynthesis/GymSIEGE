@@ -1,0 +1,19 @@
+# CyberGym master shard 30/47
+# source_rev: b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+# dataset_rev: 3aee406e4e915e32527fea16de7f002630fa8c76
+# projected_bytes: 99213741737
+# images: 13; tasks: 14
+binutils/arvo_40683
+binutils/arvo_56726
+ffmpeg/oss-fuzz_42537643
+freetype2/arvo_759
+ghostscript/arvo_43012
+ghostscript/arvo_49290
+ghostscript/arvo_51045
+haproxy/oss-fuzz_415850462
+haproxy/oss-fuzz_416231227
+libarchive/arvo_38751
+libavc/oss-fuzz_42538616
+opensc/oss-fuzz_42537670
+php/arvo_58080
+selinux/arvo_60670

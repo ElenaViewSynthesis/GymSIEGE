@@ -1,0 +1,18 @@
+# CyberGym master shard 16/47
+# source_rev: b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+# dataset_rev: 3aee406e4e915e32527fea16de7f002630fa8c76
+# projected_bytes: 99253805701
+# images: 13; tasks: 13
+binutils/arvo_63196
+ffmpeg/oss-fuzz_42537730
+file/arvo_51603
+ghostscript/arvo_42322
+ghostscript/arvo_55443
+harfbuzz/arvo_38878
+harfbuzz/arvo_64859
+libavc/arvo_59543
+libheif/oss-fuzz_42536679
+libraw/arvo_60728
+libxaac/arvo_62183
+mupdf/arvo_59390
+ntopng/arvo_65428
