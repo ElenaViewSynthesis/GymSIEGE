@@ -1175,18 +1175,97 @@ decisive: a single snapshot is not a credible fit for Modal's 512 GiB VM disk.
 `reference/cybergym_modal_capacity.json` records every input image digest,
 compressed byte count, task payload bytes, calibration value, and image/task
 mapping. `modal_master_shards.py` uses deterministic largest-first bin packing
-while keeping all tasks that share an image together. The resulting 12 files
-under `txt/modal_master_shards/` cover every master task exactly once. Their
-projected payloads span 387.195–389.157 GB (360.6–362.5 GiB), preserving at
-least about 149.5 GiB below the 512 GiB ceiling for filesystem and build
-headroom. Task counts range from 41 to 391 because two shared base-builder
-images cover 344 tasks; keeping those groups intact avoids duplicating them.
+while keeping all tasks that share an image together. The original 12-shard
+layout was disproven by the live snapshot failures in Finding #25. The revised
+47 files under `txt/modal_master_shards/` cover every master task exactly once
+and project to 97.554–99.429 GB each. Task counts range from 3 to 267 and image
+counts from 3 to 13 because shared-image task groups remain indivisible.
 
 Each shard must be baked to
 `results/modal_snapshot.master-shard-<NN>.json`, never the pinned manifest.
-`run_modal_master_tasks.sh` requires `GYMSIEGE_MASTER_SHARD=01..12` and writes
+`run_modal_master_tasks.sh` requires `GYMSIEGE_MASTER_SHARD=01..47` and writes
 to a shard-specific result directory, making controlled parallel execution
 possible without cross-shard or pinned-result overwrites. The README contains
 the complete bake and parallel-run commands. A representative smoke task per
 baked shard remains mandatory before a paid 920-task sweep; no per-task rate is
 claimed from this sizing-only trial.
+
+## 25. Modal `snapshot_filesystem` caps changed data at 256 GiB and is also file-count sensitive
+
+Finding #24's 12-shard plan sized each shard against Modal's 512 GiB VM *disk*
+cap. Live baking proved that is the wrong limit: the `snapshot_filesystem`
+operation itself fails well below the disk cap.
+
+Shard-03 (391 tasks, 46 images) baked correctly through every step — toolchain,
+390 verified crash logs, all images pulled, 45 validator images built, content
+validation, and the disk-headroom gate (116 GB free of 512 GiB) — then failed at
+the final `source.snapshot_filesystem(...)` call, **twice**, on a ~415 GB
+filesystem (384.8 GB Docker + 30.6 GB dataset):
+
+- Run 1 (sandbox `sb-Rgi9ItNRkX8NXCZcfIgPSU`): `InternalError ... (Error code: 463NTSTM)`
+- Run 2 (sandbox `sb-KVDz6vJbs213gRLL9Qb8ye`): `InternalError ... (Error code: CR4TP30Y)`
+
+Both failed ~15–18 s after cleanup completed — far short of the 1800 s snapshot
+timeout, so this is a Modal server-side rejection, not a client deadline, and it
+is deterministic rather than transient. A 10-task probe snapshot
+(`txt/tasks.master10.txt`, real footprint 22.8 GB Docker + 0.6 GB dataset ≈
+23 GB) then captured and fork-verified cleanly as `im-01M397WSAFVGMXX4Y9BKKX07ZH`.
+
+Combined snapshot-size evidence:
+
+| Size | Result |
+| --- | --- |
+| ~23 GB (10-task probe) | works |
+| ~115 GB (pinned-22) | works |
+| ~415 GB (shard-03) | fails ×2 |
+
+Synthetic VM probes on 2026-09-24 pinned the byte limit. A filesystem with
+**265,000,034,304 bytes used** and 5,903 inodes captured successfully in 484 s
+(`im-01M3A718AF147HQJ98FQJHG64C`). A filesystem with **280,000,032,768 bytes
+used** failed in 0.455 s with the explicit `ResourceExhaustedError`:
+
+```
+filesystem snapshot writes more than 274877906944 bytes of changed file data
+```
+
+`274877906944` bytes is exactly **256 GiB**. This is a changed-file-data cap,
+not the VM's 512 GiB disk capacity and not a timeout. The byte probes used one
+allocated file, so they isolate data volume from Docker layer count and file
+count.
+
+File count independently gates capture well below the byte cap. At the same
+~30 GB used:
+
+| Used inodes | Result | Capture time |
+| ---: | --- | ---: |
+| 500,051 | pass (`im-01M3A9YMQ9VYMC7PH6TC751AKP`) | 159 s |
+| 1,000,101 | pass (`im-01M3AA4FXSD84A8ST6QT3G0FND`) | 143 s |
+| 1,500,151 | fail (`J43HCSW1`) | 1,225 s |
+| 3,100,311 | fail (`US011NHD`) | 1,501 s |
+
+The service did not return a numeric inode maximum, so the defensible effective
+bound is **1,000,101 passing / 1,500,151 failing**, rather than an invented exact
+ceiling. The 3.1-million-inode failure reproduces shard-03's ~3.04-million-inode
+shape at only 30 GB, proving that bytes are not the only trigger. A separate
+Docker-layer hypothesis is unnecessary: the isolated byte and inode probes
+account for both observed failure dimensions.
+
+All successful probe images used a 60-second TTL and every probe Sandbox was
+terminated. The raw machine-readable records are in
+`results/modal_snapshot_ceiling_probes.jsonl`; the repeatable probe is
+`modal_snapshot_ceiling_probe.py`.
+
+The master plan now uses a **100 GB projected target and 47 shards**. Its
+97.554–99.429 GB projected range leaves about 175 GB below the changed-data
+cap. Scaling shard-03's measured 3.04 million inodes at 415 GB gives roughly
+0.73 million inodes for a 100 GB shard, below the measured 1,000,101-inode
+pass. This is deliberately conservative because the registry-derived byte
+projection and inode scaling are estimates. At ~45 minutes of image pulling
+per shard, the 47 bakes represent about **35.25 serial pull-hours**, before
+snapshot capture and validation.
+
+A secondary observation: the 10-task set's real Docker footprint (22.8 GB) came
+in below its ~39.5 GB registry-based projection because the two shared
+base-builder images deduplicate on disk. The `full_size`-summed projection runs
+conservative (it over-counts shared layers), which is the safe direction for
+capacity planning.

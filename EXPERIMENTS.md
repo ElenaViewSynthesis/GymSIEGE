@@ -47,28 +47,62 @@ The 920-task distribution is:
 
 ### Docker images per proposed Modal snapshot
 
-The 12-shard plan currently maps them like this:
+The revised 47-shard plan maps them like this:
 
-| Modal snapshot | Docker images | CyberGym tasks |
-| ---: | ---: | ---: |
-| 01 | 41 | 52 |
-| 02 | 42 | 43 |
-| 03 | 45 | 391 |
-| 04 | 45 | 47 |
-| 05 | 46 | 55 |
-| 06 | 41 | 41 |
-| 07 | 41 | 52 |
-| 08 | 41 | 44 |
-| 09 | 42 | 56 |
-| 10 | 42 | 42 |
-| 11 | 41 | 51 |
-| 12 | 42 | 46 |
+| Modal snapshot | Docker images | CyberGym tasks | Projected size |
+| ---: | ---: | ---: | ---: |
+| 01 | 13 | 18 | 99.193 GB |
+| 02 | 13 | 13 | 99.269 GB |
+| 03 | 13 | 16 | 99.098 GB |
+| 04 | 13 | 13 | 99.289 GB |
+| 05 | 13 | 13 | 99.240 GB |
+| 06 | 13 | 13 | 99.235 GB |
+| 07 | 13 | 13 | 99.230 GB |
+| 08 | 13 | 13 | 99.252 GB |
+| 09 | 13 | 13 | 99.240 GB |
+| 10 | 13 | 16 | 99.207 GB |
+| 11 | 13 | 13 | 99.233 GB |
+| 12 | 13 | 13 | 99.253 GB |
+| 13 | 13 | 13 | 99.161 GB |
+| 14 | 13 | 13 | 99.233 GB |
+| 15 | 13 | 13 | 99.293 GB |
+| 16 | 13 | 13 | 99.254 GB |
+| 17 | 13 | 13 | 99.253 GB |
+| 18 | 13 | 14 | 99.156 GB |
+| 19 | 13 | 13 | 99.287 GB |
+| 20 | 13 | 13 | 99.234 GB |
+| 21 | 13 | 13 | 99.259 GB |
+| 22 | 13 | 13 | 99.267 GB |
+| 23 | 13 | 113 | 99.154 GB |
+| 24 | 13 | 13 | 99.099 GB |
+| 25 | 13 | 13 | 99.228 GB |
+| 26 | 13 | 17 | 99.217 GB |
+| 27 | 13 | 13 | 99.114 GB |
+| 28 | 13 | 14 | 99.187 GB |
+| 29 | 13 | 19 | 99.185 GB |
+| 30 | 13 | 14 | 99.214 GB |
+| 31 | 13 | 13 | 99.245 GB |
+| 32 | 13 | 22 | 99.158 GB |
+| 33 | 13 | 22 | 99.253 GB |
+| 34 | 12 | 12 | 97.567 GB |
+| 35 | 12 | 16 | 97.554 GB |
+| 36 | 12 | 16 | 97.574 GB |
+| 37 | 12 | 267 | 99.429 GB |
+| 38 | 4 | 4 | 98.685 GB |
+| 39 | 4 | 4 | 98.960 GB |
+| 40 | 3 | 3 | 99.229 GB |
+| 41 | 3 | 3 | 99.236 GB |
+| 42 | 3 | 3 | 99.233 GB |
+| 43 | 3 | 3 | 99.234 GB |
+| 44 | 3 | 3 | 99.170 GB |
+| 45 | 3 | 3 | 99.161 GB |
+| 46 | 3 | 9 | 99.118 GB |
+| 47 | 3 | 3 | 99.116 GB |
 
-Shard 03 has 391 tasks because the plan keeps shared images intact and balances
-disk usage, not task runtime. For faster parallel completion, the two heavily
-shared base-builder images could be duplicated across multiple snapshots and
-their 344 tasks distributed more evenly. That would trade some extra storage for
-substantially better wall-time balance.
+Shard 37 has 267 tasks because the plan keeps shared images intact and balances
+disk usage, not task runtime. For faster parallel completion, heavily shared
+base-builder images could be duplicated across multiple snapshots and their
+tasks distributed more evenly. That would trade storage for wall-time balance.
 
 The complete mapping is in `reference/cybergym_modal_capacity.json`.
 
@@ -80,12 +114,12 @@ so the pinned-22 snapshot (`results/modal_snapshot.json`) and outputs are never
 touched.
 
 ```bash
-# 1. Regenerate and validate the deterministic 12-shard task files.
+# 1. Regenerate and validate the deterministic 47-shard task files.
 .venv/bin/python modal_master_shards.py
 
-# 2. Bake all 12 shard snapshots sequentially.
+# 2. Bake all 47 shard snapshots sequentially.
 # Each manifest is separate; results/modal_snapshot.json remains untouched.
-for shard in $(seq -w 1 12); do
+for shard in $(seq -w 1 47); do
   PYTHONUNBUFFERED=1 .venv/bin/python modal_snapshot_build.py \
     --tasks-file "txt/modal_master_shards/shard-${shard}.txt" \
     --output "results/modal_snapshot.master-shard-${shard}.json" \
@@ -95,7 +129,7 @@ done
 # 3. After every bake succeeds, run three shards concurrently until all
 # 920 tasks have been attempted.
 batch_ts="$(date -u +%Y%m%dT%H%M%SZ)"
-seq -w 1 12 | xargs -P 3 -I{} \
+seq -w 1 47 | xargs -P 3 -I{} \
   env GYMSIEGE_MASTER_SHARD={} \
   GYMSIEGE_RUN_ID="gymsiege-master-${batch_ts}-shard-{}" \
   bash run_modal_master_tasks.sh
@@ -106,6 +140,11 @@ seq -w 1 12 | xargs -P 3 -I{} \
 `results/modal_trials/master-shard-NN/`. `run_modal_master_tasks.sh` refuses a
 shard whose manifest has not been baked yet, so step 3 must follow a successful
 step 2.
+
+The 100 GB planning target is below Modal's measured 256 GiB changed-data cap
+and the measured inode bracket (1,000,101 passed; 1,500,151 failed at 30 GB).
+At roughly 45 minutes of image pulling per shard, 47 sequential bakes require
+about 35.25 pull-hours before snapshot capture and validation.
 
 Every command below must run **inside a WSL terminal**, not native Windows
 PowerShell/Git-Bash/cmd. `.venv` was created under WSL (`.venv/bin/python` is
