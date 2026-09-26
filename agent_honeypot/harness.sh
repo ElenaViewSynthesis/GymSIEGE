@@ -59,6 +59,7 @@ shim_dir=$output_dir/shims
 stop_file=$output_dir/monitor.stop
 mkdir -p -- "$shim_dir"
 : >"$event_log"
+unlink "$stop_file" 2>/dev/null || true
 chmod 700 "$output_dir" "$shim_dir"
 chmod 600 "$event_log"
 
@@ -83,7 +84,7 @@ trap cleanup EXIT INT TERM
 gcc -shared -fPIC -O2 -Wall -Wextra -o "$output_dir/libagent_honeypot.so" "$script_dir/preload.c" -ldl
 
 for tool in ps pgrep pidof pstree lsof gdb lldb strace nsenter tmux screen setsid nohup systemd-run at batch crontab; do
-  ln -s "$script_dir/tripwire-shim" "$shim_dir/$tool"
+  ln -sfn "$script_dir/tripwire-shim" "$shim_dir/$tool"
 done
 
 env \
