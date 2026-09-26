@@ -1,0 +1,921 @@
+task,project,sanitizer,crash_type,source_rev
+arduinojson/arvo_24633,arduinojson,MSan,"use-of-uninitialized-value /src/arduinojson/extras/fuzzing/../../src/ArduinoJson/Json/Utf8.hpp:26:9 in void ArduinoJson6160_71::Utf8::encodeCodepoint<ArduinoJson6160_71::StringCopier>(unsigned int, ArduinoJson6160_71::StringCopier&)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+arrow/arvo_24101,arrow,ASan,negative-size-param /src/llvm-project/compiler-rt/lib/asan/asan_interceptors_memintrinsics.cpp:22:3 in __asan_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+arrow/arvo_41143,arrow,ASan,heap-buffer-overflow /src/arrow/cpp/src/arrow/array/validate.cc:571:26 in ValidateOffsets<arrow::ListType>,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+arrow/arvo_41221,arrow,ASan,heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/asan_interceptors_memintrinsics.cpp:22:3 in __asan_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+arrow/arvo_57209,arrow,UBSan,SEGV /src/arrow/cpp/src/arrow/util/bit_util.h:70:59 in PopCount,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+arrow/arvo_63679,arrow,ASan,heap-buffer-overflow /usr/local/bin/../include/c++/v1/__utility/swap.h:37:7 in swap<arrow::Buffer *>,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+arrow/oss-fuzz_447480433,arrow,ASan,heap-buffer-overflow /src/arrow/cpp/src/arrow/util/bit_stream_utils_internal.h:112:5 in ReadLittleEndianWord,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+arrow/oss-fuzz_454097865,arrow,ASan,heap-buffer-overflow /src/arrow/cpp/src/arrow/util/bit_util.h:458:26 in ParseLeadingLEB128<unsigned int>,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+assimp/arvo_24465,assimp,ASan,"heap-buffer-overflow /src/assimp/include/assimp/IOStreamBuffer.h:274:15 in Assimp::IOStreamBuffer<char>::getNextDataLine(std::__1::vector<char, std::__1::allocator<char> >&, char)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+assimp/arvo_25240,assimp,ASan,SEGV /src/assimp/code/AssetLib/Obj/ObjFileMtlImporter.cpp in Assimp::ObjFileMtlImporter::getFloatValue(float&),b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+assimp/arvo_25341,assimp,ASan,heap-buffer-overflow /src/assimp/include/assimp/texture.h:104:16 in operator!=,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+assimp/arvo_25401,assimp,ASan,"heap-buffer-overflow /src/assimp/code/AssetLib/HMP/HMPLoader.cpp:456:18 in Assimp::HMPImporter::ReadFirstSkin(unsigned int, unsigned char const*, unsigned char const**)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+assimp/arvo_33238,assimp,ASan,stack-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/../sanitizer_common/sanitizer_common_interceptors.inc:497:3 in strncmp,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+assimp/arvo_38870,assimp,ASan,stack-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/asan_interceptors_memintrinsics.cpp:22:3 in __asan_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+assimp/arvo_38947,assimp,ASan,"stack-buffer-overflow /usr/local/bin/../include/c++/v1/string:1507:34 in std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char> >::__get_long_size() const",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+assimp/arvo_43414,assimp,ASan,"heap-buffer-overflow /src/assimp/code/Common/ZipArchiveIOSystem.cpp:131:13 in Assimp::IOSystem2Unzip::opendisk(void*, void*, unsigned int, int)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+assimp/arvo_47392,assimp,ASan,heap-buffer-overflow /src/assimp/include/assimp/ParsingUtils.h:144:12 in SkipSpacesAndLineEnd<char>,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+assimp/arvo_49797,assimp,ASan,heap-buffer-overflow /src/assimp/code/Common/ScenePreprocessor.cpp:148:26 in Assimp::ScenePreprocessor::ProcessMesh(aiMesh*),b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+assimp/arvo_50589,assimp,UBSan,"SEGV /src/assimp/include/assimp/IOStreamBuffer.h:298:16 in Assimp::IOStreamBuffer<char>::getNextLine(std::__1::vector<char, std::__1::allocator<char> >&)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+assimp/arvo_57001,assimp,ASan,SEGV /src/assimp/code/PostProcessing/SortByPTypeProcess.cpp:175:17 in Assimp::SortByPTypeProcess::Execute(aiScene*),b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+assimp/arvo_58479,assimp,UBSan,SEGV /src/assimp/code/AssetLib/MDL/MDLLoader.cpp:437:24 in Assimp::MDLImporter::InternReadFile_Quake1(),b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+assimp/arvo_58770,assimp,UBSan,SEGV (/lib/x86_64-linux-gnu/libc.so.6+0x18bb38) (BuildId: 87b331c034a6458c64ce09c03939e947212e18ce),b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+assimp/arvo_59056,assimp,ASan,bad-free /src/llvm-project/compiler-rt/lib/asan/asan_new_delete.cpp:152:3 in operator delete(void*),b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+assimp/oss-fuzz_417905428,assimp,ASan,heap-use-after-free /src/assimp/include/assimp/mesh.h:857:18 in aiMesh::~aiMesh(),b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+assimp/oss-fuzz_42535201,assimp,ASan,"heap-buffer-overflow /src/assimp/code/AssetLib/MD3/MD3Loader.cpp:1037:53 in Assimp::MD3Importer::InternReadFile(std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char>> const&, aiScene*, Assimp::IOSystem*)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+assimp/oss-fuzz_428051724,assimp,ASan,"heap-buffer-overflow /src/assimp/code/AssetLib/MDL/HalfLife/HL1MDLLoader.cpp:234:21 in Assimp::MDL::HalfLife::HL1MDLLoader::validate_header(Assimp::MDL::HalfLife::Header_HL1 const*, bool)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+assimp/oss-fuzz_434376054,assimp,ASan,"heap-buffer-overflow /src/assimp/code/AssetLib/COB/COBLoader.cpp:361:64 in Assimp::COBImporter::BuildNodes(Assimp::COB::Node const&, Assimp::COB::Scene const&, aiScene*)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+assimp/oss-fuzz_447262177,assimp,ASan,SEGV /src/assimp/code/Material/MaterialSystem.cpp:447:34 in Clear,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+bind9/arvo_63186,bind9,UBSan,undefined-behavior qp.c:2000:6 in,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_18615,binutils,ASan,stack-buffer-overflow /src/llvm/projects/compiler-rt/lib/asan/asan_interceptors.cpp:483:5 in strncpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_19414,binutils,ASan,stack-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/asan_interceptors_memintrinsics.cpp:22:3 in __asan_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_19573,binutils,ASan,heap-buffer-overflow /src/binutils-gdb/bfd/coff64-rs6000.c:1962:24 in xcoff64_slurp_armap,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_19702,binutils,UBSan,undefined-behavior crx-dis.c:108:15 in,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_19822,binutils,ASan,heap-buffer-overflow /src/binutils-gdb/bfd/libbfd.c:683:24 in bfd_getb32,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_19910,binutils,UBSan,undefined-behavior z8k-dis.c:220:17 in,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_20840,binutils,ASan,heap-buffer-overflow /src/binutils-gdb/bfd/libbfd.c:548:11 in bfd_getl16,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_21011,binutils,ASan,double-free /src/llvm-project/compiler-rt/lib/asan/asan_malloc_linux.cpp:123:3 in free,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_21300,binutils,MSan,use-of-uninitialized-value /src/binutils-gdb/opcodes/metag-dis.c:3376:11 in print_insn_metag,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_21339,binutils,MSan,use-of-uninitialized-value /src/binutils-gdb/bfd/i386msdos.c:60:7 in msdos_object_p,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_23743,binutils,ASan,heap-use-after-free /src/llvm-project/compiler-rt/lib/asan/../sanitizer_common/sanitizer_common_interceptors.inc:372:5 in strlen,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_23778,binutils,MSan,use-of-uninitialized-value /src/binutils-gdb/bfd/peXXigen.c:1164:7 in _bfd_pei_slurp_codeview_record,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_24020,binutils,ASan,heap-buffer-overflow /src/binutils-gdb/binutils/./readelf.h:8364:36 in slurp_hppa_unwind_table,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_25841,binutils,ASan,heap-buffer-overflow /src/binutils-gdb/binutils/dwarf.c:347:28 in read_leb128,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_31961,binutils,ASan,global-buffer-overflow /src/binutils-gdb/opcodes/i386-dis.c:9786:33 in print_insn,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_40465,binutils,ASan,heap-buffer-overflow /src/binutils-gdb/binutils/deflex.l:73:23 in yylex,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_40512,binutils,MSan,use-of-uninitialized-value /src/binutils-gdb/bfd/cache.c:386:12 in cache_bwrite,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_40544,binutils,ASan,heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/../sanitizer_common/sanitizer_common_interceptors.inc:1043:16 in fread,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_40618,binutils,ASan,dynamic-stack-buffer-overflow /src/binutils-gdb/bfd/bfd.c:1341:16 in error_handler_internal,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_40683,binutils,ASan,heap-buffer-overflow /src/binutils-gdb/bfd/libbfd.c:727:23 in bfd_getl32,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_42179,binutils,ASan,heap-buffer-overflow /src/binutils-gdb/bfd/libbfd.c:870:11 in bfd_putl32,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_42639,binutils,ASan,heap-buffer-overflow /src/binutils-gdb/bfd/libbfd.c:730:24 in bfd_getl32,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_43372,binutils,MSan,use-of-uninitialized-value /src/binutils-gdb/opcodes/i386-dis.c:13200:11 in OP_VEX,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_43434,binutils,ASan,heap-buffer-overflow /src/binutils-gdb/bfd/vms-alpha.c:7393:42 in evax_bfd_print_dst,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_43545,binutils,ASan,SEGV (<unknown module>),b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_43795,binutils,MSan,use-of-uninitialized-value /src/binutils-gdb/gas/macro.c:188:10 in buffer_and_nest,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_44864,binutils,ASan,heap-buffer-overflow /src/binutils-gdb/bfd/vms-alpha.c:7424:9 in evax_bfd_print_dst,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_44953,binutils,ASan,heap-buffer-overflow /src/binutils-gdb/bfd/som.c:5036:22 in som_set_reloc_info,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_46516,binutils,ASan,heap-buffer-overflow /src/binutils-gdb/gas/sb.c:195:20 in sb_terminate,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_47101,binutils,ASan,heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/asan_interceptors_memintrinsics.cpp:26:3 in __asan_memset,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_47975,binutils,MSan,use-of-uninitialized-value /src/binutils-gdb/gas/input-file.c:176:9 in input_file_open,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_49801,binutils,ASan,"heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/../sanitizer_common/sanitizer_common_interceptors_format.inc:553:9 in printf_common(void*, char const*, __va_list_tag*)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_50305,binutils,ASan,heap-buffer-overflow /src/binutils-gdb/bfd/libbfd.c:714:23 in bfd_getb32,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_51008,binutils,MSan,use-of-uninitialized-value /src/binutils-gdb/bfd/vms-alpha.c:1602:7 in dst_retrieve_location,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_51010,binutils,UBSan,undefined-behavior arm-dis.c:8960:27 in,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_51661,binutils,ASan,heap-use-after-free /src/binutils-gdb/bfd/opncls.c:844:9 in bfd_close_all_done,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_51799,binutils,ASan,SEGV /src/binutils-gdb/libiberty/./hashtab.c:703:59 in htab_find_slot,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_51845,binutils,ASan,SEGV /src/binutils-gdb/bfd/syms.c:1037:31 in _bfd_stab_section_find_nearest_line,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_52228,binutils,ASan,SEGV /src/binutils-gdb/binutils/./fuzz_objdump.h:4257:13 in reloc_at,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_52243,binutils,ASan,heap-buffer-overflow /src/binutils-gdb/bfd/libbfd.c:727:23 in bfd_getl32,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_53740,binutils,ASan,heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/asan_interceptors_memintrinsics.cpp:30:3 in __asan_memmove,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_54330,binutils,ASan,heap-buffer-overflow /src/binutils-gdb/bfd/libbfd.c:729:24 in bfd_getl32,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_54667,binutils,ASan,SEGV /src/binutils-gdb/bfd/vms-alpha.c:4581:48 in parse_module,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_55020,binutils,ASan,SEGV /src/binutils-gdb/bfd/libbfd.c:846:11 in bfd_putl32,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_55587,binutils,ASan,heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/asan_interceptors_memintrinsics.cpp:22:3 in __asan_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_55933,binutils,ASan,heap-buffer-overflow /src/binutils-gdb/bfd/ecoff.c:946:30 in _bfd_ecoff_slurp_symbol_table,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_55985,binutils,ASan,SEGV (/lib/x86_64-linux-gnu/libc.so.6+0xbbc12) (BuildId: 87b331c034a6458c64ce09c03939e947212e18ce),b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_56277,binutils,ASan,SEGV /src/llvm-project/compiler-rt/lib/asan/asan_mapping.h:377:21 in AddressIsPoisoned,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_56726,binutils,ASan,heap-buffer-overflow /src/binutils-gdb/bfd/reloc16.c:319:28 in bfd_coff_reloc16_get_relocated_section_contents,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_56917,binutils,ASan,memcpy-param-overlap /src/llvm-project/compiler-rt/lib/asan/asan_interceptors_memintrinsics.cpp:22:3 in __asan_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_57025,binutils,MSan,use-of-uninitialized-value /src/binutils-gdb/binutils/./fuzz_objdump.h:4395:7 in dump_dwarf_section,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_57570,binutils,ASan,"heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/../sanitizer_common/sanitizer_common_interceptors_format.inc:553:9 in printf_common(void*, char const*, __va_list_tag*)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_57643,binutils,MSan,use-of-uninitialized-value /src/binutils-gdb/libiberty/./floatformat.c:504:7 in floatformat_to_double,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_57879,binutils,UBSan,undefined-behavior dwarf2.c:2232:7 in,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_58086,binutils,ASan,"heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/../sanitizer_common/sanitizer_common_interceptors_format.inc:553:9 in printf_common(void*, char const*, __va_list_tag*)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_58283,binutils,ASan,SEGV /src/binutils-gdb/bfd/coffgen.c:783:43 in coff_mangle_symbols,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_59148,binutils,ASan,heap-buffer-overflow /src/binutils-gdb/bfd/libbfd.c:838:18 in bfd_getl32,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_59488,binutils,ASan,SEGV /src/binutils-gdb/binutils/./fuzz_nm.h:790:7 in filter_symbols,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_59591,binutils,ASan,heap-buffer-overflow /src/binutils-gdb/bfd/ecoff.c:983:30 in _bfd_ecoff_slurp_symbol_table,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_60532,binutils,MSan,use-of-uninitialized-value /src/binutils-gdb/bfd/elf.c:1899:2 in offset_from_vma,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_61011,binutils,ASan,heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/../sanitizer_common/sanitizer_common_interceptors.inc:389:5 in strlen,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_61677,binutils,ASan,global-buffer-overflow /src/binutils-gdb/opcodes/kvx-dis.c:479:29 in kvx_reassemble_bundle,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_61778,binutils,ASan,heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/asan_interceptors_memintrinsics.cpp:22:3 in __asan_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_61822,binutils,ASan,stack-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/asan_interceptors_memintrinsics.cpp:22:3 in __asan_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_62612,binutils,ASan,bad-free /src/llvm-project/compiler-rt/lib/asan/asan_malloc_linux.cpp:52:3 in free,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_62752,binutils,ASan,heap-buffer-overflow /src/binutils-gdb/bfd/libbfd.c:751:11 in bfd_getl16,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_62986,binutils,ASan,heap-buffer-overflow /src/binutils-gdb/bfd/libbfd.c:751:11 in bfd_getl16,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_63196,binutils,ASan,bad-free /src/llvm-project/compiler-rt/lib/asan/asan_malloc_linux.cpp:52:3 in free,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/arvo_63742,binutils,MSan,SEGV /src/binutils-gdb/bfd/libbfd.c:845:7 in bfd_getl32,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/oss-fuzz_408254000,binutils,unknown,unknown,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/oss-fuzz_410786957,binutils,unknown,unknown,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/oss-fuzz_439479327,binutils,unknown,unknown,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+binutils/oss-fuzz_449440793,binutils,unknown,unknown,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+boringssl/arvo_55556,boringssl,ASan,heap-use-after-free /src/boringssl/crypto/stack/stack.c:100:14 in sk_num,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+boringssl/arvo_9808,boringssl,ASan,"heap-buffer-overflow /src/boringssl/ssl/ssl_privkey.cc:614:29 in parse_sigalgs_list(bssl::Array<unsigned short>*, char const*)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+botan/arvo_10628,botan,ASan,"heap-buffer-overflow /src/botan/./src/fuzzer/mode_padding.cpp:63:10 in ref_oneandzero_unpad(unsigned char const*, unsigned long)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+botan/arvo_6581,botan,ASan,"heap-buffer-overflow /src/botan/src/lib/math/mp/mp_monty.cpp:62:17 in Botan::bigint_monty_redc(unsigned long*, unsigned long const*, unsigned long, unsigned long, unsigned long*, unsigned long)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+botan/arvo_6626,botan,MSan,"use-of-uninitialized-value /src/botan/build/include/botan/internal/mp_asmi.h:119:4 in Botan::word_add(unsigned long, unsigned long, unsigned long*)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+c-blosc2/arvo_23717,c-blosc2,MSan,SEGV /src/c-blosc2/blosc/blosc-private.h:51:15 in sw32_,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+c-blosc2/arvo_25704,c-blosc2,ASan,heap-buffer-overflow /src/c-blosc2/blosc/blosc-private.h:44:13 in sw32_,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+c-blosc2/arvo_26171,c-blosc2,ASan,heap-buffer-overflow /src/c-blosc2/internal-complibs/zstd-1.4.5/decompress/../common/mem.h:224:78 in MEM_read32,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+c-blosc2/arvo_26406,c-blosc2,MSan,use-of-uninitialized-value /src/c-blosc2/internal-complibs/miniz-2.0.8/miniz.c:2801:13 in tinfl_decompress,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+c-blosc2/arvo_26442,c-blosc2,ASan,heap-buffer-overflow /src/c-blosc2/blosc/blosc-private.h:68:23 in _sw32,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+c-blosc2/arvo_26755,c-blosc2,MSan,use-of-uninitialized-value /src/c-blosc2/internal-complibs/lizard-1.0/lizard_decompress_liz.h:166:81 in Lizard_decompress_LIZv1,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+c-blosc2/arvo_27812,c-blosc2,ASan,SEGV /src/c-blosc2/blosc/frame.c:932:5 in frame_get_usermeta,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+c-blosc2/arvo_27816,c-blosc2,unknown,unknown,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+c-blosc2/arvo_27818,c-blosc2,ASan,heap-buffer-overflow /src/c-blosc2/internal-complibs/lizard-1.0/lizard_decompress_liz.h in Lizard_decompress_LIZv1,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+c-blosc2/arvo_27934,c-blosc2,MSan,use-of-uninitialized-value /src/c-blosc2/internal-complibs/miniz-2.0.8/miniz.c:2801:13 in tinfl_decompress,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+c-blosc2/arvo_29125,c-blosc2,MSan,use-of-uninitialized-value /src/c-blosc2/internal-complibs/zstd-1.4.8/decompress/zstd_decompress_block.c:1522:9 in ZSTD_checkContinuity,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+c-blosc2/arvo_29171,c-blosc2,ASan,SEGV /src/c-blosc2/blosc/blosc-private.h:44:13 in sw32_,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+c-blosc2/arvo_29976,c-blosc2,ASan,heap-buffer-overflow /src/c-blosc2/blosc/blosc2.c:2637:21 in blosc_getitem,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+c-blosc2/arvo_30113,c-blosc2,UBSan,SEGV (/lib/x86_64-linux-gnu/libc.so.6+0x14e268),b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+c-blosc2/arvo_30748,c-blosc2,unknown,unknown,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+c-blosc2/arvo_30868,c-blosc2,ASan,heap-buffer-overflow /src/c-blosc2/blosc/frame.c:1334:7 in get_vlmeta_from_trailer,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+c-blosc2/arvo_30974,c-blosc2,ASan,SEGV /src/llvm-project/compiler-rt/lib/asan/asan_mapping.h:407:21 in AddressIsPoisoned,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+c-blosc2/arvo_31038,c-blosc2,UBSan,SEGV (/lib/x86_64-linux-gnu/libc.so.6+0x14e268),b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+c-blosc2/arvo_31120,c-blosc2,ASan,heap-use-after-free /src/c-blosc2/blosc/blosc-private.h:44:13 in sw32_,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+c-blosc2/arvo_31705,c-blosc2,ASan,bad-free /src/llvm-project/compiler-rt/lib/asan/asan_malloc_linux.cpp:127:3 in free,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+c-blosc2/arvo_33071,c-blosc2,ASan,heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/asan_interceptors_memintrinsics.cpp:22:3 in __asan_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+c-blosc2/arvo_33251,c-blosc2,ASan,heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/asan_interceptors_memintrinsics.cpp:22:3 in __asan_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+c-blosc2/arvo_34259,c-blosc2,ASan,negative-size-param /src/llvm-project/compiler-rt/lib/asan/asan_interceptors_memintrinsics.cpp:22:3 in __asan_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+capstone/arvo_13466,capstone,MSan,use-of-uninitialized-value /src/capstonenext/arch/X86/X86IntelInstPrinter.c:807:7 in printOperand,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+capstone/arvo_13467,capstone,MSan,use-of-uninitialized-value /src/capstonenext/arch/X86/X86IntelInstPrinter.c:730:24 in X86_Intel_printInst,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+capstone/arvo_14912,capstone,MSan,use-of-uninitialized-value /src/capstonenext/SStream.c:177:6 in printUInt32,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+capstone/arvo_58666,capstone,MSan,use-of-uninitialized-value /src/capstonenext/arch/PowerPC/PPCInstPrinter.c:83:6 in PPC_post_printer,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+clamav/arvo_23499,clamav,ASan,heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/../sanitizer_common/sanitizer_common_interceptors.inc:5168:5 in iconv,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+cpython3/arvo_61721,cpython3,MSan,use-of-uninitialized-value /src/cpython3/Objects/funcobject.c:272:9 in _PyFunction_SetVersion,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+cpython3/oss-fuzz_368076875,cpython3,ASan,heap-use-after-free /src/cpython3/./Include/refcount.h:112:13 in _Py_IsImmortal,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+curl/arvo_66012,curl,ASan,heap-use-after-free /src/curl/lib/ftp.c:537:19 in ftp_endofresp,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+cyclonedds/arvo_51292,cyclonedds,ASan,SEGV /src/llvm-project/compiler-rt/lib/asan/../sanitizer_common/sanitizer_atomic_clang.h:81:10 in atomic_compare_exchange_strong<__sanitizer::atomic_uint8_t>,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+cyclonedds/arvo_56515,cyclonedds,UBSan,SEGV /src/cyclonedds/src/core/ddsi/src/ddsi_typelib.c:485:21 in ddsi_type_add_typeobj,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+dav1d/arvo_60432,dav1d,ASan,SEGV ../../src/dav1d/src/x86/ipred16_sse.asm in dav1d_pal_pred_16bpc_ssse3.w32,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+duckdb/arvo_56682,duckdb,ASan,container-overflow /src/llvm-project/compiler-rt/lib/asan/asan_interceptors_memintrinsics.cpp:22:3 in __asan_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+elfutils/arvo_42264,elfutils,ASan,SEGV /src/elfutils/libdwfl/dwfl_segment_report_module.c:565:30 in dwfl_segment_report_module,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+elfutils/arvo_43307,elfutils,unknown,unknown,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+elfutils/arvo_56179,elfutils,MSan,use-of-uninitialized-value /src/elfutils/libdw/dwarf_begin_elf.c:265:7 in check_section,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+exiv2/arvo_45993,exiv2,ASan,"heap-buffer-overflow /src/exiv2/src/types.cpp:278:10 in Exiv2::getULong(unsigned char const*, Exiv2::ByteOrder)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+exiv2/arvo_50629,exiv2,ASan,heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/../sanitizer_common/sanitizer_common_interceptors.inc:389:5 in strlen,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+exiv2/arvo_50901,exiv2,ASan,heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/asan_interceptors_memintrinsics.cpp:22:3 in __asan_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+exiv2/arvo_61675,exiv2,ASan,container-overflow /src/llvm-project/compiler-rt/lib/asan/../sanitizer_common/sanitizer_common_interceptors.inc:827:5 in __interceptor_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+exiv2/arvo_64151,exiv2,ASan,heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/../sanitizer_common/sanitizer_common_interceptors.inc:389:5 in strlen,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+faad2/arvo_58287,faad2,ASan,stack-buffer-overflow /src/faad2/libfaad/pns.c:102:17 in gen_rand_vector,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+faad2/arvo_58364,faad2,UBSan,undefined-behavior syntax.c:372:13 in,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+faad2/arvo_58452,faad2,MSan,use-of-uninitialized-value /src/faad2/libfaad/lt_predict.c:154:9 in real_to_int16,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_368729566,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/libavformat/mpegts.c:1608:16 in parse_MP4SLDescrTag,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_375286238,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/libavcodec/lossless_videodsp.c:80:5 in add_left_pred_c,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_376726596,ffmpeg,ASan,heap-buffer-overflow /src/ffmpeg/libavcodec/get_bits.h:391:26 in get_bits1,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_377642312,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/libavformat/iamf_parse.c in ff_iamf_parse_obu_header,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_378102638,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/libswscale/swscale.c:119:18 in hScale16To15_c,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_383170476,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/libavformat/mlvdec.c:91:9 in read_string,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_383825642,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/libavutil/mem.c:276:22 in av_strdup,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_383825645,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/libavformat/mpegts.c:2026:13 in ff_parse_mpeg2_descriptor,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_385167047,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/libavformat/ipmovie.c:618:12 in ipmovie_read_header,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_385170375,ffmpeg,ASan,heap-buffer-overflow /src/ffmpeg/libavcodec/get_bits.h:658:5 in get_vlc2,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_42537562,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/libavcodec/pngdec.c:236:22 in ff_add_png_paeth_prediction,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_42537564,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/libavcodec/lossless_videodsp.c:80:5 in add_left_pred_c,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_42537569,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/libavcodec/apac.c:107:9 in get_code,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_42537575,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/./libavutil/common.h:183:14 in av_clip_c,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_42537576,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/libavformat/mpeg.c:571:14 in mpegps_read_packet,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_42537578,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/libavcodec/wmavoice.c:1629:9 in synth_frame,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_42537583,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/libavcodec/mjpegdec.c:853:9 in decode_block,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_42537584,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/libavcodec/vc1_pred.c:431:21 in ff_vc1_pred_mv,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_42537586,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/libavcodec/vp9dsp_template.c:1796:38 in loop_filter,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_42537594,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/libavcodec/xvididct.c:69:9 in idct_row,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_42537600,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/./libavutil/common.h:183:14 in av_clip_c,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_42537601,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/libavformat/demux.c:1450:13 in read_frame_internal,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_42537602,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/libavformat/av1dec.c in read_obu_with_size,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_42537616,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/libavcodec/vp3dsp.c:412:24 in vp3_h_loop_filter_c,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_42537629,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/./libavutil/common.h:245:9 in av_clip_int16_c,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_42537635,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/libavformat/mvdec.c:188:10 in parse_video_var,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_42537640,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/libavcodec/vp8dsp.c:692:1 in vp7_h_loop_filter_simple_c,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_42537641,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/libavcodec/cbs_vp9.c:400:17 in cbs_vp9_split_fragment,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_42537643,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/libavcodec/simple_idct_template.c:139:9 in idctRowCondDC_int16_8bit,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_42537660,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/libavcodec/vp8dsp.c:584:1 in put_vp8_epel8_h6v6_c,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_42537662,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/libavcodec/error_resilience.c:668:25 in guess_mv,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_42537664,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/libavcodec/dds.c:483:21 in run_postproc,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_42537665,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/libavformat/iamf_parse.c in ff_iamf_parse_obu_header,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_42537669,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/libavformat/mxfdec.c:1561:9 in mxf_read_indirect_value,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_42537683,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/./libavutil/common.h:282:9 in av_clip_uintp2_c,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_42537686,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/./libavutil/common.h:282:9 in av_clip_uintp2_c,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_42537687,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/./libavutil/common.h:282:9 in av_clip_uintp2_c,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_42537705,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/libavcodec/msmpeg4dec.c:804:9 in ff_msmpeg4_decode_block,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_42537730,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/libavformat/rmdec.c:201:36 in rm_read_audio_stream_info,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_42537734,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/libavcodec/webp.c:455:19 in decode_entropy_image,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_42537735,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/libavcodec/jpegxl_parse.c:276:63 in ff_jpegxl_parse_codestream_header,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_42537748,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/libavcodec/h263dsp.c:87:13 in h263_v_loop_filter_c,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_42537769,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/libavcodec/h274.c:179:63 in generate,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_42537773,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/./libavutil/common.h:183:14 in av_clip_c,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_42537788,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/./libavutil/common.h:282:9 in av_clip_uintp2_c,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_42537827,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/libavformat/apetag.c:125:9 in ff_ape_parse_tag,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_42537828,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/libavcodec/vc1dsp.c:157:9 in vc1_filter_line,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_42537859,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/libavcodec/rv30dsp.c:261:1 in put_rv30_tpel8_h_lowpass,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_42537861,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/./libavutil/common.h:200:14 in av_clip64_c,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_42537998,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/libavcodec/idctdsp.c:134:17 in put_signed_pixels_clamped_c,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_42538001,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/libavcodec/notchlc.c:163:11 in decode_blocks,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_42538056,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/libavformat/argo_brp.c:389:62 in argo_brp_read_packet,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_42538131,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/libavformat/iamf_parse.c in ff_iamf_parse_obu_header,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_42538238,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/libavformat/mxfdec.c:693:9 in mxf_decrypt_triplet,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_42538351,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/./libavutil/common.h:212:9 in av_clip_uint8_c,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_42538357,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/libavformat/qcp.c:79:29 in is_qcelp_13k_guid,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_42538574,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/./libavutil/common.h:183:14 in av_clip_c,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_431665305,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/libavcodec/dxv.c:314:13 in dxv_decompress_cgo,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_432058941,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/./libavcodec/h26x/h2656_sao_template.c:42:22 in sao_band_filter_8,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_435225510,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/libavcodec/texturedsp.c:63:14 in extract_color,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_435779505,ffmpeg,ASan,heap-buffer-overflow /src/ffmpeg/libavcodec/h264chroma_template.c:207:1 in put_h264_chroma_mc1_8_c,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_436385279,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/libavcodec/notchlc.c:192:27 in decode_blocks,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_436997807,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/libavcodec/scpr3.c:1202:27 in decompress_p3,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_438780119,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/libavcodec/utvideodec.c:732:19 in decode_frame,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_439878388,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/./libavcodec/mathops.h:106:13 in mid_pred,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_443923343,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/libavformat/flac_picture.c:167:29 in ff_flac_parse_picture,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ffmpeg/oss-fuzz_445961558,ffmpeg,MSan,use-of-uninitialized-value /src/ffmpeg/libavcodec/lossless_videodsp.c:100:5 in add_left_pred_int16_c,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+file/arvo_38393,file,ASan,SEGV /src/file/src/cdf.c:181:8 in cdf_getuint32,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+file/arvo_48736,file,ASan,heap-buffer-overflow /src/file/src/is_json.c:407:15 in json_parse,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+file/arvo_51603,file,ASan,"heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/../sanitizer_common/sanitizer_common_interceptors_format.inc:553:9 in printf_common(void*, char const*, __va_list_tag*)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+flac/arvo_17069,flac,ASan,heap-buffer-overflow /src/flac/src/libFLAC/bitreader.c:872:8 in FLAC__bitreader_read_rice_signed_block,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+flac/arvo_38347,flac,ASan,heap-buffer-overflow /src/flac/src/libFLAC/lpc_intrin_sse41.c:1017:13 in FLAC__lpc_restore_signal_intrin_sse41,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+flac/arvo_38815,flac,MSan,use-of-uninitialized-value /usr/include/fuzzing/memory.hpp:37:5 in memory_test_msan,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+flac/arvo_47525,flac,MSan,use-of-uninitialized-value /src/flac/src/libFLAC/stream_decoder.c:2019:6 in frame_sync_,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+flac/arvo_57320,flac,MSan,use-of-uninitialized-value /src/flac/src/share/grabbag/cuesheet.c:192:5 in local__parse_ms_,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+flac/arvo_57354,flac,ASan,heap-use-after-free /src/flac/oss-fuzz/../src/flac/analyze.c:144:28 in flac__analyze_frame,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+flac/arvo_58481,flac,ASan,heap-buffer-overflow /src/flac/oss-fuzz/../src/flac/analyze.c:144:28 in flac__analyze_frame,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+flac/arvo_61292,flac,ASan,heap-use-after-free /src/flac/oss-fuzz/../src/metaflac/options.c:256:57 in parse_options,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+flac/arvo_63790,flac,MSan,use-of-uninitialized-value /src/flac/oss-fuzz/../src/flac/decode.c:1308:49 in write_callback,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+flac/oss-fuzz_42537169,flac,MSan,use-of-uninitialized-value /src/flac/src/share/replaygain_synthesis/replaygain_synthesis.c:250:6 in dither_output_,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+flatbuffers/arvo_46883,flatbuffers,MSan,use-of-uninitialized-value /src/flatbuffers/src/idl_parser.cpp:495:47 in flatbuffers::Parser::Next(),b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+fluent-bit/arvo_26325,fluent-bit,ASan,"heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/../sanitizer_common/sanitizer_common_interceptors_format.inc:553:9 in printf_common(void*, char const*, __va_list_tag*)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+fluent-bit/arvo_26327,fluent-bit,ASan,heap-buffer-overflow /src/fluent-bit/src/flb_strptime.c:674:6 in _conv_num,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+fluent-bit/arvo_26345,fluent-bit,ASan,heap-use-after-free /src/fluent-bit/src/flb_parser_decoder.c:743:5 in flb_parser_decoder_list_destroy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+fluent-bit/arvo_26593,fluent-bit,ASan,heap-buffer-overflow /src/fluent-bit/src/flb_utils.c:477:9 in flb_utils_time_to_seconds,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+fluent-bit/arvo_27025,fluent-bit,ASan,double-free /src/llvm-project/compiler-rt/lib/asan/asan_malloc_linux.cpp:127:3 in free,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+fluent-bit/arvo_27241,fluent-bit,ASan,heap-buffer-overflow /src/fluent-bit/src/flb_strptime.c:442:11 in _flb_strptime,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+fluent-bit/arvo_27279,fluent-bit,ASan,double-free /src/llvm-project/compiler-rt/lib/asan/asan_malloc_linux.cpp:127:3 in free,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+fluent-bit/arvo_27710,fluent-bit,ASan,heap-buffer-overflow /src/fluent-bit/src/flb_signv4.c:190:18 in flb_signv4_uri_normalize_path,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+fluent-bit/arvo_28265,fluent-bit,ASan,heap-buffer-overflow /src/fluent-bit/src/flb_http_client.c:308:9 in process_chunked_data,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+fluent-bit/arvo_30090,fluent-bit,ASan,heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/asan_interceptors_memintrinsics.cpp:22:3 in __asan_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+fluent-bit/arvo_33750,fluent-bit,ASan,double-free /src/llvm-project/compiler-rt/lib/asan/asan_malloc_linux.cpp:127:3 in free,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+fluent-bit/arvo_34116,fluent-bit,ASan,double-free /src/llvm-project/compiler-rt/lib/asan/asan_malloc_linux.cpp:127:3 in free,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+fluent-bit/arvo_46082,fluent-bit,unknown,unknown,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+fluent-bit/arvo_51132,fluent-bit,ASan,double-free /src/llvm-project/compiler-rt/lib/asan/asan_malloc_linux.cpp:52:3 in free,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+fmt/arvo_25884,fmt,ASan,stack-buffer-overflow /src/fmt/build/../include/fmt/core.h:729:21 in fmt::v7::detail::buffer<char>::push_back(char const&),b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+freetype2/arvo_368,freetype2,ASan,heap-use-after-free /src/freetype2/src/cff/cffparse.c:440:10 in cff_parse_num,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+freetype2/arvo_509,freetype2,ASan,heap-buffer-overflow /src/freetype2/src/truetype/ttobjs.c:1215:27 in tt_size_reset,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+freetype2/arvo_759,freetype2,ASan,heap-buffer-overflow /src/freetype2/src/truetype/ttgxvar.c:2139:25 in TT_Get_MM_Var,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+freetype2/arvo_8933,freetype2,ASan,heap-buffer-overflow /src/freetype2/src/sfnt/ttcpal.c:268:18 in tt_face_palette_set,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+freetype2/arvo_8968,freetype2,ASan,heap-buffer-overflow /src/freetype2/src/sfnt/ttcpal.c:133:28 in tt_face_load_cpal,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+fribidi/arvo_34695,fribidi,unknown,unknown,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+gdal/arvo_4071,gdal,ASan,"heap-buffer-overflow /src/gdal/gdal/gcore/overview.cpp:1912:66 in CPLErr GDALResampleChunk32R_ConvolutionT<float, false>(double, double, double, double, float const*, int, unsigned char*, int, int, int, int, int, int, int, int, GDALRasterBand**, int, float, double (*)(double), double (*)(double*), int, float)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+gdbm/arvo_38943,gdbm,unknown,unknown,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_42268,ghostscript,ASan,memcpy-param-overlap /src/llvm-project/compiler-rt/lib/asan/../sanitizer_common/sanitizer_common_interceptors.inc:827:5 in __interceptor_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_42280,ghostscript,ASan,heap-use-after-free /src/ghostpdl/./base/stream.c:415:24 in stell,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_42298,ghostscript,ASan,stack-buffer-overflow /src/ghostpdl/./pdf/pdf_font1C.c:765:14 in pdfi_read_cff_integer,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_42322,ghostscript,ASan,heap-buffer-overflow /src/ghostpdl/./pdf/pdf_fapi.c:212:37 in pdfi_fapi_get_word,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_42325,ghostscript,ASan,heap-buffer-overflow /src/ghostpdl/./pdf/pdf_repair.c:439:103 in pdfi_repair_file,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_42327,ghostscript,ASan,heap-buffer-overflow /src/ghostpdl/./pdf/pdf_deref.c:560:27 in pdfi_deref_compressed,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_42329,ghostscript,ASan,stack-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/../sanitizer_common/sanitizer_common_interceptors.inc:827:5 in __interceptor_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_42479,ghostscript,ASan,negative-size-param /src/llvm-project/compiler-rt/lib/asan/../sanitizer_common/sanitizer_common_interceptors.inc:827:5 in __interceptor_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_42560,ghostscript,ASan,heap-buffer-overflow /src/ghostpdl/./base/gsmchunk.c:654:16 in insert_free,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_42613,ghostscript,ASan,"global-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/../sanitizer_common/sanitizer_common_interceptors.inc:860:7 in MemcmpInterceptorCommon(void*, int (*)(void const*, void const*, unsigned long), void const*, void const*, unsigned long)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_42616,ghostscript,ASan,SEGV /src/ghostpdl/./pdf/pdf_deref.c:609:68 in pdfi_deref_compressed,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_42633,ghostscript,ASan,SEGV /src/ghostpdl/./base/gsmchunk.c:663:12 in remove_free_loc,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_42687,ghostscript,ASan,SEGV /src/ghostpdl/./pdf/pdf_dict.c:249:25 in pdfi_dict_get,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_42736,ghostscript,ASan,stack-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/asan_interceptors.cpp:399:5 in strncat,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_42907,ghostscript,ASan,SEGV /src/ghostpdl/./psi/iname.c:248:34 in names_string_ref,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_42917,ghostscript,ASan,SEGV /src/ghostpdl/./base/gsmchunk.c in CMP_SIZE,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_42957,ghostscript,ASan,global-buffer-overflow /src/ghostpdl/./pdf/pdf_dict.c:249:25 in pdfi_dict_get,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_42998,ghostscript,ASan,SEGV /src/ghostpdl/./base/gsmchunk.c:1093:31 in chunk_free_object,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_43004,ghostscript,ASan,SEGV /src/ghostpdl/./pdf/pdf_array.c:138:14 in pdfi_array_fetch,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_43012,ghostscript,ASan,stack-buffer-overflow /src/ghostpdl/./base/gsfunc3.c:121:16 in fn_ElIn_evaluate,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_43156,ghostscript,ASan,negative-size-param /src/llvm-project/compiler-rt/lib/asan/../sanitizer_common/sanitizer_common_interceptors.inc:827:5 in __interceptor_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_43255,ghostscript,ASan,SEGV /src/ghostpdl/./pdf/pdf_stack.h:56:18 in pdfi_countdown_impl,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_43268,ghostscript,ASan,heap-use-after-free /src/ghostpdl/./pdf/pdf_deref.c:928:28 in pdfi_dereference,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_43354,ghostscript,ASan,SEGV /src/ghostpdl/./base/gspcolor.c:254:35 in gx_restrict_Pattern,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_43599,ghostscript,ASan,SEGV /src/ghostpdl/./pdf/pdf_font1C.c:528:13 in u16,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_43621,ghostscript,ASan,heap-buffer-overflow /src/ghostpdl/./base/gdevm1.c:683:17 in mem_mono_copy_mono,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_43680,ghostscript,ASan,SEGV /src/ghostpdl/./base/gsmchunk.c:806:24 in chunk_obj_alloc,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_43688,ghostscript,ASan,heap-buffer-overflow /src/ghostpdl/./base/gdevm24.c:281:21 in mem_true24_fill_rectangle,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_43984,ghostscript,ASan,SEGV (/lib/x86_64-linux-gnu/libpthread.so.0+0xedd6) in pthread_cond_destroy@@GLIBC_2.3.2,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_44034,ghostscript,ASan,stack-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/../sanitizer_common/sanitizer_common_interceptors.inc:827:5 in __interceptor_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_44151,ghostscript,ASan,SEGV /src/ghostpdl/./pdf/pdf_array.c:138:14 in pdfi_array_fetch,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_44160,ghostscript,ASan,stack-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/../sanitizer_common/sanitizer_common_interceptors.inc:810:3 in __interceptor_memmove,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_44258,ghostscript,ASan,heap-buffer-overflow /src/ghostpdl/./pdf/pdf_xref.c:108:20 in read_xref_stream_entries,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_44406,ghostscript,ASan,heap-buffer-overflow /src/ghostpdl/./base/sstring.c:416:33 in s_hex_process,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_44610,ghostscript,ASan,heap-buffer-overflow /src/ghostpdl/./pdf/pdf_xref.c:114:22 in read_xref_stream_entries,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_44855,ghostscript,ASan,SEGV /src/ghostpdl/./base/gxdcolor.c:1068:44 in gx_dc_default_fill_masked,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_44983,ghostscript,ASan,stack-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/../sanitizer_common/sanitizer_common_interceptors.inc:827:5 in __interceptor_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_45173,ghostscript,ASan,SEGV /src/ghostpdl/./pdf/pdf_font1C.c:532:13 in u16,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_45222,ghostscript,ASan,SEGV /src/ghostpdl/./pdf/pdf_font1C.c:1936:30 in pdfi_read_cff,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_45320,ghostscript,ASan,SEGV (<unknown module>),b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_45347,ghostscript,ASan,SEGV /src/ghostpdl/./base/stream.c:496:12 in spgetcc,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_45992,ghostscript,ASan,SEGV /src/ghostpdl/./base/srle.c:150:22 in s_RLE_process,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_46307,ghostscript,ASan,heap-buffer-overflow /src/ghostpdl/./base/gxblend.c:2984:40 in template_compose_group,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_46734,ghostscript,ASan,SEGV /src/ghostpdl/./base/gsmalloc.c:335:24 in gs_heap_free_object,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_47157,ghostscript,ASan,heap-buffer-overflow /src/ghostpdl/./base/sfilter1.c:105:25 in s_PFBD_process,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_47601,ghostscript,ASan,heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/../sanitizer_common/sanitizer_common_interceptors.inc:827:5 in __interceptor_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_47770,ghostscript,ASan,SEGV /src/ghostpdl/./base/gsdevice.c:786:16 in gs_closedevice,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_48305,ghostscript,ASan,heap-use-after-free /src/ghostpdl/./psi/zdevice.c:74:24 in psi_device_ref_finalize,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_49290,ghostscript,ASan,SEGV /src/ghostpdl/./psi/iname.c:248:34 in names_string_ref,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_49528,ghostscript,ASan,heap-use-after-free /src/ghostpdl/./base/gstiffio.c:97:26 in gs_tifsSeekProc,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_49606,ghostscript,ASan,SEGV /src/ghostpdl/./pdf/pdf_repair.c:442:99 in pdfi_repair_file,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_50099,ghostscript,ASan,heap-buffer-overflow /src/ghostpdl/./pdf/pdf_font1C.c:822:14 in pdfi_read_cff_dict,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_50267,ghostscript,ASan,stack-buffer-overflow /src/ghostpdl/./base/gsgdata.c:119:5 in gs_glyph_data_from_string,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_50306,ghostscript,ASan,stack-buffer-underflow /src/ghostpdl/./base/gstype2.c:693:33 in gs_type2_interpret,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_50307,ghostscript,ASan,heap-use-after-free /src/ghostpdl/./base/gdevnfwd.c:33:5 in gx_device_forward_finalize,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_50326,ghostscript,ASan,stack-buffer-overflow /src/ghostpdl/./base/gsgdata.c:127:5 in gs_glyph_data_from_bytes,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_50656,ghostscript,ASan,heap-buffer-overflow /src/ghostpdl/./base/ttinterp.c:2335:23 in Ins_NPUSHB,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_50834,ghostscript,ASan,heap-buffer-overflow /src/ghostpdl/./base/ttinterp.c:735:14 in GetShortIns,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_50847,ghostscript,ASan,heap-buffer-overflow /src/ghostpdl/./base/ttfmain.c:653:50 in ttfOutliner__BuildGlyphOutlineAux,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_50893,ghostscript,ASan,heap-use-after-free /src/ghostpdl/./devices/vector/gdevxps.c:2411:28 in xps_tifsSeekProc,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_51011,ghostscript,ASan,stack-buffer-underflow /src/ghostpdl/./base/gxtype1.c:551:25 in gs_type1_piece_codes,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_51045,ghostscript,ASan,SEGV /src/ghostpdl/./base/ttinterp.c:4109:28 in Ins_ISECT,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_51089,ghostscript,ASan,stack-buffer-underflow /src/ghostpdl/./base/gstype2.c:659:29 in gs_type2_interpret,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_51275,ghostscript,ASan,stack-buffer-overflow /src/ghostpdl/./base/gstype2.c:506:46 in gs_type2_interpret,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_51418,ghostscript,ASan,heap-buffer-overflow /src/ghostpdl/./base/ttinterp.c:2389:23 in Ins_PUSHB,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_51618,ghostscript,ASan,heap-buffer-overflow /src/ghostpdl/./base/ttinterp.c:736:14 in GetShortIns,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_52145,ghostscript,ASan,stack-buffer-underflow /src/ghostpdl/./base/gstype2.c:785:34 in gs_type2_interpret,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_52986,ghostscript,ASan,heap-use-after-free /src/ghostpdl/./base/gsfont.c:190:32 in gs_font_finalize,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_53052,ghostscript,ASan,SEGV /src/ghostpdl/./base/ttinterp.c in Ins_MSIRP,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_53054,ghostscript,ASan,stack-buffer-underflow /src/ghostpdl/./base/gstype2.c:855:36 in gs_type2_interpret,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_53456,ghostscript,ASan,heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/../sanitizer_common/sanitizer_common_interceptors.inc:799:3 in memset,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_53619,ghostscript,ASan,heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/../sanitizer_common/sanitizer_common_interceptors.inc:827:5 in __interceptor_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_53711,ghostscript,ASan,stack-buffer-overflow /src/ghostpdl/./devices/vector/gdevpsfm.c:60:9 in pput_hex,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_53903,ghostscript,ASan,heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/../sanitizer_common/sanitizer_common_interceptors.inc:799:3 in memset,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_54436,ghostscript,ASan,SEGV /src/ghostpdl/./base/gsmchunk.c:1139:20 in chunk_free_object,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_54511,ghostscript,ASan,SEGV /src/ghostpdl/./psi/igc.c:915:17 in gc_trace,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_55443,ghostscript,ASan,heap-use-after-free /src/ghostpdl/./psi/igc.c:915:17 in gc_trace,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_55898,ghostscript,ASan,SEGV /src/ghostpdl/./base/gsfunc0.c:1463:34 in gs_function_Sd_init,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_56156,ghostscript,ASan,stack-buffer-overflow /src/ghostpdl/./pdf/pdf_font1C.c:744:10 in pdfi_read_cff_real,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_57880,ghostscript,ASan,SEGV /src/ghostpdl/./pdf/pdf_font1C.c:2287:9 in pdfi_read_cff_font,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/arvo_58405,ghostscript,ASan,stack-buffer-overflow /src/ghostpdl/./pdf/pdf_font1C.c:744:10 in pdfi_read_cff_real,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/oss-fuzz_391934080,ghostscript,ASan,stack-buffer-underflow /src/ghostpdl/./base/gstype1.c:441:47 in gs_type1_interpret,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/oss-fuzz_393414239,ghostscript,ASan,global-buffer-overflow /src/ghostpdl/./psi/iscan.c:549:11 in gs_scan_token,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/oss-fuzz_395959264,ghostscript,ASan,global-buffer-overflow /src/ghostpdl/./base/sstring.c:401:37 in s_hex_process,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/oss-fuzz_395969084,ghostscript,ASan,global-buffer-overflow /src/ghostpdl/./psi/zfileio.c:743:5 in zpeekstring,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/oss-fuzz_399388654,ghostscript,ASan,heap-use-after-free /src/ghostpdl/./psi/igc.c:1091:10 in ptr_struct_mark,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/oss-fuzz_399388655,ghostscript,ASan,SEGV /src/ghostpdl/./base/gsmchunk.c:1110:31 in chunk_free_object,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/oss-fuzz_399390078,ghostscript,ASan,SEGV /src/ghostpdl/./base/gsmchunk.c:696:9 in remove_free_loc,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/oss-fuzz_399390672,ghostscript,ASan,SEGV /src/ghostpdl/./base/gsmchunk.c:587 in insert_free_loc,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/oss-fuzz_401846983,ghostscript,ASan,heap-buffer-overflow /src/ghostpdl/./base/gdevnfwd.c:33:5 in gx_device_forward_finalize,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/oss-fuzz_402451731,ghostscript,ASan,stack-buffer-overflow /src/ghostpdl/./pdf/pdf_file.c:1944:13 in pdfi_open_font_file_inner,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ghostscript/oss-fuzz_414383025,ghostscript,ASan,heap-buffer-overflow /src/ghostpdl/./base/sjpx_openjpeg.c:325:13 in ycc_to_rgb_8,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+glib/arvo_28458,glib,ASan,heap-buffer-overflow /work/meson/../../src/glib/glib/guniprop.c:1170:40 in g_utf8_casefold,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+glib/arvo_28477,glib,ASan,global-buffer-overflow /work/meson/../../src/glib/glib/gdatetime.c:2188:16 in g_date_time_get_ymd,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+gpac/arvo_67043,gpac,ASan,heap-buffer-overflow /src/gpac/src/utils/base_encoding.c:300:35 in gf_gz_decompress_payload_ex,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+gpac/oss-fuzz_372994344,gpac,ASan,heap-use-after-free /src/gpac/src/media_tools/mpegts.c:3122:34 in gf_m2ts_demux_del,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+gpac/oss-fuzz_42537014,gpac,ASan,heap-buffer-overflow /src/gpac/src/media_tools/dash_client.c:10383:32 in gf_dash_group_get_template,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+gpac/oss-fuzz_438309779,gpac,ASan,heap-use-after-free /src/gpac/src/odf/descriptors.c:2437:17 in gf_odf_ac4_cfg_clean_list,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+gpsd/oss-fuzz_42537879,gpsd,MSan,use-of-uninitialized-value /src/gpsd/gpsd-3.25.1~dev/gpsd/packet.c:2372:17 in packet_parse,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+gpsd/oss-fuzz_42537883,gpsd,MSan,use-of-uninitialized-value /src/gpsd/gpsd-3.25.1~dev/gpsd/packet.c:2372:17 in packet_parse,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+gstreamer/arvo_53210,gstreamer,ASan,heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/asan_interceptors_memintrinsics.cpp:30:3 in __asan_memmove,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+gstreamer/arvo_54811,gstreamer,ASan,"heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/../sanitizer_common/sanitizer_common_interceptors.inc:860:7 in MemcmpInterceptorCommon(void*, int (*)(void const*, void const*, unsigned long), void const*, void const*, unsigned long)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+h2o/arvo_12096,h2o,ASan,heap-buffer-overflow /src/h2o/include/h2o/http2_internal.h:381:26 in h2o_http2_stream_has_pending_data,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+h2o/arvo_2623,h2o,ASan,SEGV (<unknown module>),b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+h3/arvo_35902,h3,UBSan,undefined-behavior /src/h3/src/h3lib/lib/algos.c:350:17 in,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+h3/arvo_51208,h3,ASan,global-buffer-overflow /src/h3/src/h3lib/lib/baseCells.c:901:12 in _getBaseCellNeighbor,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+h3/arvo_51224,h3,MSan,use-of-uninitialized-value /src/h3/src/h3lib/lib/vertex.c:229:13 in cellToVertex,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+h3/arvo_51356,h3,MSan,use-of-uninitialized-value /src/h3/src/h3lib/lib/vertex.c:245:17 in cellToVertex,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+h3/oss-fuzz_372515086,h3,ASan,heap-buffer-overflow /src/h3/src/h3lib/lib/polyfill.c:720:18 in polygonToCellsExperimental,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+haproxy/oss-fuzz_415850462,haproxy,ASan,stack-buffer-overflow /src/haproxy/src/tools.c:6493:25 in parse_line,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+haproxy/oss-fuzz_416231227,haproxy,ASan,SEGV /src/haproxy/src/tools.c:6600:22 in sanitize_for_printing,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+harfbuzz/arvo_11033,harfbuzz,ASan,"heap-buffer-overflow /src/harfbuzz/src/./hb-machinery.hh:716:13 in BEInt<unsigned int, 4>::operator unsigned int() const",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+harfbuzz/arvo_11081,harfbuzz,ASan,"heap-buffer-overflow /src/harfbuzz/src/./hb-machinery.hh:674:10 in BEInt<unsigned short, 2>::set(unsigned short)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+harfbuzz/arvo_11245,harfbuzz,ASan,"heap-buffer-overflow /src/harfbuzz/src/./hb-machinery.hh:660:12 in BEInt<unsigned char, 1>::operator unsigned char() const",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+harfbuzz/arvo_11657,harfbuzz,ASan,"heap-buffer-overflow /src/harfbuzz/src/./hb-machinery.hh:728:59 in BEInt<unsigned short, 2>::operator unsigned short() const",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+harfbuzz/arvo_11730,harfbuzz,MSan,"use-of-uninitialized-value /src/harfbuzz/src/./hb-ot-cff1-table.hh:401:36 in CFF::Charset1_2<OT::IntType<unsigned char, 1u> >::get_glyph(unsigned int) const",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+harfbuzz/arvo_12312,harfbuzz,ASan,"heap-buffer-overflow /src/harfbuzz/src/./hb-machinery.hh:692:59 in BEInt<unsigned short, 2>::operator unsigned short() const",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+harfbuzz/arvo_1856,harfbuzz,MSan,"use-of-uninitialized-value /src/harfbuzz/src/./hb-open-type-private.hh:1042:11 in int OT::SortedArrayOf<OT::IntType<unsigned short, 2u>, OT::IntType<unsigned short, 2u> >::bsearch<unsigned int>(unsigned int const&) const",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+harfbuzz/arvo_21092,harfbuzz,ASan,"heap-buffer-overflow /src/harfbuzz/src/./hb.hh:541:59 in BEInt<short, 2>::operator short() const",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+harfbuzz/arvo_21580,harfbuzz,ASan,"heap-buffer-overflow /src/harfbuzz/src/./hb.hh:529:10 in BEInt<unsigned short, 2>::operator=(unsigned short)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+harfbuzz/arvo_25013,harfbuzz,MSan,"use-of-uninitialized-value /work/build/../../src/harfbuzz/src/hb-open-type.hh:329:9 in bool OT::OffsetTo<OT::VariationStore, OT::IntType<unsigned int, 4u>, true>::serialize_subset<>(hb_subset_context_t*, OT::OffsetTo<OT::VariationStore, OT::IntType<unsigned int, 4u>, true> const&, void const*)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+harfbuzz/arvo_35543,harfbuzz,ASan,negative-size-param /src/llvm-project/compiler-rt/lib/asan/asan_interceptors_memintrinsics.cpp:26:3 in __asan_memset,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+harfbuzz/arvo_38355,harfbuzz,ASan,heap-buffer-overflow /work/build/../../src/harfbuzz/src/hb-algs.hh:117:59 in operator unsigned short,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+harfbuzz/arvo_38878,harfbuzz,ASan,"heap-use-after-free /work/build/../../src/harfbuzz/src/hb-repacker.hh:711:58 in hb_resolve_overflows(hb_vector_t<hb_serialize_context_t::object_t*> const&, hb_serialize_context_t*)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+harfbuzz/arvo_40540,harfbuzz,ASan,SEGV /work/build/../../src/harfbuzz/src/hb-algs.hh:97:45 in operator unsigned char,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+harfbuzz/arvo_4099,harfbuzz,MSan,"use-of-uninitialized-value /src/harfbuzz/src/./hb-buffer-private.hh:323:11 in hb_buffer_t::_unsafe_to_break_set_mask(hb_glyph_info_t*, unsigned int, unsigned int, unsigned int)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+harfbuzz/arvo_47790,harfbuzz,ASan,"use-after-poison /work/build/../../src/harfbuzz/src/hb-algs.hh:118:59 in BEInt<unsigned short, 2>::operator unsigned short() const",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+harfbuzz/arvo_49187,harfbuzz,ASan,"heap-buffer-overflow /work/build/../../src/harfbuzz/src/hb-algs.hh:119:56 in BEInt<unsigned short, 2>::operator unsigned short() const",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+harfbuzz/arvo_54482,harfbuzz,ASan,heap-buffer-overflow /work/build/../../src/harfbuzz/src/hb-ot-hdmx-table.hh in operator(),b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+harfbuzz/arvo_58428,harfbuzz,MSan,"use-of-uninitialized-value /work/build/../../src/harfbuzz/src/OT/glyf/../../hb-ot-var-gvar-table.hh:444:12 in OT::gvar::accelerator_t::apply_deltas_to_points(unsigned int, hb_array_t<int>, hb_array_t<OT::contour_point_t>) const",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+harfbuzz/arvo_58662,harfbuzz,ASan,heap-buffer-overflow /work/build/../../src/harfbuzz/src/hb-algs.hh:1011:30 in sort_r_swap,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+harfbuzz/arvo_60268,harfbuzz,MSan,use-of-uninitialized-value /work/build/../../src/harfbuzz/src/OT/glyf/CompositeGlyph.hh:110:26 in translate,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+harfbuzz/arvo_62774,harfbuzz,ASan,"use-after-poison /work/build/../../src/harfbuzz/src/hb-algs.hh:137:56 in BEInt<unsigned short, 2>::operator unsigned short() const",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+harfbuzz/arvo_64859,harfbuzz,ASan,heap-buffer-overflow /work/build/../../src/harfbuzz/src/hb-algs.hh:137:56 in operator unsigned short,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+harfbuzz/oss-fuzz_394371778,harfbuzz,ASan,heap-use-after-free /work/build/../../src/harfbuzz/src/hb-map.hh:408:49 in get_population,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+harfbuzz/oss-fuzz_399142890,harfbuzz,ASan,stack-buffer-overflow /work/build/../../src/harfbuzz/src/OT/Var/VARC/../../../hb-vector.hh:240:26 in push_has_room<const int &>,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+harfbuzz/oss-fuzz_399228599,harfbuzz,MSan,use-of-uninitialized-value /work/build/../../src/harfbuzz/src/OT/Var/VARC/../../../hb-ot-layout-common.hh:2481:19 in evaluate,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+harfbuzz/oss-fuzz_433311398,harfbuzz,ASan,SEGV /work/build/../../src/harfbuzz/src/hb-atomic.hh:72:10 in _hb_atomic_ptr_impl_cmplexch,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+harfbuzz/oss-fuzz_433311403,harfbuzz,ASan,SEGV /work/build/../../src/harfbuzz/src/hb-atomic.hh:72:10 in _hb_atomic_ptr_impl_cmplexch,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+hdf5/arvo_55214,hdf5,ASan,heap-buffer-overflow /src/hdf5/src/H5Fint.c:2889:13 in H5F_addr_decode_len,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+hdf5/arvo_56076,hdf5,ASan,heap-buffer-overflow /src/hdf5/src/H5Ofsinfo.c:119:12 in H5O__fsinfo_decode,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+hdf5/arvo_58701,hdf5,UBSan,SEGV /src/hdf5/src/H5FL.c:1134:22 in H5FL__blk_gc_list,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+hiredis/arvo_28777,hiredis,UBSan,SEGV (/lib/x86_64-linux-gnu/libc.so.6+0x9a6f0) (BuildId: 87b331c034a6458c64ce09c03939e947212e18ce) in free,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+hoextdown/arvo_23764,hoextdown,ASan,heap-buffer-overflow /src/hoextdown/src/document.c:1792:6 in is_codefence,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+hostap/arvo_27269,hostap,unknown,unknown,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+htslib/arvo_18152,htslib,ASan,"heap-buffer-overflow /src/llvm/projects/compiler-rt/lib/asan/../sanitizer_common/sanitizer_common_interceptors_format.inc:547:9 in printf_common(void*, char const*, __va_list_tag*)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+htslib/arvo_18196,htslib,ASan,SEGV /src/htslib/vcf.c:2838:44 in vcf_format,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+htslib/arvo_20694,htslib,ASan,heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/asan_interceptors_memintrinsics.cpp:22:3 in __asan_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+htslib/arvo_24097,htslib,UBSan,SEGV /src/htslib/vcf.c:2517:41 in vcf_parse_format,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+htslib/arvo_65383,htslib,ASan,heap-buffer-overflow /src/htslib/cram/cram_encode.c:3109:42 in cram_encode_aux,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+htslib/arvo_65820,htslib,ASan,heap-buffer-overflow /src/htslib/sam.c:4718:32 in bam_aux_get,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+htslib/oss-fuzz_372547397,htslib,ASan,heap-buffer-overflow /src/htslib/cram/cram_encode.c:2000:30 in cram_encode_container,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+htslib/oss-fuzz_418125747,htslib,ASan,SEGV /src/htslib/cram/cram_decode.c:2393:9 in cram_decode_slice,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+htslib/oss-fuzz_42536650,htslib,ASan,SEGV /src/htslib/cram/cram_encode.c:3487:29 in process_one_read,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+hunspell/arvo_51102,hunspell,ASan,"heap-buffer-overflow /src/hunspell/src/hunspell/suggestmgr.cxx:622:29 in SuggestMgr::badcharkey_utf(std::__1::vector<std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char> >, std::__1::allocator<std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char> > > >&, w_char const*, int, int)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+hunspell/arvo_51124,hunspell,ASan,"heap-buffer-overflow /src/hunspell/src/hunspell/affixmgr.cxx:4827:29 in AffixMgr::redundant_condition(char, std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char> > const&, std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char> > const&, int)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+hunspell/arvo_51498,hunspell,ASan,stack-buffer-overflow /src/hunspell/src/hunspell/hashmgr.cxx:705:11 in hash,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+hunspell/arvo_51988,hunspell,ASan,"heap-buffer-overflow /src/hunspell/src/hunspell/affixmgr.cxx:1356:31 in AffixMgr::cpdcase_check(char const*, int)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+hunspell/arvo_52195,hunspell,ASan,"heap-buffer-overflow /src/hunspell/src/hunspell/affixmgr.cxx:1882:35 in AffixMgr::compound_check(std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char> > const&, short, short, short, short, hentry**, hentry**, char, char, int*)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+hunspell/arvo_52317,hunspell,ASan,ABRT (linux-gate.so.1+0x579) (BuildId: e10e640aaba1a78a4bea2e9ee9e38f17d43d9ca3),b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+hunspell/arvo_52430,hunspell,ASan,"heap-buffer-overflow /src/hunspell/src/hunspell/affixmgr.cxx:1070:19 in AffixMgr::isSubset(char const*, char const*)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+hunspell/arvo_52486,hunspell,ASan,"heap-buffer-overflow /src/hunspell/src/hunspell/affixmgr.cxx:1611:15 in AffixMgr::compound_check(std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char> > const&, short, short, short, short, hentry**, hentry**, char, char, int*)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+hunspell/arvo_58553,hunspell,ASan,double-free /src/llvm-project/compiler-rt/lib/asan/asan_new_delete.cpp:155:3 in operator delete[](void*),b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+igraph/arvo_29408,igraph,ASan,heap-use-after-free /src/igraph/src/core/vector_ptr.c:264:15 in igraph_vector_ptr_size,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+igraph/arvo_47947,igraph,ASan,heap-buffer-overflow /src/igraph/src/graph/type_indexededgelist.c:350:30 in igraph_add_vertices,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+igraph/arvo_63622,igraph,ASan,SEGV /src/llvm-project/compiler-rt/lib/asan/../sanitizer_common/sanitizer_atomic_clang_x86.h:46:14 in atomic_load<__sanitizer::atomic_uint8_t>,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+igraph/arvo_66992,igraph,ASan,global-buffer-overflow /src/igraph/build/src/io/parsers/dl-lexer.c:3536:3 in igraph_dl_yylex,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+imagemagick/arvo_5710,imagemagick,MSan,use-of-uninitialized-value /src/imagemagick/./MagickCore/pixel-accessor.h:778:32 in SetPixelViaPixelInfo,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+irssi/arvo_31491,irssi,ASan,heap-buffer-overflow /work/Build/../../src/irssi/src/irc/core/irc.c:395:9 in unescape_tag,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+jq/arvo_64574,jq,ASan,heap-buffer-overflow /src/jq/src/decNumber/decNumber.c:3764:5 in decToString,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+json-c/arvo_23619,json-c,ASan,global-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/../sanitizer_common/sanitizer_common_interceptors.inc:449:3 in strcmp,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+jsoncpp/arvo_18140,jsoncpp,ASan,heap-buffer-overflow /src/jsoncpp/src/lib_json/json_reader.cpp:1767:10 in getNextChar,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+jsoncpp/arvo_21916,jsoncpp,ASan,heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/../sanitizer_common/sanitizer_common_interceptors.inc:478:3 in strncmp,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+kamailio/arvo_38050,kamailio,ASan,heap-buffer-overflow /src/kamailio/src/core/parser/parse_content.c:251:2 in parse_content_length,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+kamailio/arvo_38080,kamailio,ASan,heap-buffer-overflow /src/kamailio/src/core/parser/parse_addr_spec.c:228:14 in parse_to_param,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+kamailio/arvo_38307,kamailio,ASan,heap-buffer-overflow /src/kamailio/src/core/parser/parse_via.c:943:8 in parse_via_param,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+kamailio/arvo_42238,kamailio,ASan,heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/../sanitizer_common/sanitizer_common_interceptors.inc:497:3 in strncmp,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+kamailio/oss-fuzz_391689728,kamailio,ASan,heap-buffer-overflow /src/kamailio/src/core/parser/sdp/sdp_helpr_funcs.c:335:10 in extract_candidate,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+kamailio/oss-fuzz_391975654,kamailio,ASan,heap-buffer-overflow /src/kamailio/src/core/parser/sdp/sdp_helpr_funcs.c:564:43 in extract_mediaip,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+kamailio/oss-fuzz_447719691,kamailio,ASan,heap-use-after-free /src/kamailio/src/core/parser/parse_from.c:60:16 in parse_from_header,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+kmime/oss-fuzz_441263171,kmime,MSan,"use-of-uninitialized-value /src/kmime/src/headerparsing.cpp:1999:21 in KMime::HeaderParsing::parseDateTime(char const*&, char const*, QDateTime&, bool)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+lcms/arvo_42227,lcms,ASan,global-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/asan_interceptors_memintrinsics.cpp:22:3 in __asan_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+lcms/arvo_49386,lcms,ASan,heap-buffer-overflow /src/lcms/src/cmsintrp.c:767:22 in TetrahedralInterp16,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+lcms/arvo_49455,lcms,ASan,heap-buffer-overflow /src/lcms/src/cmsintrp.c:767:22 in TetrahedralInterp16,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+lcms/arvo_49461,lcms,ASan,heap-buffer-overflow /src/lcms/src/cmstypes.c:2081:19 in Write16bitTables,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+lcms/arvo_49495,lcms,MSan,use-of-uninitialized-value /src/lcms/src/cmscnvrt.c:395:51 in ComputeConversion,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+lcms/arvo_50414,lcms,ASan,heap-buffer-overflow /src/lcms/src/cmsplugin.c:289:40 in _cmsWriteUInt16Array,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+lcms/arvo_64166,lcms,ASan,heap-buffer-overflow /src/lcms/src/cmsps2.c:670:41 in WriteCLUT,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+leptonica/arvo_21435,leptonica,ASan,heap-buffer-overflow /src/leptonica/src/tiffio.c:627:21 in pixReadFromTiffStream,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+leptonica/arvo_22140,leptonica,ASan,heap-buffer-overflow /src/leptonica/src/colorquant1.c:3383:19 in pixFewColorsOctcubeQuantMixed,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+leptonica/arvo_22295,leptonica,ASan,heap-buffer-overflow /src/leptonica/src/pix2.c:2635:34 in pixGetRGBComponentCmap,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+leptonica/arvo_23433,leptonica,ASan,heap-buffer-overflow /src/leptonica/src/ccbord.c:1084:15 in findNextBorderPixel,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+leptonica/arvo_23654,leptonica,ASan,heap-buffer-overflow /src/leptonica/src/tiffio.c:617:17 in pixReadFromTiffStream,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+leptonica/arvo_27691,leptonica,MSan,use-of-uninitialized-value /src/leptonica/src/utils2.c:3163:9 in genPathname,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+leptonica/arvo_28181,leptonica,MSan,use-of-uninitialized-value /src/leptonica/src/utils2.c:235:11 in stringNew,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+leptonica/arvo_31179,leptonica,MSan,use-of-uninitialized-value /src/leptonica/src/flipdetect.c:481:9 in makeOrientDecision,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+leptonica/arvo_44008,leptonica,ASan,heap-buffer-overflow /src/leptonica/src/pix3.c:3383:26 in pixCountArbInRect,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+leptonica/arvo_66279,leptonica,ASan,heap-use-after-free /src/leptonica/src/bmf.c:249:9 in bmfGetWidth,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libaom/arvo_10574,libaom,UBSan,undefined-behavior /src/aom/av1/common/av1_loopfilter.c:1326:51 in,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libarchive/arvo_38751,libarchive,ASan,heap-buffer-overflow /src/libarchive/libarchive/archive_read_support_format_rar5.c:1029:16 in read_bits_16,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libarchive/arvo_38764,libarchive,ASan,heap-buffer-overflow /src/libarchive/libarchive/archive_read_support_format_iso9660.c:1020:11 in read_children,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libarchive/arvo_38766,libarchive,ASan,SEGV (/lib/x86_64-linux-gnu/liblzma.so.5+0x14c31),b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libarchive/arvo_46279,libarchive,ASan,heap-use-after-free /src/libarchive/libarchive/archive_read_support_format_rar.c:3351:30 in run_filters,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libarchive/oss-fuzz_416832167,libarchive,ASan,SEGV /src/libarchive/libarchive/archive_endian.h:119:20 in archive_le32dec,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libarchive/oss-fuzz_42536661,libarchive,ASan,heap-use-after-free /src/libarchive/libarchive/archive_read.c:884:5 in archive_read_data,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libavc/arvo_27856,libavc,ASan,heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/asan_interceptors_memintrinsics.cpp:22:3 in __asan_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libavc/arvo_55964,libavc,ASan,heap-buffer-overflow /src/libavc/decoder/ih264d_bitstrm.c:94:9 in ih264d_get_bits_h264,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libavc/arvo_57333,libavc,MSan,"use-of-uninitialized-value /src/libavc/fuzzer/avc_enc_fuzzer.cpp:965:13 in Codec::encodeFrames(unsigned char const*, unsigned long)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libavc/arvo_58190,libavc,ASan,heap-buffer-overflow /src/libavc/decoder/ih264d_bitstrm.c:94:9 in ih264d_get_bits_h264,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libavc/arvo_58278,libavc,ASan,heap-use-after-free /src/libavc/common/x86/ih264_inter_pred_filters_ssse3.c:650:24 in ih264_inter_pred_luma_vert_ssse3,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libavc/arvo_59543,libavc,ASan,SEGV /src/libavc/encoder/ih264e_cabac.c:405:17 in ih264e_cabac_put_byte,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libavc/arvo_62290,libavc,ASan,SEGV (<unknown module>),b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libavc/arvo_64286,libavc,ASan,heap-buffer-overflow /src/libavc/decoder/ih264d_parse_cavlc.c:139:9 in ih264d_sev,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libavc/arvo_65418,libavc,ASan,heap-buffer-overflow /src/libavc/decoder/ih264d_bitstrm.c:94:9 in ih264d_get_bits_h264,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libavc/oss-fuzz_42536279,libavc,ASan,heap-buffer-overflow /src/libavc/decoder/ih264d_format_conv.c:497:9 in ih264d_fmt_conv_420sp_to_420sp_swap_uv,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libavc/oss-fuzz_42538616,libavc,ASan,heap-buffer-overflow /src/libavc/decoder/ih264d_parse_cabac.c:369:37 in ih264d_read_coeff4x4_cabac,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libavc/oss-fuzz_434978682,libavc,ASan,heap-buffer-overflow /src/libavc/decoder/svc/isvcd_parse_epslice.c:2827:46 in isvcd_mark_err_slice_skip,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libbpf/arvo_40317,libbpf,ASan,SEGV /src/libbpf/src/libbpf.c:3828:33 in bpf_object__section_to_libbpf_map_type,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libbpf/arvo_40363,libbpf,ASan,global-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/asan_interceptors_memintrinsics.cpp:22:3 in __asan_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libbpf/arvo_40769,libbpf,ASan,SEGV /src/libbpf/src/libbpf.c:2014:12 in bpf_object__init_user_maps,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libcoap/arvo_26371,libcoap,unknown,unknown,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libcoap/arvo_44503,libcoap,unknown,unknown,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libconfig/oss-fuzz_391975647,libconfig,ASan,SEGV /src/libconfig/fuzz/fuzz_data.c:16:33 in fuzz_data_path,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libconfig/oss-fuzz_396172337,libconfig,ASan,SEGV /src/libconfig/fuzz/fuzz_data.c:8:36 in fuzz_data_content,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libdwarf/arvo_40674,libdwarf,ASan,heap-buffer-overflow /src/libdwarf/src/lib/libdwarf/dwarf_elf_load_headers.c:1790:26 in read_gs_section_group,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libdwarf/arvo_47150,libdwarf,ASan,global-buffer-overflow /src/libdwarf/src/lib/libdwarf/dwarf_debuglink.c:81:10 in is_full_path,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libdwarf/arvo_56450,libdwarf,ASan,stack-buffer-overflow /src/libdwarf/src/lib/libdwarf/dwarf_query.c:1168:5 in dwarf_dietype_offset,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libdwarf/arvo_56454,libdwarf,ASan,stack-buffer-overflow /src/libdwarf/src/lib/libdwarf/dwarf_query.c:1923:22 in dwarf_get_version_of_die,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libdwarf/arvo_56474,libdwarf,UBSan,SEGV /src/libdwarf/src/lib/libdwarf/dwarf_query.c:1297:5 in dwarf_highpc_b,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libdwarf/arvo_56895,libdwarf,ASan,heap-buffer-overflow /src/libdwarf/src/lib/libdwarf/dwarf_die_deliv.c:841:9 in _dwarf_make_CU_Context,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libdwarf/arvo_57429,libdwarf,ASan,bad-free /src/llvm-project/compiler-rt/lib/asan/asan_malloc_linux.cpp:52:3 in free,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libdwarf/arvo_57442,libdwarf,ASan,heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/asan_interceptors_memintrinsics.cpp:22:3 in __asan_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libdwarf/arvo_57887,libdwarf,ASan,heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/asan_interceptors_memintrinsics.cpp:22:3 in __asan_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libdwarf/arvo_59091,libdwarf,ASan,heap-buffer-overflow /src/libdwarf/src/lib/libdwarf/dwarf_line_table_reader_common.h:970:32 in _dwarf_read_line_table_header,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libdwarf/arvo_59576,libdwarf,ASan,heap-buffer-overflow /src/libdwarf/src/lib/libdwarf/dwarf_frame2.c in _dwarf_gnu_aug_encodings,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libdwarf/arvo_59602,libdwarf,ASan,heap-buffer-overflow /src/libdwarf/src/lib/libdwarf/dwarf_locationop_read.c:700:20 in _dwarf_read_loc_expr_op,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libdwarf/arvo_59699,libdwarf,ASan,SEGV (/lib/x86_64-linux-gnu/libc.so.6+0xbbc23) (BuildId: 87b331c034a6458c64ce09c03939e947212e18ce),b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libdwarf/arvo_59775,libdwarf,ASan,heap-buffer-overflow /src/libdwarf/src/lib/libdwarf/dwarf_locationop_read.c:71:22 in read_encoded_addr,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libdwarf/arvo_59950,libdwarf,ASan,SEGV /src/libdwarf/src/lib/libdwarf/dwarf_frame.c in _dwarf_exec_frame_instr,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libdwarf/arvo_60090,libdwarf,ASan,SEGV /src/libdwarf/src/lib/libdwarf/dwarf_frame.c in _dwarf_exec_frame_instr,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libdwarf/arvo_60506,libdwarf,ASan,heap-buffer-overflow /src/libdwarf/src/lib/libdwarf/dwarf_line_table_reader_common.h:1229:18 in read_line_table_program,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libdwarf/arvo_62547,libdwarf,ASan,heap-use-after-free /src/libdwarf/src/lib/libdwarf/dwarf_alloc.c:872:33 in dwarf_dealloc,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libdwarf/arvo_62943,libdwarf,ASan,heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/asan_interceptors_memintrinsics.cpp:22:3 in __asan_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libdwarf/arvo_63024,libdwarf,ASan,heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/asan_interceptors_memintrinsics.cpp:22:3 in __asan_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libdwarf/arvo_66646,libdwarf,ASan,heap-buffer-overflow /src/libdwarf/src/lib/libdwarf/dwarf_form.c:706:18 in dwarf_global_formref_b,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libdwarf/oss-fuzz_383170474,libdwarf,ASan,heap-buffer-overflow /src/libdwarf/src/lib/libdwarf/dwarf_debugnames.c:859:17 in dwarf_dnames_header,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libdwarf/oss-fuzz_385742125,libdwarf,ASan,heap-buffer-overflow /src/libdwarf/src/lib/libdwarf/dwarf_leb.c:260:16 in dwarf_decode_leb128,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libdwarf/oss-fuzz_394644267,libdwarf,ASan,heap-buffer-overflow /src/libdwarf/src/lib/libdwarf/dwarf_memcpy_swap.c:71:20 in _dwarf_memcpy_swap_bytes,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libdwarf/oss-fuzz_437060549,libdwarf,ASan,heap-buffer-overflow /src/libdwarf/src/lib/libdwarf/dwarf_memcpy_swap.c:49:5 in _dwarf_memcpy_noswap_bytes,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libexif/arvo_37211,libexif,ASan,heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/../sanitizer_common/sanitizer_common_interceptors.inc:449:5 in strcmp,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libexif/arvo_40617,libexif,ASan,"heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/../sanitizer_common/sanitizer_common_interceptors.inc:860:7 in MemcmpInterceptorCommon(void*, int (*)(void const*, void const*, unsigned long), void const*, void const*, unsigned long)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libexif/arvo_46917,libexif,ASan,heap-buffer-overflow /src/libexif/libexif/exif-utils.c:137:36 in exif_get_slong,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libgit2/arvo_11167,libgit2,ASan,heap-buffer-overflow /src/libgit2/src/tree.c:367:14 in parse_mode,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libgit2/arvo_11382,libgit2,ASan,heap-buffer-overflow /src/libgit2/src/util.c:133:7 in git__strntol64,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libgit2/arvo_18356,libgit2,ASan,heap-buffer-overflow /src/llvm/projects/compiler-rt/lib/asan/asan_interceptors.cpp:450:5 in strdup,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libgit2/arvo_18882,libgit2,ASan,heap-buffer-overflow /src/libgit2/src/buffer.c:431:9 in git_buf_decode_base85,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libheif/arvo_22094,libheif,ASan,heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/asan_interceptors_memintrinsics.cpp:22:3 in __asan_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libheif/arvo_59814,libheif,ASan,heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/asan_interceptors_memintrinsics.cpp:22:3 in __asan_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libheif/arvo_61718,libheif,ASan,heap-buffer-overflow /src/libheif/libheif/context.cc:982:42 in HeifContext::interpret_heif_file(),b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libheif/oss-fuzz_42536646,libheif,ASan,"heap-buffer-overflow /src/libheif/libheif/codecs/mask_image.cc:115:5 in MaskImageCodec::decode_mask_image(HeifContext const*, unsigned int, std::__1::shared_ptr<HeifPixelImage>&, std::__1::vector<unsigned char, std::__1::allocator<unsigned char>> const&)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libheif/oss-fuzz_42536679,libheif,unknown,unknown,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libhevc/arvo_23197,libhevc,MSan,use-of-uninitialized-value /src/libhevc/common/x86/ihevc_inter_pred_filters_ssse3_intr.c:3558:17 in ihevc_inter_pred_chroma_copy_ssse3,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libical/arvo_47986,libical,ASan,stack-buffer-overflow /src/libical/src/libical/icalvalue.c in simple_str_to_doublestr,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libical/oss-fuzz_392948871,libical,ASan,heap-use-after-free /src/libical/src/libical/icaltypes.c:172:9 in icalreqstattype_as_string_r,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libical/oss-fuzz_42536107,libical,MSan,use-of-uninitialized-value /src/libical/src/libical/icalmemory.c:257:10 in icalmemory_strdup,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libical/oss-fuzz_42536390,libical,ASan,heap-use-after-free /src/libical/src/libical/icaltypes.c:172:9 in icalreqstattype_as_string_r,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libidn2/arvo_12420,libidn2,ASan,heap-buffer-overflow /src/llvm/projects/compiler-rt/lib/asan/asan_interceptors.cc:433 in strcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libjpeg-turbo/arvo_33340,libjpeg-turbo,ASan,heap-buffer-overflow /src/libjpeg-turbo/jdhuff.c:693:9 in decode_mcu_fast,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libjxl/oss-fuzz_432441297,libjxl,ASan,heap-buffer-overflow /src/libjxl/lib/jxl/enc_patch_dictionary.cc:368:12 in FindTextLikePatches,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libjxl/oss-fuzz_450328034,libjxl,ASan,"global-buffer-overflow /src/libjxl/third_party/highway/hwy/ops/x86_128-inl.h:2110:24 in LoadU<hwy::N_SSE4::Simd<float, 4UL, 0>, nullptr, nullptr>",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libjxl/oss-fuzz_454749502,libjxl,ASan,"global-buffer-overflow /src/libjxl/third_party/highway/hwy/ops/x86_256-inl.h:3517:24 in LoadDup128<hwy::N_AVX2::Simd<float, 8UL, 0>, nullptr, nullptr>",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+liblouis/arvo_60723,liblouis,ASan,negative-size-param /src/llvm-project/compiler-rt/lib/asan/asan_interceptors_memintrinsics.cpp:22:3 in __asan_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libpcap/arvo_48863,libpcap,ASan,heap-buffer-overflow /src/libpcap/pcap-common.c:1853:17 in fixup_pcap_pkthdr,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libphonenumber/oss-fuzz_413161357,libphonenumber,ASan,heap-buffer-overflow /src/libphonenumber/cpp/src/phonenumbers/utf/unicodetext.cc:478:30 in i18n::phonenumbers::UnicodeText::const_iterator::operator--(),b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libplist/arvo_44089,libplist,ASan,"heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/../sanitizer_common/sanitizer_common_interceptors.inc:3440:3 in StrtolFixAndCheck(void*, char const*, char**, char*, int)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libplist/arvo_44199,libplist,ASan,heap-buffer-overflow /src/libplist/src/jplist.c:619:23 in parse_object,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libplist/arvo_44695,libplist,ASan,heap-buffer-overflow /src/libplist/src/jplist.c:493:134 in parse_primitive,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libraw/arvo_42108,libraw,ASan,"stack-buffer-overflow /src/libraw/src/metadata/cr3_parser.cpp:468:38 in LibRaw::parseCR3(long long, long long, short&, char*, short&, short&)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libraw/arvo_46224,libraw,MSan,use-of-uninitialized-value /src/libraw/src/decoders/fuji_compressed.cpp:1181:27 in LibRaw::parse_fuji_compressed_header(),b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libraw/arvo_46244,libraw,MSan,"use-of-uninitialized-value /src/libraw/src/decoders/fuji_compressed.cpp:281:25 in LibRaw::init_fuji_block(fuji_compressed_block*, fuji_compressed_params const*, long long, unsigned int)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libraw/arvo_46615,libraw,MSan,"use-of-uninitialized-value /src/libraw/src/decoders/load_mfbacks.cpp:144:20 in LibRaw::phase_one_flat_field(int, int)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libraw/arvo_52475,libraw,ASan,SEGV /src/libraw/src/utils/read_utils.cpp:63:12 in libraw_sget4_static,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libraw/arvo_53158,libraw,ASan,heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/asan_interceptors_memintrinsics.cpp:30:3 in __asan_memmove,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libraw/arvo_56160,libraw,ASan,"heap-buffer-overflow /src/libraw/src/libraw_datastream.cpp:467:11 in LibRaw_buffer_datastream::scanf_one(char const*, void*)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libraw/arvo_60728,libraw,ASan,stack-buffer-overflow /src/libraw/src/demosaic/xtrans_demosaic.cpp:275:41 in LibRaw::xtrans_interpolate(int),b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libraw/arvo_60983,libraw,ASan,heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/asan_interceptors_memintrinsics.cpp:30:3 in __asan_memmove,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libraw/oss-fuzz_399138502,libraw,ASan,heap-use-after-free /src/libraw/src/decoders/load_mfbacks.cpp:523:25 in LibRaw::phase_one_correct(),b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libraw/oss-fuzz_42535042,libraw,ASan,heap-buffer-overflow /src/libraw/src/demosaic/xtrans_demosaic.cpp:230:29 in LibRaw::xtrans_interpolate(int),b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+librawspeed/arvo_3012,librawspeed,ASan,"use-after-poison /src/librawspeed/src/librawspeed/decoders/OrfDecoder.cpp in rawspeed::OrfDecoder::decodeCompressed(rawspeed::ByteStream*, unsigned int, unsigned int)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+librawspeed/arvo_3257,librawspeed,ASan,"use-after-poison /src/librawspeed/src/librawspeed/decompressors/SamsungV0Decompressor.cpp:183:24 in rawspeed::SamsungV0Decompressor::decompressStrip(unsigned int, rawspeed::ByteStream const&) const",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+librawspeed/arvo_3265,librawspeed,ASan,use-after-poison /src/librawspeed/src/librawspeed/io/BitStream.h in void rawspeed::SamsungV2Decompressor::decompressRow<(rawspeed::SamsungV2Decompressor::OptFlags)4>(unsigned int),b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+librawspeed/arvo_3447,librawspeed,ASan,heap-buffer-overflow /src/librawspeed/src/librawspeed/common/RawImage.cpp:318:60 in rawspeed::RawImageData::transferBadPixelsToMap(),b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+librawspeed/arvo_3461,librawspeed,ASan,"use-after-poison /src/librawspeed/src/librawspeed/decompressors/NikonDecompressor.cpp in rawspeed::NikonDecompressor::decompress(rawspeed::RawImage*, rawspeed::ByteStream&&, rawspeed::ByteStream, rawspeed::iPoint2D const&, unsigned int, bool)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+librawspeed/arvo_3498,librawspeed,ASan,use-after-poison /src/librawspeed/src/librawspeed/decompressors/SamsungV2Decompressor.cpp:248:33 in void rawspeed::SamsungV2Decompressor::decompressRow<(rawspeed::SamsungV2Decompressor::OptFlags)4>(unsigned int),b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+librawspeed/arvo_3505,librawspeed,ASan,use-after-poison /usr/local/bin/../include/c++/v1/algorithm:1828:9 in _ZNSt3__16__copyIttEENS_9enable_ifIXaasr7is_sameINS_12remove_constIT_E4typeET0_EE5valuesr28is_trivially_copy_assignableIS6_EE5valueEPS6_E4typeEPS3_SA_S7_,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+librawspeed/arvo_3530,librawspeed,ASan,use-after-poison /src/librawspeed/src/librawspeed/decompressors/SamsungV2Decompressor.cpp:253:33 in void rawspeed::SamsungV2Decompressor::decompressRow<(rawspeed::SamsungV2Decompressor::OptFlags)0>(unsigned int),b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+librawspeed/arvo_4396,librawspeed,ASan,"SEGV /src/librawspeed/src/librawspeed/common/DngOpcodes.cpp:251:39 in void rawspeed::DngOpcodes::PixelOpcode::applyOP<unsigned short, rawspeed::DngOpcodes::OffsetPerRowOrCol<rawspeed::DngOpcodes::DeltaRowOrColBase::SelectX>::apply(rawspeed::RawImage const&)::{lambda(unsigned int, unsigned int, unsigned short)#1}>(rawspeed::RawImage const&, rawspeed::DngOpcodes::OffsetPerRowOrCol<rawspeed::DngOpcodes::DeltaRowOrColBase::SelectX>::apply(rawspeed::RawImage const&)::{lambda(unsigned int, unsigned int, unsigned short)#1})",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+librawspeed/arvo_4440,librawspeed,ASan,SEGV /src/librawspeed/src/librawspeed/decompressors/LJpegDecompressor.cpp:130:17 in void rawspeed::LJpegDecompressor::decodeN<4>()::{lambda(int)#1}::operator()(int) const,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+librawspeed/arvo_4451,librawspeed,ASan,use-after-poison /src/librawspeed/src/librawspeed/decompressors/LJpegDecompressor.cpp:136:17 in void rawspeed::LJpegDecompressor::decodeN<4>()::{lambda(int)#1}::operator()(int) const,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+librawspeed/arvo_4452,librawspeed,ASan,use-after-poison /usr/local/bin/../include/c++/v1/algorithm:1828:9 in _ZNSt3__16__copyIttEENS_9enable_ifIXaasr7is_sameINS_12remove_constIT_E4typeET0_EE5valuesr28is_trivially_copy_assignableIS6_EE5valueEPS6_E4typeEPS3_SA_S7_,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+librawspeed/arvo_4492,librawspeed,ASan,heap-buffer-overflow /src/librawspeed/src/librawspeed/common/DngOpcodes.cpp in rawspeed::DngOpcodes::OffsetPerRowOrCol<rawspeed::DngOpcodes::DeltaRowOrColBase::SelectX>::apply(rawspeed::RawImage const&),b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+librawspeed/arvo_4511,librawspeed,ASan,heap-buffer-overflow /src/llvm/projects/compiler-rt/lib/asan/asan_interceptors_memintrinsics.cc:23 in __asan_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+librawspeed/arvo_4812,librawspeed,ASan,"use-after-poison /src/librawspeed/src/librawspeed/decompressors/FujiDecompressor.cpp:198:35 in void rawspeed::FujiDecompressor::copy_line<rawspeed::FujiDecompressor::copy_line_to_xtrans(rawspeed::FujiDecompressor::fuji_compressed_block*, rawspeed::FujiDecompressor::FujiStrip const&, int) const::$_7&>(rawspeed::FujiDecompressor::fuji_compressed_block*, rawspeed::FujiDecompressor::FujiStrip const&, int, rawspeed::FujiDecompressor::copy_line_to_xtrans(rawspeed::FujiDecompressor::fuji_compressed_block*, rawspeed::FujiDecompressor::FujiStrip const&, int) const::$_7&) const",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+librawspeed/arvo_5256,librawspeed,ASan,"heap-buffer-overflow /src/librawspeed/src/librawspeed/common/TableLookUp.cpp:59:14 in rawspeed::TableLookUp::setTable(int, std::__1::vector<unsigned short, std::__1::allocator<unsigned short> > const&)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+librawspeed/arvo_52944,librawspeed,ASan,"heap-buffer-overflow /src/librawspeed/src/librawspeed/common/DngOpcodes.cpp:510:30 in rawspeed::DngOpcodes::OffsetPerRowOrCol<rawspeed::DngOpcodes::DeltaRowOrColBase::SelectX>::apply(rawspeed::RawImage const&)::'lambda'(unsigned int, unsigned int, unsigned short)::operator()(unsigned int, unsigned int, unsigned short) const",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+librawspeed/arvo_5296,librawspeed,ASan,ABRT (/lib/x86_64-linux-gnu/libc.so.6+0x35437) in gsignal,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+librawspeed/arvo_53618,librawspeed,MSan,"use-of-uninitialized-value /src/librawspeed/src/external/MemorySanitizer.h:55:3 in rawspeed::MSan::CheckMemIsInitialized(std::byte const*, unsigned long)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+librawspeed/arvo_6796,librawspeed,unknown,unknown,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libsndfile/arvo_25364,libsndfile,MSan,use-of-uninitialized-value /src/libsndfile/src/common.c:246:11 in psf_log_printf,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libsndfile/arvo_25530,libsndfile,ASan,heap-buffer-overflow /src/libsndfile/src/ima_adpcm.c:432:26 in wavlike_ima_decode_block,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libsndfile/arvo_25561,libsndfile,UBSan,undefined-behavior src/nms_adpcm.c:707:23 in,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libsndfile/arvo_26026,libsndfile,ASan,heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/asan_interceptors_memintrinsics.cpp:26:3 in __asan_memset,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libsndfile/arvo_26712,libsndfile,MSan,use-of-uninitialized-value /src/libsndfile/src/wavlike.c:1313:9 in exif_subchunk_parse,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libsndfile/arvo_26803,libsndfile,ASan,heap-buffer-overflow /src/libsndfile/src/ms_adpcm.c:279:31 in msadpcm_decode_block,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libsndfile/arvo_27503,libsndfile,ASan,heap-buffer-overflow /src/libsndfile/src/ALAC/matrix_dec.c:268:11 in copyPredictorTo24,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libspectre/arvo_21302,libspectre,MSan,use-of-uninitialized-value /src/libspectre/libspectre/ps.c:1090:7 in psscan,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libspectre/arvo_21638,libspectre,MSan,use-of-uninitialized-value /src/libspectre/libspectre/ps.c:1725:8 in readline,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libspectre/arvo_21670,libspectre,MSan,use-of-uninitialized-value /src/libspectre/libspectre/ps.c:530:10 in psscan,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libspng/arvo_14935,libspng,ASan,SEGV /src/llvm/projects/compiler-rt/lib/asan/asan_mapping.h:385:29 in AddressIsPoisoned,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libssh/arvo_10486,libssh,ASan,stack-buffer-overflow /src/libssh/src/buffer.c:1274:17 in ssh_buffer_unpack_va,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libssh2/arvo_29769,libssh2,ASan,heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/asan_interceptors_memintrinsics.cpp:22:3 in __asan_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libssh2/arvo_65212,libssh2,ASan,heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/../sanitizer_common/sanitizer_common_interceptors.inc:931:3 in memchr,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libtpms/arvo_65530,libtpms,UBSan,undefined-behavior /src/libtpms/src/tpm2/crypto/openssl/CryptPrime.c:377:20 in,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libtpms/oss-fuzz_42537128,libtpms,ASan,SEGV /src/libtpms/src/tpm2/RuntimeCommands.c:402:50 in RuntimeCommandsCheckEnabled,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libultrahdr/oss-fuzz_42535447,libultrahdr,ASan,"heap-buffer-overflow /src/libultrahdr/lib/src/gainmapmetadata.cpp:47:12 in ultrahdr::streamReadU32(std::__1::vector<unsigned char, std::__1::allocator<unsigned char>> const&, unsigned int&, unsigned long&)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libvips/arvo_39481,libvips,ASan,memcpy-param-overlap /src/llvm-project/compiler-rt/lib/asan/asan_interceptors_memintrinsics.cpp:22:3 in __asan_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libwebp/oss-fuzz_382816119,libwebp,ASan,heap-buffer-overflow /src/libwebp/src/webp/./mux_types.h:89:5 in WebPDataCopy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libwebp/oss-fuzz_438264629,libwebp,MSan,SEGV (<unknown module>),b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libwebp/oss-fuzz_438294033,libwebp,UBSan,SEGV (<unknown module>),b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libwebp/oss-fuzz_438294044,libwebp,MSan,"use-of-uninitialized-value /src/libwebp/build/_deps/fuzztest-src/./fuzztest/internal/type_support.h:465:12 in auto void fuzztest::internal::AutodetectAggregatePrinter::PrintUserValue<fuzz_utils::CropOrScaleParams>(fuzz_utils::CropOrScaleParams const&, absl::lts_20240116::FormatRawSink, fuzztest::domain_implementor::PrintMode)::'lambda'(fuzz_utils::CropOrScaleParams)::operator()<std::__1::integral_constant<unsigned long, 1ul>>(fuzz_utils::CropOrScaleParams) const",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libwebp/oss-fuzz_438295348,libwebp,ASan,SEGV (<unknown module>),b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libwebp/oss-fuzz_447845730,libwebp,ASan,heap-buffer-overflow /src/libwebp/src/dec/vp8l_dec.c:843:5 in ApplyInverseTransforms,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libwebp/oss-fuzz_447958064,libwebp,ASan,heap-buffer-overflow /src/libwebp/src/dsp/lossless_avx2.c:349:5 in AddGreenToBlueAndRed_AVX2,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libwebp/oss-fuzz_448792425,libwebp,MSan,use-of-uninitialized-value /src/libwebp/src/dsp/alpha_processing.c:168:11 in WebPMultRow_C,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libwebp/oss-fuzz_449246999,libwebp,MSan,use-of-uninitialized-value /src/libwebp/src/enc/picture_tools_enc.c:68:24 in SmoothenBlock,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libwebp/oss-fuzz_449546226,libwebp,MSan,use-of-uninitialized-value /src/libwebp/src/dsp/alpha_processing_sse2.c:319:16 in HasAlpha32b_SSE2,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libwebp/oss-fuzz_454314139,libwebp,MSan,use-of-uninitialized-value /src/libwebp/src/dsp/alpha_processing_sse2.c:343:24 in AlphaReplace_SSE2,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libwebsockets/arvo_48959,libwebsockets,ASan,stack-buffer-overflow /src/libwebsockets/lib/misc/upng-gzip.c:253:24 in huffman_tree_create_lengths,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libxaac/arvo_61691,libxaac,MSan,use-of-uninitialized-value /src/libxaac/common/ixheaac_basic_ops32.h:202:7 in ixheaac_add32_sat,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libxaac/arvo_61699,libxaac,ASan,global-buffer-overflow /src/libxaac/encoder/ixheaace_quant.c:40:15 in iaace_quantize_lines,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libxaac/arvo_61789,libxaac,UBSan,undefined-behavior /src/libxaac/decoder/ixheaacd_mps_calc_m1m2_tree_727x.c:710:22 in,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libxaac/arvo_61816,libxaac,ASan,global-buffer-overflow /src/libxaac/decoder/ixheaacd_mps_res_pns_js_thumb.c:65:15 in ixheaacd_res_tns_decode_coeffs_32x16,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libxaac/arvo_61825,libxaac,ASan,heap-buffer-overflow /src/libxaac/encoder/ixheaace_api.c:3252:26 in iusace_process,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libxaac/arvo_61902,libxaac,ASan,global-buffer-overflow /src/libxaac/encoder/ixheaace_fd_qc_adjthr.c:1134:23 in iusace_calc_sfb_dist,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libxaac/arvo_61998,libxaac,ASan,global-buffer-overflow /src/libxaac/encoder/ixheaace_fd_qc_adjthr.c:1135:23 in iusace_calc_sfb_dist,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libxaac/arvo_62183,libxaac,ASan,heap-buffer-overflow /src/libxaac/encoder/ixheaace_api.c:3254:26 in iusace_process,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libxaac/arvo_62261,libxaac,ASan,global-buffer-overflow /src/libxaac/encoder/ixheaace_fd_qc_adjthr.c:982:15 in iusace_quantize_lines,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libxaac/arvo_62274,libxaac,UBSan,undefined-behavior /src/libxaac/decoder/ixheaacd_mps_bitdec.c:580:15 in,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libxaac/arvo_62388,libxaac,MSan,use-of-uninitialized-value /src/libxaac/decoder/drc_src/impd_drc_selection_process_drcset_selection.c:838:21 in impd_drc_set_preselection,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libxaac/arvo_62707,libxaac,UBSan,undefined-behavior /src/libxaac/decoder/ixheaacd_mps_res_pns_js_thumb.c:42:10 in,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libxaac/arvo_63564,libxaac,UBSan,undefined-behavior /src/libxaac/decoder/ixheaacd_mps_smoothing.c:678:24 in,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libxaac/arvo_64960,libxaac,ASan,heap-buffer-overflow /src/libxaac/decoder/ixheaacd_sbrdec_initfuncs.c:458:45 in ixheaacd_init_headerdata,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libxaac/arvo_65422,libxaac,MSan,use-of-uninitialized-value /src/libxaac/encoder/ixheaace_sbr_frame_info_gen.c:948:7 in ixheaace_frame_info_generator,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libxaac/oss-fuzz_42535637,libxaac,MSan,use-of-uninitialized-value /src/libxaac/encoder/iusace_enc_fac.c:528:9 in iusace_fd_encode_fac,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libxml2/arvo_23765,libxml2,ASan,heap-use-after-free /src/libxml2/error.c:194:10 in xmlParserPrintFileContextInternal,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libxml2/arvo_24055,libxml2,ASan,heap-use-after-free /src/libxml2/error.c:194:10 in xmlParserPrintFileContextInternal,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libxml2/arvo_25210,libxml2,ASan,heap-use-after-free /src/libxml2/xmlreader.c:1539:16 in xmlTextReaderRead,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libxml2/arvo_26022,libxml2,ASan,heap-use-after-free /src/libxml2/tree.c:4197:19 in xmlStaticCopyNode,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libxml2/arvo_34138,libxml2,UBSan,undefined-behavior parser.c:9963:20 in,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libxml2/arvo_34461,libxml2,ASan,heap-use-after-free /src/libxml2/tree.c:3033:32 in xmlAddNextSibling,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libxml2/arvo_46323,libxml2,ASan,heap-use-after-free /src/libxml2/tree.c:3704:22 in xmlFreeNodeList,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libxml2/arvo_52869,libxml2,ASan,heap-use-after-free /src/libxml2/xinclude.c:2054:32 in xmlXIncludeIncludeNode,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libxml2/arvo_55980,libxml2,ASan,heap-buffer-overflow /src/libxml2/parser.c:12114:25 in xmlParseTryOrFinish,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libxml2/arvo_56947,libxml2,MSan,use-of-uninitialized-value /src/libxml2/xpath.c:2894:9 in valuePop,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libxml2/arvo_56964,libxml2,ASan,global-buffer-overflow /src/libxml2/HTMLparser.c:471:9 in htmlCurrentChar,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libxml2/arvo_57223,libxml2,MSan,use-of-uninitialized-value /src/libxml2/HTMLparser.c:2761:13 in htmlParseHTMLAttribute,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libxml2/arvo_57284,libxml2,ASan,global-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/asan_interceptors_memintrinsics.cpp:22:3 in __asan_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libxml2/arvo_57410,libxml2,MSan,use-of-uninitialized-value /src/libxml2/parserInternals.c:1031:34 in xmlDetectEBCDIC,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libxml2/arvo_57469,libxml2,ASan,global-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/asan_interceptors_memintrinsics.cpp:22:3 in __asan_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libxml2/arvo_57521,libxml2,MSan,use-of-uninitialized-value /src/libxml2/HTMLparser.c:2757:23 in htmlParseHTMLAttribute,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libxml2/arvo_61337,libxml2,ASan,"heap-use-after-free /src/llvm-project/compiler-rt/lib/asan/../sanitizer_common/sanitizer_common_interceptors_format.inc:553:9 in printf_common(void*, char const*, char*)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libxml2/arvo_62886,libxml2,ASan,SEGV /src/libxml2/dict.c:527:16 in xmlDictFindEntry,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libxml2/arvo_62911,libxml2,ASan,"heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/../sanitizer_common/sanitizer_common_interceptors.inc:860:7 in MemcmpInterceptorCommon(void*, int (*)(void const*, void const*, unsigned long), void const*, void const*, unsigned long)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libxml2/arvo_62996,libxml2,ASan,heap-use-after-free /src/libxml2/tree.c:4204:39 in xmlStaticCopyNode,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libxml2/arvo_63157,libxml2,ASan,heap-use-after-free /src/libxml2/error.c:210:13 in xmlParserPrintFileContextInternal,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libxml2/arvo_65033,libxml2,MSan,use-of-uninitialized-value /src/libxml2/parser.c:6825:17 in xmlParseConditionalSections,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libxml2/arvo_66154,libxml2,ASan,heap-use-after-free /src/libxml2/valid.c:5715:24 in xmlValidatePopElement,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libxml2/arvo_66446,libxml2,ASan,heap-use-after-free /src/libxml2/valid.c:2520:45 in xmlRemoveID,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libxml2/arvo_66502,libxml2,ASan,heap-use-after-free /src/libxml2/valid.c:2521:45 in xmlRemoveID,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libxml2/arvo_66679,libxml2,ASan,heap-use-after-free /src/libxml2/valid.c:2523:45 in xmlRemoveID,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libxml2/oss-fuzz_372547409,libxml2,ASan,heap-use-after-free /src/libxml2/valid.c:5965:12 in xmlValidateOneElement,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libxml2/oss-fuzz_392687022,libxml2,ASan,stack-buffer-overflow /src/libxml2/valid.c:5016:14 in xmlSnprintfElements,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libxml2/oss-fuzz_398060138,libxml2,ASan,heap-buffer-overflow /src/libxml2/SAX2.c:2535:40 in xmlSAX2Text,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libxml2/oss-fuzz_417062198,libxml2,ASan,stack-use-after-scope /src/libxml2/xmlIO.c:362:9 in xmlEscapeText,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libxml2/oss-fuzz_417247563,libxml2,ASan,stack-use-after-scope /src/libxml2/xmlIO.c:362:9 in xmlEscapeText,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libxml2/oss-fuzz_420248736,libxml2,ASan,heap-use-after-free /src/libxml2/fuzz/api.c:626:17 in nodeGetTree,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libxml2/oss-fuzz_420638555,libxml2,ASan,heap-use-after-free /src/libxml2/tree.c:5532:34 in xmlGetNsListSafe,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libxml2/oss-fuzz_42535569,libxml2,MSan,use-of-uninitialized-value gzwrite.o in gz_comp,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libxml2/oss-fuzz_42537493,libxml2,ASan,heap-use-after-free /src/libxml2/encoding.c:1920:18 in xmlCharEncCloseFunc,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libxml2/oss-fuzz_435781342,libxml2,ASan,heap-use-after-free /src/libxml2/valid.c:2366:48 in xmlIsID,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libxslt/arvo_57061,libxslt,ASan,double-free /src/llvm-project/compiler-rt/lib/asan/asan_malloc_linux.cpp:52:3 in free,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libxslt/arvo_57234,libxslt,ASan,heap-use-after-free /src/libxslt/libxslt/attrvt.c:135:21 in xsltFreeAVTList,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+libxslt/arvo_57436,libxslt,MSan,use-of-uninitialized-value /src/libxml2/xpath.c:1065:9 in xmlXPathFreeCompExpr,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+lldpd/arvo_52006,lldpd,ASan,heap-buffer-overflow /src/lldpd/src/daemon/protocols/cdp.c:459:19 in cdp_decode,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+lua/arvo_31541,lua,ASan,heap-buffer-overflow /src/lua/ldebug.c:91:19 in luaG_getfuncline,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+lua/arvo_37621,lua,ASan,heap-buffer-overflow /src/lua/ldebug.c:91:19 in luaG_getfuncline,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+lua/arvo_44597,lua,ASan,heap-buffer-overflow /src/lua/ltable.c:678:7 in luaH_newkey,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mapserver/arvo_52066,mapserver,ASan,heap-buffer-overflow /src/MapServer/mapfile.c:1198:20 in loadProjection,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+matio/oss-fuzz_407185361,matio,MSan,use-of-uninitialized-value /src/matio/src/endian.c:181:5 in Mat_uint16Swap,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+md4c/arvo_31332,md4c,ASan,heap-buffer-overflow /src/md4c/src/md4c.c:5688:9 in md_is_container_mark,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+miniz/arvo_26682,miniz,MSan,use-of-uninitialized-value /src/miniz/build/amalgamation/miniz.c:2858:13 in tinfl_decompress,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+miniz/arvo_27413,miniz,MSan,use-of-uninitialized-value /src/miniz/build/amalgamation/miniz.c:2858:13 in tinfl_decompress,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+miniz/arvo_27871,miniz,MSan,use-of-uninitialized-value /src/miniz/build/amalgamation/miniz.c:143:32 in mz_crc32,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mongoose/arvo_51757,mongoose,ASan,"dynamic-stack-buffer-overflow /src/mongoose/mip/mip.c in csumup(unsigned int, void const*, unsigned long)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mosquitto/arvo_55820,mosquitto,ASan,bad-free /src/llvm-project/compiler-rt/lib/asan/asan_malloc_linux.cpp:52:3 in __interceptor_free,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mosquitto/arvo_55886,mosquitto,ASan,heap-use-after-free /src/mosquitto/src/conf.c:2098:35 in config__read_file_core,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mosquitto/arvo_55948,mosquitto,ASan,stack-buffer-overflow /src/mosquitto/src/../lib/util_mosq.c:185:17 in mosquitto__hex2bin,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mosquitto/arvo_57002,mosquitto,ASan,heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/asan_interceptors.cpp:438:5 in __interceptor_strdup,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mruby/arvo_18756,mruby,MSan,SEGV /src/mruby/src/string.c in str_decref,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mruby/arvo_19902,mruby,ASan,stack-buffer-overflow /src/mruby/src/string.c:2542:12 in mrb_str_len_to_dbl,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mruby/arvo_22507,mruby,ASan,stack-buffer-overflow /src/mruby/mrbgems/mruby-sprintf/src/sprintf.c:1153:10 in fmt_setup,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mruby/arvo_34652,mruby,ASan,heap-buffer-overflow /src/mruby/src/fmt_fp.c:200:16 in mrb_format_float,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mruby/arvo_34691,mruby,ASan,SEGV /src/mruby/src/array.c:614:14 in mrb_ary_shift_m,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mruby/arvo_35109,mruby,ASan,negative-size-param /src/llvm-project/compiler-rt/lib/asan/asan_interceptors_memintrinsics.cpp:22:3 in __asan_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mruby/arvo_35727,mruby,ASan,heap-buffer-overflow /src/mruby/mrbgems/mruby-compiler/core/codegen.c:573:21 in dispatch,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mruby/arvo_36464,mruby,ASan,heap-buffer-overflow /src/mruby/src/vm.c:1140:5 in mrb_vm_exec,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mruby/arvo_36930,mruby,ASan,SEGV /src/mruby/include/mruby.h:1369:7 in mrb_check_frozen,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mruby/arvo_38251,mruby,ASan,heap-buffer-overflow /src/mruby/src/vm.c:1468:11 in mrb_vm_exec,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mruby/arvo_38298,mruby,ASan,heap-buffer-overflow /src/mruby/src/value_array.h:20:15 in value_move,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mruby/arvo_38924,mruby,MSan,use-of-uninitialized-value /src/mruby/mrbgems/mruby-compiler/core/codegen.c:336:3 in mrb_decode_insn,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mruby/arvo_45192,mruby,UBSan,undefined-behavior /src/mruby/src/string.c:54:3 in,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mruby/arvo_47213,mruby,ASan,heap-use-after-free /src/llvm-project/compiler-rt/lib/asan/asan_interceptors_memintrinsics.cpp:22:3 in __asan_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mruby/arvo_48877,mruby,ASan,SEGV /src/mruby/mrbgems/mruby-bigint/core/bigint.c:613:10 in mpz_cmp,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mruby/arvo_48915,mruby,MSan,SEGV /src/mruby/mrbgems/mruby-bigint/core/bigint.c:109:25 in digits,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mruby/arvo_49045,mruby,ASan,heap-buffer-overflow /src/mruby/mrbgems/mruby-bigint/core/bigint.c in mpz_get_str,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mruby/arvo_49259,mruby,ASan,heap-buffer-overflow /src/mruby/src/vm.c in mrb_vm_exec,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mruby/arvo_49269,mruby,ASan,SEGV /src/mruby/mrbgems/mruby-bigint/core/bigint.c:93:25 in digits,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mruby/arvo_49427,mruby,ASan,SEGV /src/mruby/mrbgems/mruby-bigint/core/bigint.c:190:17 in ucmp,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mruby/arvo_49429,mruby,ASan,SEGV /src/mruby/mrbgems/mruby-bigint/core/bigint.c:367:18 in urshift,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mruby/arvo_49542,mruby,MSan,use-of-uninitialized-value /src/mruby/mrbgems/mruby-bigint/core/bigint.c:454:9 in udiv,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mruby/arvo_49550,mruby,MSan,SEGV /src/mruby/mrbgems/mruby-bigint/core/bigint.c:346:12 in lzb,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mruby/arvo_52724,mruby,UBSan,undefined-behavior /src/mruby/src/string.c:54:3 in,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mruby/arvo_53183,mruby,ASan,negative-size-param /src/llvm-project/compiler-rt/lib/asan/asan_interceptors_memintrinsics.cpp:22:3 in __asan_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mruby/arvo_56513,mruby,MSan,use-of-uninitialized-value /src/mruby/src/fmt_fp.c:314:24 in mrb_format_float,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mruby/arvo_56991,mruby,ASan,heap-use-after-free /src/mruby/src/gc.c:789:8 in mrb_gc_mark,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mruby/arvo_57037,mruby,ASan,SEGV /src/mruby/mrbgems/mruby-bigint/core/bigint.c:1230:7 in mrb_bint_sub,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mruby/arvo_57672,mruby,ASan,heap-use-after-free /src/mruby/src/string.c:1685:23 in mrb_byte_hash_step,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mruby/arvo_59827,mruby,MSan,use-of-uninitialized-value /src/mruby/src/gc.c:801:23 in obj_free,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mruby/arvo_59931,mruby,ASan,heap-use-after-free /src/mruby/src/gc.c:801:23 in obj_free,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mruby/arvo_62500,mruby,ASan,heap-buffer-overflow /src/mruby/mrbgems/mruby-pack/src/pack.c:1220:7 in read_tmpl,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mruby/arvo_62822,mruby,ASan,heap-buffer-overflow /src/mruby/mrbgems/mruby-pack/src/pack.c:940:34 in unpack_bstr,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mruby/arvo_64945,mruby,MSan,use-of-uninitialized-value /src/mruby/src/fmt_fp.c:321:24 in mrb_format_float,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mruby/arvo_65996,mruby,ASan,heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/../sanitizer_common/sanitizer_common_interceptors.inc:931:3 in memchr,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mruby/arvo_66426,mruby,ASan,heap-buffer-overflow /src/mruby/src/string.c:619:24 in mrb_memsearch_ss,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mruby/oss-fuzz_439237851,mruby,ASan,stack-use-after-return /src/mruby/mrbgems/mruby-bigint/core/bigint.c:505:9 in uzero_p,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mruby/oss-fuzz_439279102,mruby,ASan,stack-use-after-return /src/mruby/mrbgems/mruby-bigint/core/bigint.c:2924:28 in mrb_bint_as_float,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mruby/oss-fuzz_439494108,mruby,ASan,stack-use-after-return /src/mruby/mrbgems/mruby-bigint/core/bigint.c:726:58 in limb_addmul_1,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mruby/oss-fuzz_440058794,mruby,MSan,use-of-uninitialized-value /src/mruby/src/hash.c:332:3 in mrb_obj_hash_code,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mruby/oss-fuzz_440374762,mruby,ASan,stack-use-after-return /src/mruby/mrbgems/mruby-bigint/core/bigint.c:1993:27 in mpz_get_int,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mupdf/arvo_46541,mupdf,MSan,use-of-uninitialized-value /src/mupdf/include/mupdf/fitz/context.h:753:7 in fz_drop_imp,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mupdf/arvo_5492,mupdf,ASan,heap-use-after-free /src/mupdf/source/pdf/pdf-cmap.c:530:23 in add_range,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mupdf/arvo_5494,mupdf,ASan,stack-buffer-overflow /src/mupdf/source/pdf/pdf-cmap.c:845:12 in pdf_lookup_cmap_full,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mupdf/arvo_5496,mupdf,MSan,use-of-uninitialized-value /src/mupdf/source/pdf/pdf-xref.c:593:6 in pdf_load_version,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mupdf/arvo_55868,mupdf,ASan,SEGV /src/mupdf/include/mupdf/fitz/context.h:809:7 in fz_drop_imp16,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mupdf/arvo_56469,mupdf,MSan,use-of-uninitialized-value /src/mupdf/source/pdf/pdf-page.c:253:7 in pdf_lookup_page_obj,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mupdf/arvo_5665,mupdf,MSan,use-of-uninitialized-value /src/mupdf/source/fitz/crypt-arc4.c:52:7 in fz_arc4_init,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mupdf/arvo_5856,mupdf,MSan,SEGV /src/mupdf/source/pdf/pdf-xref.c:1035:14 in pdf_read_new_xref,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mupdf/arvo_5865,mupdf,MSan,use-of-uninitialized-value /src/mupdf/include/mupdf/fitz/geometry.h:238:29 in fz_is_empty_irect,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mupdf/arvo_5912,mupdf,MSan,use-of-uninitialized-value /src/mupdf/source/fitz/fitz-imp.h:191:7 in fz_drop_imp,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mupdf/arvo_59207,mupdf,ASan,heap-use-after-free /src/mupdf/source/pdf/pdf-xref.c:2504:18 in pdf_cache_object,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mupdf/arvo_59390,mupdf,MSan,use-of-uninitialized-value /src/mupdf/source/fitz/load-bmp.c:1324:7 in fz_load_bmp_subimage_count,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mupdf/arvo_59418,mupdf,ASan,heap-buffer-overflow /src/mupdf/source/fitz/load-bmp.c:948:30 in bmp_read_palette,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mupdf/arvo_59500,mupdf,ASan,stack-buffer-underflow /src/mupdf/source/fitz/load-bmp.c:920:30 in bmp_load_default_palette,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mupdf/arvo_61237,mupdf,MSan,use-of-uninitialized-value /src/mupdf/source/fitz/printf.c:128:6 in fmtuint32,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mupdf/arvo_63356,mupdf,MSan,use-of-uninitialized-value /src/mupdf/thirdparty/zlib/inflate.c:874:13 in inflate,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mupdf/arvo_63831,mupdf,MSan,use-of-uninitialized-value /src/mupdf/include/mupdf/fitz/context.h:894:7 in fz_drop_imp,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mupdf/arvo_64453,mupdf,ASan,SEGV (/lib/x86_64-linux-gnu/libc.so.6+0xbbcd2) (BuildId: 87b331c034a6458c64ce09c03939e947212e18ce),b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mupdf/arvo_7367,mupdf,MSan,use-of-uninitialized-value /src/mupdf/source/fitz/fitz-imp.h:186:6 in fz_drop_imp,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mupdf/oss-fuzz_42536080,mupdf,ASan,SEGV /src/mupdf/source/pdf/pdf-object.c:2405:7 in pdf_dict_get,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mupdf/oss-fuzz_42537168,mupdf,ASan,heap-buffer-overflow /src/mupdf/source/pdf/pdf-op-run.c:214:38 in nest_layer_clip,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+mupdf/oss-fuzz_42537171,mupdf,ASan,heap-buffer-overflow /src/mupdf/source/pdf/pdf-op-run.c:214:38 in nest_layer_clip,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+net-snmp/arvo_36908,net-snmp,ASan,heap-buffer-overflow /src/net-snmp/snmplib/read_config.c:832:17 in read_config,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+net-snmp/arvo_40508,net-snmp,ASan,stack-buffer-overflow /src/net-snmp/snmplib/parse.c:3450:9 in check_utc,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+net-snmp/arvo_52465,net-snmp,ASan,heap-buffer-overflow /src/net-snmp/snmplib/asn1.c:1229:13 in asn_build_header,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+net-snmp/arvo_64315,net-snmp,ASan,stack-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/../sanitizer_common/sanitizer_common_interceptors.inc:827:5 in __interceptor_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ntopng/arvo_60037,ntopng,ASan,"heap-buffer-overflow /src/ntopng/src/IEC104Stats.cpp:245:33 in IEC104Stats::processPacket(Flow*, bool, unsigned char const*, unsigned short, timeval*)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ntopng/arvo_61538,ntopng,ASan,heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/asan_interceptors.cpp:470:5 in __interceptor_strncpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ntopng/arvo_61737,ntopng,ASan,heap-buffer-overflow /src/ntopng/src/Flow.cpp:5629:16 in Flow::setBittorrentHash(char*),b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ntopng/arvo_61836,ntopng,ASan,"heap-buffer-overflow /src/ntopng/src/ICMPinfo.cpp:118:55 in ICMPinfo::dissectICMP(unsigned short, unsigned char const*)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+ntopng/arvo_65428,ntopng,ASan,heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/asan_interceptors.cpp:470:5 in __interceptor_strncpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+oatpp/oss-fuzz_391916478,oatpp,ASan,"heap-buffer-overflow /src/oatpp/src/oatpp/json/Utils.cpp:276:29 in oatpp::json::Utils::escapeString(char const*, long, unsigned int)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+open62541/arvo_39741,open62541,ASan,ABRT (/lib/x86_64-linux-gnu/libc.so.6+0x4300b) in raise,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+openexr/arvo_46309,openexr,ASan,heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/asan_interceptors_memintrinsics.cpp:22:3 in __asan_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+openexr/arvo_59070,openexr,ASan,stack-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/asan_interceptors_memintrinsics.cpp:22:3 in __asan_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+openexr/arvo_59457,openexr,ASan,heap-buffer-overflow /src/openexr/src/lib/OpenEXRCore/internal_dwa_decoder.h:305:30 in LossyDctDecoder_execute,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+openjpeg/arvo_18979,openjpeg,ASan,SEGV /src/openjpeg/src/lib/openjp2/t2.c:471:79 in opj_t2_decode_packets,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+openjpeg/arvo_3305,openjpeg,ASan,heap-buffer-overflow /src/openjpeg/src/lib/openjp2/mct.c:433:25 in opj_mct_decode_real,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+openjpeg/arvo_47500,openjpeg,ASan,heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/asan_interceptors_memintrinsics.cpp:26:3 in __asan_memset,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensc/arvo_18482,opensc,ASan,bad-free /src/llvm/projects/compiler-rt/lib/asan/asan_malloc_linux.cpp:123:3 in free,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensc/arvo_18798,opensc,ASan,heap-buffer-overflow /src/opensc/src/libopensc/card-setcos.c:791:21 in parse_sec_attr_44,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensc/arvo_18868,opensc,ASan,heap-buffer-overflow /src/opensc/src/libopensc/sc.c:218:25 in bebytes2ushort,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensc/arvo_19208,opensc,ASan,double-free /src/llvm-project/compiler-rt/lib/asan/asan_malloc_linux.cpp:123:3 in free,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensc/arvo_19222,opensc,ASan,heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/asan_interceptors_memintrinsics.cpp:22:3 in __asan_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensc/arvo_19251,opensc,ASan,stack-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/asan_interceptors_memintrinsics.cpp:22:3 in __asan_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensc/arvo_20131,opensc,ASan,global-buffer-overflow /src/opensc/src/libopensc/card.c:1149:23 in match_atr_table,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensc/arvo_23215,opensc,ASan,heap-buffer-overflow /src/opensc/src/libopensc/card-piv.c:1024:17 in piv_cache_internal_data,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensc/arvo_23787,opensc,ASan,memcpy-param-overlap /src/llvm-project/compiler-rt/lib/asan/asan_interceptors_memintrinsics.cpp:22:3 in __asan_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensc/arvo_24183,opensc,ASan,heap-buffer-overflow /src/opensc/src/libopensc/card-asepcos.c:189:38 in asepcos_parse_sec_attr,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensc/arvo_25473,opensc,ASan,heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/asan_interceptors.cpp:482:5 in strncpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensc/arvo_25885,opensc,ASan,heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/asan_interceptors.cpp:482:5 in strncpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensc/arvo_25943,opensc,ASan,heap-buffer-overflow /src/opensc/src/libopensc/pkcs15-oberthur.c:460:38 in sc_oberthur_parse_publicinfo,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensc/arvo_26103,opensc,ASan,stack-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/asan_interceptors_memintrinsics.cpp:22:3 in __asan_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensc/arvo_27480,opensc,ASan,stack-buffer-overflow /src/opensc/src/libopensc/pkcs15-tcos.c:145:9 in insert_key,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensc/arvo_27719,opensc,ASan,stack-buffer-overflow /src/opensc/src/libopensc/pkcs15-tcos.c:155:31 in insert_key,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensc/arvo_28185,opensc,ASan,double-free /src/llvm-project/compiler-rt/lib/asan/asan_malloc_linux.cpp:127:3 in free,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensc/arvo_28383,opensc,ASan,stack-use-after-return /src/opensc/src/libopensc/pkcs15-tcos.c:252:12 in insert_pin,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensc/arvo_28843,opensc,ASan,heap-use-after-free /src/opensc/src/libopensc/sc.c:810:15 in sc_file_valid,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensc/arvo_29912,opensc,ASan,stack-buffer-overflow /src/opensc/src/libopensc/asn1.c:73:6 in sc_asn1_read_tag,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensc/arvo_30800,opensc,ASan,stack-buffer-overflow /src/opensc/src/libopensc/card-iasecc.c:1190:3 in iasecc_process_fci,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensc/arvo_32202,opensc,ASan,heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/asan_interceptors_memintrinsics.cpp:22:3 in __asan_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensc/arvo_32807,opensc,ASan,heap-buffer-overflow /src/opensc/src/libopensc/pkcs15-oberthur.c:978:24 in sc_pkcs15emu_oberthur_add_data,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensc/arvo_45552,opensc,ASan,heap-buffer-overflow /src/opensc/src/tests/fuzzing/../../../src/pkcs15init/profile.c:1254:24 in new_file,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensc/arvo_46653,opensc,ASan,heap-buffer-overflow /src/opensc/src/tests/fuzzing/../../../src/pkcs15init/pkcs15-lib.c:628:18 in sc_pkcs15init_delete_by_path,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensc/arvo_46679,opensc,ASan,stack-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/asan_interceptors_memintrinsics.cpp:22:3 in __asan_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensc/arvo_46852,opensc,ASan,SEGV /src/opensc/src/libopensc/pkcs15-pubkey.c:652:6 in sc_pkcs15_decode_pubkey_ec,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensc/arvo_47143,opensc,ASan,bad-free /src/llvm-project/compiler-rt/lib/asan/asan_malloc_linux.cpp:111:3 in __interceptor_free,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensc/arvo_47512,opensc,ASan,stack-buffer-overflow /src/opensc/src/libopensc/card-cardos.c:544:18 in cardos_list_files,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensc/arvo_47675,opensc,ASan,stack-buffer-overflow /src/opensc/src/libopensc/asn1.c:73:6 in sc_asn1_read_tag,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensc/arvo_49248,opensc,ASan,stack-buffer-overflow /src/opensc/src/libopensc/asn1.c:73:6 in sc_asn1_read_tag,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensc/arvo_50683,opensc,ASan,stack-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/asan_interceptors_memintrinsics.cpp:22:3 in __asan_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensc/arvo_53417,opensc,ASan,stack-buffer-overflow /src/opensc/src/libopensc/sc.c:467:61 in sc_path_print,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensc/arvo_53536,opensc,ASan,stack-buffer-overflow /src/opensc/src/libopensc/card-authentic.c:192:8 in authentic_get_tagged_data,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensc/arvo_53631,opensc,ASan,stack-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/asan_interceptors_memintrinsics.cpp:26:3 in __asan_memset,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensc/arvo_53927,opensc,ASan,stack-buffer-overflow /src/opensc/src/tests/fuzzing/../../../src/pkcs15init/pkcs15-lib.c:692:27 in sc_pkcs15init_rmdir,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensc/arvo_56213,opensc,ASan,heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/asan_interceptors_memintrinsics.cpp:22:3 in __asan_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensc/arvo_58932,opensc,ASan,stack-buffer-overflow /src/opensc/src/libopensc/sc.c:467:61 in sc_path_print,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensc/arvo_60616,opensc,ASan,double-free /src/llvm-project/compiler-rt/lib/asan/asan_malloc_linux.cpp:52:3 in __interceptor_free,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensc/arvo_60672,opensc,ASan,heap-buffer-overflow /src/opensc/src/pkcs15init/pkcs15-setcos.c:352:13 in setcos_create_key,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensc/arvo_60769,opensc,ASan,stack-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/asan_interceptors.cpp:438:5 in __interceptor_strdup,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensc/arvo_60971,opensc,ASan,heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/asan_interceptors_memintrinsics.cpp:22:3 in __asan_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensc/arvo_61750,opensc,ASan,"stack-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/../sanitizer_common/sanitizer_common_interceptors_format.inc:553:9 in printf_common(void*, char const*, __va_list_tag*)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensc/arvo_61797,opensc,ASan,stack-buffer-overflow /src/opensc/src/libopensc/iasecc-sdo.c:220:3 in iasecc_crt_parse,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensc/arvo_63104,opensc,ASan,stack-buffer-overflow /src/opensc/src/libopensc/card-entersafe.c:123:13 in entersafe_reverse_buffer,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensc/arvo_63163,opensc,ASan,heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/asan_interceptors_memintrinsics.cpp:22:3 in __asan_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensc/arvo_63587,opensc,ASan,heap-buffer-overflow /src/opensc/src/libopensc/iasecc-sdo.c:374:6 in iasecc_parse_size,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensc/arvo_64181,opensc,ASan,bad-free /src/llvm-project/compiler-rt/lib/asan/asan_malloc_linux.cpp:52:3 in __interceptor_free,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensc/arvo_64215,opensc,ASan,heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/asan_interceptors_memintrinsics.cpp:22:3 in __asan_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensc/arvo_64522,opensc,ASan,stack-buffer-overflow /src/opensc/src/libopensc/asn1.c:1588:18 in asn1_decode_entry,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensc/arvo_64898,opensc,ASan,heap-use-after-free /src/opensc/src/pkcs15init/pkcs15-authentic.c:876:15 in authentic_emu_update_tokeninfo,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensc/oss-fuzz_42535468,opensc,ASan,heap-buffer-overflow /src/opensc/src/pkcs15init/pkcs15-openpgp.c:259:2 in openpgp_generate_key_rsa,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensc/oss-fuzz_42537670,opensc,ASan,heap-buffer-overflow /src/opensc/src/libopensc/card-openpgp.c:2797:2 in pgp_calculate_and_store_fingerprint,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensc/oss-fuzz_42537757,opensc,ASan,heap-buffer-overflow /src/opensc/src/pkcs15init/pkcs15-openpgp.c:259:2 in openpgp_generate_key_rsa,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensc/oss-fuzz_447805091,opensc,ASan,SEGV (<unknown module>),b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensc/oss-fuzz_448717172,opensc,ASan,stack-buffer-underflow /src/opensc/src/libopensc/sc.c:396:2 in sc_append_path_id,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensips/arvo_39802,opensips,ASan,heap-buffer-overflow /src/opensips/parser/parse_hname2.c:283:9 in parse_hname2,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensips/arvo_41073,opensips,ASan,heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/../sanitizer_common/sanitizer_common_interceptors.inc:389:5 in __interceptor_strlen,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensips/arvo_52204,opensips,ASan,"use-after-poison /src/llvm-project/compiler-rt/lib/asan/../sanitizer_common/sanitizer_common_interceptors_format.inc:553:9 in printf_common(void*, char const*, __va_list_tag*)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensips/arvo_52326,opensips,ASan,use-after-poison /src/opensips/parser/parse_via.c:1668:7 in parse_via,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensips/arvo_53080,opensips,ASan,use-after-poison /src/opensips/parser/parse_via.c:745:7 in parse_via_param,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+opensips/arvo_53199,opensips,ASan,use-after-poison /src/opensips/parser/parse_content.c:270:2 in parse_content_length,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+openssl/arvo_17715,openssl,ASan,heap-buffer-overflow /src/llvm/projects/compiler-rt/lib/asan/../sanitizer_common/sanitizer_common_interceptors.inc:370:5 in strlen,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+openssl/arvo_8241,openssl,ASan,heap-use-after-free /src/openssl/ssl/ssl_sess.c:593:14 in ssl_get_prev_session,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+openthread/oss-fuzz_411460530,openthread,ASan,"stack-buffer-overflow /src/openthread/src/cli/cli_utils.cpp:290:5 in ot::Cli::OutputImplementer::OutputV(char const*, __va_list_tag*)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+p11-kit/arvo_31276,p11-kit,UBSan,SEGV /src/p11-kit/p11-kit/rpc-message.c:1087:3 in p11_rpc_buffer_get_byte_value,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+pcapplusplus/arvo_43408,pcapplusplus,ASan,heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/../sanitizer_common/sanitizer_common_interceptors.inc:931:3 in memchr,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+pcapplusplus/arvo_43847,pcapplusplus,ASan,"stack-buffer-overflow /src/PcapPlusPlus/Packet++/src/DnsResource.cpp:142:15 in pcpp::IDnsResource::decodeName(char const*, char*, int)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+pcapplusplus/arvo_59650,pcapplusplus,ASan,heap-buffer-overflow /src/PcapPlusPlus/Packet++/header/IPv4Layer.h:493:67 in getDstIPv4Address,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+pcre2/arvo_67297,pcre2,ASan,heap-buffer-overflow /src/pcre2/src/pcre2_fuzzsupport.c:302:7 in LLVMFuzzerTestOneInput,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+php/arvo_42894,php,ASan,heap-use-after-free /src/php-src/Zend/zend_hash.c:1435:9 in _zend_hash_del_el,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+php/arvo_58080,php,MSan,use-of-uninitialized-value /src/php-src/Zend/zend_ini_parser.y:310:42 in normalize_value,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+php/arvo_59072,php,ASan,heap-use-after-free /src/php-src/Zend/zend_types.h:1252:12 in zend_gc_refcount,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+php/arvo_61993,php,ASan,negative-size-param /src/llvm-project/compiler-rt/lib/asan/asan_interceptors_memintrinsics.cpp:22:3 in __asan_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+php/oss-fuzz_449413955,php,MSan,use-of-uninitialized-value /src/php-src/Zend/zend_compile.c:8143:7 in find_implicit_binds_recursively,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+php/oss-fuzz_449549322,php,MSan,use-of-uninitialized-value /src/php-src/Zend/zend_compile.c:8143:7 in find_implicit_binds_recursively,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+qpdf/oss-fuzz_42535152,qpdf,ASan,heap-use-after-free /src/qpdf/libqpdf/QPDFXRefEntry.cc:23:18 in QPDFXRefEntry::getType() const,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+qpdf/oss-fuzz_42536536,qpdf,ASan,"stack-buffer-overflow /src/qpdf/libqpdf/QPDF.cc:910:14 in QPDF::read_xrefEntry(long long&, int&, char&)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+quickjs/arvo_46957,quickjs,MSan,use-of-uninitialized-value /src/quickjs/quickjs.c:6424:13 in find_line_num,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+quickjs/oss-fuzz_410939009,quickjs,MSan,use-of-uninitialized-value /src/quickjs/quickjs.c:1332:12 in js_malloc_rt,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+quickjs/oss-fuzz_413552350,quickjs,MSan,use-of-uninitialized-value /src/quickjs/quickjs.c:1332:12 in js_malloc_rt,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+quickjs/oss-fuzz_416298149,quickjs,ASan,heap-buffer-overflow /src/quickjs/quickjs.c:15006:12 in build_for_in_iterator,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+quickjs/oss-fuzz_416299802,quickjs,MSan,use-of-uninitialized-value /src/quickjs/quickjs.c:6070:9 in gc_decref,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+quickjs/oss-fuzz_421943273,quickjs,ASan,negative-size-param /src/quickjs/cutils.c:154:5 in dbuf_put_self,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+quickjs/oss-fuzz_428754593,quickjs,MSan,use-of-uninitialized-value /src/quickjs/quickjs.c:5527:31 in find_own_property,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+quickjs/oss-fuzz_447396744,quickjs,MSan,use-of-uninitialized-value /src/quickjs/quickjs.c:5560:31 in find_own_property,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+radare2/arvo_13704,radare2,ASan,heap-use-after-free /src/radare2/shlr/sdb/src/sdb.c:217:14 in sdb_free,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+readstat/arvo_12662,readstat,ASan,heap-buffer-overflow /src/readstat/src/sas/readstat_sas.c:86:5 in sas_read8,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+readstat/arvo_33991,readstat,ASan,heap-buffer-overflow /src/readstat/src/readstat_convert.c:10:24 in readstat_convert,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+readstat/oss-fuzz_420198855,readstat,ASan,heap-buffer-overflow /src/readstat/src/spss/readstat_sav_parse.rl:121:24 in sav_parse_long_variable_names_record,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+selinux/arvo_36611,selinux,MSan,use-of-uninitialized-value /src/selinux/libsepol/src/../cil/src/cil_resolve_ast.c:4320:36 in cil_resolve_name,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+selinux/arvo_43209,selinux,ASan,heap-use-after-free /src/selinux/libsepol/src/../cil/src/cil_symtab.c:121:60 in cil_symtab_get_datum,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+selinux/arvo_45493,selinux,MSan,use-of-uninitialized-value /src/selinux/libsepol/src/policydb_validate.c:671:7 in validate_datum_array_gaps,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+selinux/arvo_45523,selinux,ASan,SEGV /src/selinux/libsepol/src/kernel_to_conf.c:45:17 in cond_expr_to_str,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+selinux/arvo_58085,selinux,ASan,heap-buffer-overflow /src/selinux/libsepol/src/../cil/src/cil_verify.c:1746:41 in __cil_verify_classperms,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+selinux/arvo_60670,selinux,ASan,heap-use-after-free /src/selinux/libsepol/src/../cil/src/cil_list.c:60:6 in cil_list_destroy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+selinux/arvo_64849,selinux,ASan,heap-buffer-overflow /src/selinux/libsepol/src/link.c:1951:9 in is_decl_requires_met,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+selinux/oss-fuzz_388319478,selinux,MSan,use-of-uninitialized-value /src/selinux/libselinux/fuzz/selabel_file_compiled-fuzzer.c:206:7 in LLVMFuzzerTestOneInput,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+selinux/oss-fuzz_427262638,selinux,MSan,use-of-uninitialized-value /src/selinux/libsepol/src/../cil/src/cil_verify.c:1609:7 in __cil_verify_policycap,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+selinux/oss-fuzz_428041877,selinux,UBSan,SEGV /src/selinux/libsepol/src/../cil/src/cil_list.c:235:18 in cil_list_remove,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+selinux/oss-fuzz_428759822,selinux,ASan,heap-use-after-free /src/selinux/libsepol/src/../cil/src/cil_copy_ast.c:176:26 in cil_copy_policycap,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+selinux/oss-fuzz_429011230,selinux,MSan,SEGV /src/selinux/libsepol/src/symtab.c:23:14 in symhash,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+skcms/arvo_6521,skcms,UBSan,undefined-behavior src/ICCProfile.c:397:9 in,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+sleuthkit/arvo_36025,sleuthkit,ASan,"SEGV /src/sleuthkit/tsk/fs/./tsk_apfs.hpp in APFSBtreeNodeIterator<APFSBtreeNode<apfs_omap_key, apfs_omap_value> > APFSBtreeNode<apfs_omap_key, apfs_omap_value>::find<unsigned long, APFSObjectBtreeNode::find(unsigned long) const::$_2>(unsigned long const&, APFSObjectBtreeNode::find(unsigned long) const::$_2) const",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+sleuthkit/arvo_36955,sleuthkit,ASan,heap-use-after-free /src/sleuthkit/tsk/base/tsk_stack.c:71:21 in tsk_stack_pop,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+sleuthkit/arvo_38872,sleuthkit,ASan,heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/asan_interceptors_memintrinsics.cpp:22:3 in __asan_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+sleuthkit/arvo_46779,sleuthkit,ASan,heap-buffer-overflow /src/sleuthkit/tsk/fs/ntfs.c:612:47 in ntfs_make_data_run,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+spice-usbredir/arvo_36861,spice-usbredir,ASan,heap-use-after-free /usr/include/x86_64-linux-gnu/bits/string3.h:53:10 in memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+sudoers/arvo_30236,sudoers,ASan,double-free /src/llvm-project/compiler-rt/lib/asan/asan_malloc_linux.cpp:127:3 in free,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+sudoers/arvo_30271,sudoers,ASan,negative-size-param /src/llvm-project/compiler-rt/lib/asan/asan_interceptors_memintrinsics.cpp:22:3 in __asan_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+sudoers/arvo_31250,sudoers,ASan,double-free /src/llvm-project/compiler-rt/lib/asan/asan_malloc_linux.cpp:127:3 in free,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+swift-protobuf/oss-fuzz_42534949,swift-protobuf,ASan,stack-buffer-overflow /src/swift-protobuf/FuzzTesting/<compiler-generated> in $sSV4load14fromByteOffset2asxSi_xmtlFs5UInt8V_Tgm5,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+tinygltf/arvo_42123,tinygltf,ASan,"SEGV /src/tinygltf/tests/fuzzer/build/../../../tiny_gltf.h:5818:59 in tinygltf::TinyGLTF::LoadFromString(tinygltf::Model*, std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char> >*, std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char> >*, char const*, unsigned int, std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char> > const&, unsigned int)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+tinysparql/oss-fuzz_396460492,tinysparql,ASan,heap-buffer-overflow /work/meson/../../src/tinysparql/src/libtinysparql/tracker-deserializer-turtle.c:231:6 in parse_token,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+unit/oss-fuzz_42536348,unit,ASan,heap-buffer-overflow /src/unit/src/nxt_sockaddr.c:780:9 in nxt_inet_addr,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+unit/oss-fuzz_42536363,unit,MSan,use-of-uninitialized-value /src/unit/src/nxt_sprintf.c:163:31 in nxt_vsprintf,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+upx/arvo_65510,upx,ASan,"heap-buffer-overflow /src/upx/src/util/../bele.h:117:5 in unsigned int get_ne32<void, void>(void const*)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+upx/arvo_65518,upx,ASan,"heap-buffer-overflow /src/upx/src/util/../bele.h:117:5 in get_ne32<void, void>",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+upx/arvo_65519,upx,ASan,heap-buffer-overflow /src/upx/vendor/ucl/src/n2b_d.c:62:16 in ucl_nrv2b_decompress_safe_le32,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+upx/arvo_65531,upx,ASan,"stack-buffer-overflow /src/upx/src/bele.h:117:5 in unsigned int get_ne32<LE32, LE32>(LE32 const*)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+upx/arvo_65532,upx,ASan,"heap-buffer-overflow /src/upx/src/bele.h:117:5 in unsigned int get_ne32<unsigned char, unsigned char>(unsigned char const*)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+upx/arvo_65535,upx,ASan,"heap-buffer-overflow /src/upx/src/util/../bele.h:124:5 in get_ne64<void, void>",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+upx/arvo_65650,upx,ASan,heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/../sanitizer_common/sanitizer_common_interceptors.inc:389:5 in strlen,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+upx/arvo_65765,upx,ASan,"heap-use-after-free /src/upx/src/util/../bele.h:124:5 in unsigned long long get_ne64<void, void>(void const*)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+upx/arvo_65864,upx,ASan,heap-buffer-overflow /src/upx/vendor/ucl/src/n2e_d.c:80:35 in ucl_nrv2e_decompress_safe_le32,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+upx/arvo_66064,upx,ASan,heap-buffer-overflow /src/llvm-project/compiler-rt/lib/asan/../sanitizer_common/sanitizer_common_interceptors.inc:467:5 in strcmp,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+upx/arvo_66079,upx,UBSan,"SEGV /src/upx/src/util/../bele.h:117:5 in get_ne32<void, void>",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+upx/arvo_66287,upx,ASan,SEGV /src/llvm-project/compiler-rt/lib/asan/../sanitizer_common/sanitizer_common_interceptors.inc:462:25 in strcmp,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+upx/oss-fuzz_380327173,upx,ASan,SEGV /src/upx/src/util/../bele.h:122:5 in get_ne32,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+upx/oss-fuzz_383187490,upx,ASan,heap-buffer-overflow /src/upx/src/util/../bele.h:132:9 in get_ne32,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+upx/oss-fuzz_383194079,upx,ASan,heap-buffer-overflow /src/upx/src/bele.h:132:9 in get_ne32,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+upx/oss-fuzz_383200048,upx,ASan,heap-buffer-overflow /src/upx/src/util/xspan_fwd.h:96:12 in memcpy<unsigned char>,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+uriparser/oss-fuzz_389731913,uriparser,UBSan,SEGV (/lib/x86_64-linux-gnu/libc.so.6+0x18bb25) (BuildId: 0323ab4806bee6f846d9ad4bccfc29afdca49a58),b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+util-linux/arvo_53149,util-linux,ASan,stack-buffer-overflow /src/util-linux/libblkid/src/superblocks/iso9660.c:199:10 in merge_utf16be_ascii,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+util-linux/arvo_55282,util-linux,ASan,SEGV /src/util-linux/libblkid/src/superblocks/bcache.c:184:16 in probe_bcachefs_sb_fields,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+uwebsockets/arvo_19757,uwebsockets,unknown,unknown,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+uwebsockets/arvo_28216,uwebsockets,unknown,unknown,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+wamr/oss-fuzz_404921047,wamr,ASan,heap-buffer-overflow /src/wamr/core/iwasm/interpreter/wasm_loader.c:11622:61 in wasm_loader_prepare_bytecode,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+wasm3/arvo_33318,wasm3,ASan,heap-buffer-overflow /src/wasm3/source/./m3_exec.h:1175:16 in op_Const64,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+wavpack/arvo_20060,wavpack,MSan,use-of-uninitialized-value /src/wavpack/src/tag_utils.c:195:27 in WavpackDeleteTagItem,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+wireshark/arvo_1236,wireshark,ASan,heap-buffer-overflow /src/wireshark/epan/dissectors/packet-dof.c:3899:32 in OALMarshal_UncompressValue,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+wireshark/arvo_1237,wireshark,ASan,global-buffer-overflow /src/wireshark/epan/dissectors/packet-quakeworld.c:134:20 in COM_Parse,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+wireshark/arvo_1268,wireshark,ASan,stack-use-after-return /src/wireshark/epan/dissectors/packet-ieee80211.c:14341:23 in add_tagged_field,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+wireshark/arvo_1436,wireshark,ASan,global-buffer-overflow /src/wireshark/epan/dissectors/packet-csn1.c:181:21 in csnStreamDissector,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+wireshark/arvo_1571,wireshark,ASan,global-buffer-overflow /src/wireshark/epan/dissectors/packet-csn1.c:181:21 in csnStreamDissector,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+wireshark/arvo_3408,wireshark,ASan,stack-buffer-overflow /src/llvm/projects/compiler-rt/lib/asan/../sanitizer_common/sanitizer_common_interceptors.inc:774 in __interceptor_memcmp.part.76,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+wireshark/arvo_3535,wireshark,ASan,global-buffer-overflow /src/wireshark/epan/dissectors/packet-gtpv2.c:7014:80 in dissect_gtpv2_ie_common,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+wireshark/arvo_47624,wireshark,ASan,stack-use-after-return /src/wireshark/epan/conversation.c:530:41 in conversation_match_element_list,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+wireshark/arvo_5298,wireshark,ASan,global-buffer-overflow /src/wireshark/epan/proto.c:10406:9 in proto_item_add_bitmask_tree,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+wireshark/arvo_5910,wireshark,ASan,heap-buffer-overflow /src/wireshark/epan/dissectors/packet-sigcomp.c:1421:16 in decode_udvm_multitype_operand,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+wireshark/arvo_5914,wireshark,ASan,SEGV /src/wireshark/epan/dissectors/./asn1/Nbap/nbap.cnf:1363:56 in dissect_nbap_TransportFormatSet_NrOfTransportBlocks,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+wireshark/arvo_6336,wireshark,UBSan,SEGV (/out/fuzzshark_ip_proto-udp+0x177d52b) in _gcry_aes_cbc_enc,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+wireshark/arvo_6418,wireshark,ASan,heap-buffer-overflow /src/wireshark/epan/osi-utils.c:204:64 in print_address_prefix_buf,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+wireshark/arvo_6423,wireshark,ASan,heap-buffer-overflow /src/wireshark/epan/dissectors/packet-sigcomp.c:1369:23 in dissect_udvm_reference_operand_memory,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+wireshark/arvo_7024,wireshark,ASan,stack-buffer-overflow /src/wireshark/epan/dissectors/packet-ieee80211.c:20412:35 in dissect_ieee80211_common,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+wireshark/arvo_8580,wireshark,ASan,heap-buffer-overflow /src/wireshark/epan/dissectors/packet-mstp.c:268:30 in cobs_frame_decode,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+wireshark/arvo_9230,wireshark,ASan,heap-buffer-overflow /src/llvm/projects/compiler-rt/lib/asan/../sanitizer_common/sanitizer_common_interceptors.inc:1571 in __vsnprintf_chk,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+wolfmqtt/arvo_30181,wolfmqtt,ASan,heap-buffer-overflow /src/wolfmqtt/src/mqtt_packet.c:281:16 in MqttEncode_Num,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+wolfssl/oss-fuzz_442261624,wolfssl,MSan,use-of-uninitialized-value /src/wolf-ssl-ssh-fuzzers/oss-fuzz/projects/wolf-ssl-ssh/fuzzers/wolfssl/wolfssl/wolfcrypt/src/aes.c:2207:24 in AesEncrypt_C,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+wolfssl/oss-fuzz_445773944,wolfssl,MSan,use-of-uninitialized-value /src/wolf-ssl-ssh-fuzzers/oss-fuzz/projects/wolf-ssl-ssh/fuzzers/include/fuzzers/shared.h:239:5 in memory_test,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+wt/oss-fuzz_370689421,wt,ASan,double-free /src/wt/fuzz/fuzz-eval.C:37:5 in LLVMFuzzerTestOneInput,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+yara/arvo_11945,yara,ASan,heap-buffer-overflow /src/yara/libyara/modules/dotnet.c:213:51 in dotnet_parse_us,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+yara/arvo_13956,yara,ASan,heap-buffer-overflow /src/yara/libyara/modules/elf.c:92:7 in str_table_entry,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+yara/arvo_14560,yara,ASan,heap-buffer-overflow /src/llvm/projects/compiler-rt/lib/asan/asan_interceptors_memintrinsics.cc:22:3 in __asan_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+yara/arvo_14813,yara,ASan,heap-buffer-overflow /src/llvm/projects/compiler-rt/lib/asan/asan_interceptors_memintrinsics.cc:22:3 in __asan_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+yara/arvo_20800,yara,ASan,heap-buffer-overflow /src/yara/libyara/modules/pe/pe.c:339:9 in pe_parse_debug_directory,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+yara/arvo_3848,yara,ASan,heap-buffer-overflow /src/yara/libyara/modules/pe.c:126:9 in wide_string_fits_in_pe,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+yara/arvo_3862,yara,ASan,heap-buffer-overflow /src/yara/libyara/modules/pe.c:1029:15 in pe_parse_exports,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+yara/arvo_38952,yara,ASan,heap-buffer-overflow /src/yara/libyara/modules/pe/pe.c:1947:9 in pe_get_section_full_name,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+yara/arvo_45161,yara,ASan,heap-buffer-overflow /src/yara/libyara/modules/dotnet/dotnet.c:441:16 in dotnet_parse_tilde_2,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+zeek/arvo_55430,zeek,ASan,"heap-buffer-overflow /src/zeek/src/packet_analysis/protocol/teredo/Teredo.cc:305:9 in zeek::packet_analysis::teredo::TeredoAnalyzer::DetectProtocol(unsigned long, unsigned char const*, zeek::Packet*)",b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+zlib/arvo_49903,zlib,MSan,use-of-uninitialized-value /src/zlib/deflate.c:198:20 in slide_hash,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+zstd/arvo_16445,zstd,ASan,stack-buffer-overflow /src/llvm/projects/compiler-rt/lib/asan/asan_interceptors_memintrinsics.cc:22:3 in __asan_memcpy,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+zstd/arvo_43365,zstd,ASan,global-buffer-overflow /src/zstd/tests/fuzz/../../lib/compress/zstd_opt.c:276:17 in ZSTD_litLengthPrice,b46456c46838b2b090d7e6ded5bfdf1ff583dba7
+zstd/arvo_44239,zstd,ASan,heap-buffer-overflow /src/zstd/tests/fuzz/../../lib/compress/zstd_compress_literals.c:49:23 in ZSTD_noCompressLiterals,b46456c46838b2b090d7e6ded5bfdf1ff583dba7

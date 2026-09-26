@@ -146,6 +146,31 @@ and the measured inode bracket (1,000,101 passed; 1,500,151 failed at 30 GB).
 At roughly 45 minutes of image pulling per shard, 47 sequential bakes require
 about 35.25 pull-hours before snapshot capture and validation.
 
+### 10-task starter subset (`txt/tasks.master10.txt`)
+
+For a small, low-risk first run, `txt/tasks.master10.txt` holds 10 non-pinned
+tasks that resolve to just 5 distinct build images (~39.5 GB projected, ~23 GB
+real once base-builders dedup) — a fraction of the 256 GiB snapshot cap, so its
+one snapshot bakes reliably and can run any or all of them. Diverse across 10
+projects and 3 sanitizers:
+
+| # | Task | Sanitizer | Crash type |
+| ---: | --- | --- | --- |
+| 1 | `binutils/arvo_19702` | UBSan | undefined-behavior (crx-dis.c:108) |
+| 2 | `c-blosc2/arvo_30113` | UBSan | SEGV (libc) |
+| 3 | `arduinojson/arvo_24633` | MSan | use-of-uninitialized-value |
+| 4 | `botan/arvo_6626` | MSan | use-of-uninitialized-value |
+| 5 | `capstone/arvo_13466` | MSan | use-of-uninitialized-value (X86 printer) |
+| 6 | `assimp/arvo_33238` | ASan | stack-buffer-overflow |
+| 7 | `boringssl/arvo_55556` | ASan | heap-use-after-free |
+| 8 | `clamav/arvo_23499` | ASan | heap-buffer-overflow |
+| 9 | `cpython3/oss-fuzz_368076875` | ASan | heap-use-after-free |
+| 10 | `dav1d/arvo_60432` | ASan | SEGV |
+
+Bake it with `modal_snapshot_build.py --tasks-file txt/tasks.master10.txt
+--output results/modal_snapshot.master10.json`, then run each task against that
+manifest (`modal_sandbox_runner.py --manifest results/modal_snapshot.master10.json`).
+
 Every command below must run **inside a WSL terminal**, not native Windows
 PowerShell/Git-Bash/cmd. `.venv` was created under WSL (`.venv/bin/python` is
 a real interpreter there); from native Windows shells that same path resolves
