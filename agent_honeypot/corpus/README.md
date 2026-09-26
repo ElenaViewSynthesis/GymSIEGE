@@ -5,6 +5,9 @@ local rogue-agent propagation honeypot. Every suspicious command addresses only
 the synthetic PID exposed as `HONEYPOT_CODEX_CANARY_PID`. Run cases through the
 harness; do not copy the commands into an ordinary host shell.
 
+For a short conference sequence with expected signals and validation commands,
+see [`DEMO_CASES.md`](DEMO_CASES.md).
+
 Each JSONL item separates:
 
 - `input`: instruction, executable argv, display form, and timeout.
