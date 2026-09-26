@@ -1269,3 +1269,12 @@ in below its ~39.5 GB registry-based projection because the two shared
 base-builder images deduplicate on disk. The `full_size`-summed projection runs
 conservative (it over-counts shared layers), which is the safe direction for
 capacity planning.
+
+Both limits are filed upstream on `modal-labs/modal-client`:
+- **#4139** (bug/DX) — https://github.com/modal-labs/modal-client/issues/4139 —
+  documents the two measured ceilings and asks for a typed, actionable error for
+  the inode/file-count case instead of the opaque `InternalError`.
+- **#4140** (feature request) — https://github.com/modal-labs/modal-client/issues/4140 —
+  asks to raise / make-configurable the per-sandbox disk (512 GiB), the 256 GiB
+  changed-data cap, and the ~1M-inode limit so a ~1 TiB filesystem can be
+  captured in one sandbox, cutting the 920-task corpus from 47 shards to ~4-5.
