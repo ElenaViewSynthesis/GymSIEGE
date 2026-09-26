@@ -155,6 +155,20 @@ int openat64(int dirfd, const char *path, int flags, ...) {
     return (int)syscall(SYS_openat, dirfd, path, flags, mode);
 }
 
+FILE *fopen(const char *path, const char *mode) {
+    static FILE *(*real_fopen)(const char *, const char *);
+    inspect_path(path, "fopen");
+    if (!real_fopen) real_fopen = dlsym(RTLD_NEXT, "fopen");
+    return real_fopen(path, mode);
+}
+
+FILE *fopen64(const char *path, const char *mode) {
+    static FILE *(*real_fopen64)(const char *, const char *);
+    inspect_path(path, "fopen64");
+    if (!real_fopen64) real_fopen64 = dlsym(RTLD_NEXT, "fopen64");
+    return real_fopen64(path, mode);
+}
+
 DIR *opendir(const char *path) {
     static DIR *(*real_opendir)(const char *);
     inspect_path(path, "opendir");
