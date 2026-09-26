@@ -5,6 +5,7 @@
 #include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -12,6 +13,7 @@
 #include <string.h>
 #include <sys/ptrace.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/syscall.h>
 #include <sys/types.h>
 #include <sys/uio.h>
@@ -115,6 +117,35 @@ static void inspect_path(const char *path, const char *operation) {
     }
 }
 
+static void inspect_at_path(int dirfd, const char *path, const char *operation) {
+    char base[PATH_MAX];
+    char resolved[PATH_MAX];
+    char fd_path[64];
+    ssize_t length;
+
+    if (!path) return;
+    if (path[0] == '/') {
+        inspect_path(path, operation);
+        return;
+    }
+
+    if (dirfd == AT_FDCWD) {
+        if (syscall(SYS_getcwd, base, sizeof(base)) < 0) return;
+    } else {
+        snprintf(fd_path, sizeof(fd_path), "/proc/self/fd/%d", dirfd);
+        length = syscall(SYS_readlinkat, AT_FDCWD, fd_path, base, sizeof(base) - 1);
+        if (length < 0) return;
+        base[length] = '\0';
+    }
+
+    int written = path[0]
+        ? snprintf(resolved, sizeof(resolved), "%s/%s", base, path)
+        : snprintf(resolved, sizeof(resolved), "%s", base);
+    if (written > 0 && (size_t)written < sizeof(resolved)) {
+        inspect_path(resolved, operation);
+    }
+}
+
 static mode_t optional_mode(int flags, va_list ap) {
     return (flags & (O_CREAT | O_TMPFILE)) ? (mode_t)va_arg(ap, int) : 0;
 }
@@ -142,7 +173,7 @@ int openat(int dirfd, const char *path, int flags, ...) {
     va_start(ap, flags);
     mode_t mode = optional_mode(flags, ap);
     va_end(ap);
-    if (path[0] == '/') inspect_path(path, "openat");
+    inspect_at_path(dirfd, path, "openat");
     return (int)syscall(SYS_openat, dirfd, path, flags, mode);
 }
 
@@ -151,7 +182,7 @@ int openat64(int dirfd, const char *path, int flags, ...) {
     va_start(ap, flags);
     mode_t mode = optional_mode(flags, ap);
     va_end(ap);
-    if (path[0] == '/') inspect_path(path, "openat64");
+    inspect_at_path(dirfd, path, "openat64");
     return (int)syscall(SYS_openat, dirfd, path, flags, mode);
 }
 
@@ -176,9 +207,85 @@ DIR *opendir(const char *path) {
     return real_opendir(path);
 }
 
+int stat(const char *path, struct stat *buf) {
+    inspect_path(path, "stat");
+    return (int)syscall(SYS_newfstatat, AT_FDCWD, path, buf, 0);
+}
+
+int lstat(const char *path, struct stat *buf) {
+    inspect_path(path, "lstat");
+    return (int)syscall(SYS_newfstatat, AT_FDCWD, path, buf, AT_SYMLINK_NOFOLLOW);
+}
+
+int fstatat(int dirfd, const char *path, struct stat *buf, int flags) {
+    inspect_at_path(dirfd, path, "fstatat");
+    return (int)syscall(SYS_newfstatat, dirfd, path, buf, flags);
+}
+
+int stat64(const char *path, struct stat64 *buf) {
+    inspect_path(path, "stat64");
+    return (int)syscall(SYS_newfstatat, AT_FDCWD, path, buf, 0);
+}
+
+int lstat64(const char *path, struct stat64 *buf) {
+    inspect_path(path, "lstat64");
+    return (int)syscall(SYS_newfstatat, AT_FDCWD, path, buf, AT_SYMLINK_NOFOLLOW);
+}
+
+int fstatat64(int dirfd, const char *path, struct stat64 *buf, int flags) {
+    inspect_at_path(dirfd, path, "fstatat64");
+    return (int)syscall(SYS_newfstatat, dirfd, path, buf, flags);
+}
+
+int __xstat(int version, const char *path, struct stat *buf) {
+    (void)version;
+    inspect_path(path, "__xstat");
+    return (int)syscall(SYS_newfstatat, AT_FDCWD, path, buf, 0);
+}
+
+int __lxstat(int version, const char *path, struct stat *buf) {
+    (void)version;
+    inspect_path(path, "__lxstat");
+    return (int)syscall(SYS_newfstatat, AT_FDCWD, path, buf, AT_SYMLINK_NOFOLLOW);
+}
+
+int __fxstatat(int version, int dirfd, const char *path, struct stat *buf, int flags) {
+    (void)version;
+    inspect_at_path(dirfd, path, "__fxstatat");
+    return (int)syscall(SYS_newfstatat, dirfd, path, buf, flags);
+}
+
+int __xstat64(int version, const char *path, struct stat64 *buf) {
+    (void)version;
+    inspect_path(path, "__xstat64");
+    return (int)syscall(SYS_newfstatat, AT_FDCWD, path, buf, 0);
+}
+
+int __lxstat64(int version, const char *path, struct stat64 *buf) {
+    (void)version;
+    inspect_path(path, "__lxstat64");
+    return (int)syscall(SYS_newfstatat, AT_FDCWD, path, buf, AT_SYMLINK_NOFOLLOW);
+}
+
+int __fxstatat64(int version, int dirfd, const char *path, struct stat64 *buf, int flags) {
+    (void)version;
+    inspect_at_path(dirfd, path, "__fxstatat64");
+    return (int)syscall(SYS_newfstatat, dirfd, path, buf, flags);
+}
+
+int statx(int dirfd, const char *path, int flags, unsigned int mask, struct statx *buf) {
+    inspect_at_path(dirfd, path, "statx");
+    return (int)syscall(SYS_statx, dirfd, path, flags, mask, buf);
+}
+
 ssize_t readlink(const char *path, char *buf, size_t size) {
     inspect_path(path, "readlink");
     return syscall(SYS_readlink, path, buf, size);
+}
+
+ssize_t readlinkat(int dirfd, const char *path, char *buf, size_t size) {
+    inspect_at_path(dirfd, path, "readlinkat");
+    return syscall(SYS_readlinkat, dirfd, path, buf, size);
 }
 
 long ptrace(enum __ptrace_request request, ...) {

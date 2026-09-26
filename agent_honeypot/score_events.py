@@ -121,6 +121,7 @@ def main() -> int:
         "composites": composites,
         "limitations": [
             "LD_PRELOAD does not instrument static or setuid binaries.",
+            "Programs issuing raw syscalls can bypass libc symbol interception.",
             "Procfs polling can miss extremely short-lived processes.",
             "Run inside a disposable VM/container; this harness is observation and scoring, not a security boundary.",
         ],
