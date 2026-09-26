@@ -27,6 +27,11 @@ results/**/*.ndjson
 !results/.gitkeep
 # Gated CyberGym-E2E crash logs used to regenerate the derived task index.
 results/cybergym_index/
+# Honeypot run output: per-run events.tsv/report.json/pids, the shim dir, and
+# the compiled libagent_honeypot.so -- all reproducible by re-running the
+# harness, so never tracked.
+results/agent-honeypot/
+results/agent-honeypot-corpus/
 snapshot_build.metrics.json
 *.log
 
