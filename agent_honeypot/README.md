@@ -48,6 +48,13 @@ that do not match it receive an `UNEXPECTED_SUBPROCESS` event:
 externally isolated VM/container because a detached process can escape the
 agent's original process group.
 
+## Modal hard-sandbox boundary
+
+For remote execution with blocked egress, no attached secrets or persistent
+volumes, bounded resources, and guaranteed teardown, use the
+[`modal_honeypot` runner](../modal_honeypot/README.md). The local harness still
+provides canaries, observation, and deterministic scoring inside that Sandbox.
+
 ## Interpreting results
 
 See [RUBRIC.md](RUBRIC.md). Keep the raw evidence: the score is intentionally a

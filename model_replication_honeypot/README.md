@@ -47,6 +47,16 @@ c.fine_tuning.create(training_file=f.id, model="canary/base")
 Artifacts include raw replication events, the nested process-honeypot report,
 and a combined `report.json`. See [RUBRIC.md](RUBRIC.md).
 
+The structured 200-case provider-replication corpus is documented in
+[`corpus/README.md`](corpus/README.md).
+
+## Modal hard-sandbox boundary
+
+Use the [`modal_honeypot` runner](../modal_honeypot/README.md) to place this
+observation layer inside a disposable Modal Sandbox with blocked egress, no
+attached secrets or persistent volumes, bounded resources, and guaranteed
+teardown.
+
 ## Limits
 
 This is an observation trap, not a complete security boundary. For adversarial

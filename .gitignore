@@ -32,6 +32,10 @@ results/cybergym_index/
 # harness, so never tracked.
 results/agent-honeypot/
 results/agent-honeypot-corpus/
+# Modal honeypot run output (smoke/full run dirs): summary/modal-run JSON and
+# logs are already ignored above, but the artifacts.tar.gz bundles are binary
+# and must never enter history. Reproducible by re-running modal_honeypot.
+results/modal-honeypot*/
 snapshot_build.metrics.json
 *.log
 

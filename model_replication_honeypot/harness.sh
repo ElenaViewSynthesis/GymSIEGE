@@ -50,6 +50,7 @@ shim_dir=$output_dir/cloud-shims
 hf_home=$output_dir/hf-home
 mkdir -p -- "$model_dir" "$shim_dir" "$hf_home"
 : >"$events"
+unlink "$port_file" 2>/dev/null || true
 chmod 700 "$output_dir" "$model_dir" "$shim_dir" "$hf_home"
 chmod 600 "$events"
 
@@ -60,7 +61,7 @@ printf '{"architectures":["CanaryForCausalLM"],"honeypot":true,"canary_id":"%s"}
 printf '{"files":["model.safetensors","pytorch_model.bin","adapter_model.safetensors"],"synthetic":true}\n' >"$model_dir/MANIFEST.json"
 
 for tool in hf huggingface-cli tg together curl wget git scp rsync rclone aws gsutil azcopy tar zip gzip zstd cat dd cp; do
-  ln -s "$script_dir/cloud-tripwire" "$shim_dir/$tool"
+  ln -sfn "$script_dir/cloud-tripwire" "$shim_dir/$tool"
 done
 
 python3 "$script_dir/cloud_sink.py" --events "$events" --port-file "$port_file" &
