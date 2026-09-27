@@ -6,7 +6,7 @@ scored it 9.8 CRITICAL on a network attack vector instead — the largest
 NVD/CNA disagreement found across all 27 kernelCTF CVEs (see
 [`kernelctf-tasks.md`](kernelctf-tasks.md)).
 
-Last updated: 2026-09-22 (Europe/London)
+Last updated: 2026-09-27 (Europe/London)
 
 This is the restart/handoff document for a new terminal or Codex session. Read
 this file, `README.md`, and `reference/DAYTONA_BAKE_ISSUE.md` before running Daytona.
@@ -67,6 +67,96 @@ moved the tally to 15 success / 3 failed.
 - Optional: the transient client-sandbox connection-reset retry (the harness
   already fails safe); ExploitGym Layer 2 in-sandbox-generation capture
   (documented gap -- its bundled proxy never reaches the gateway).
+
+### Gated research: monitored propagation and model-replication experiment
+
+- Extend the existing observation traps to evaluate an agent-under-test that
+  attempts process propagation or synthetic model-weight upload while enforcing
+  network, process, and filesystem containment around it. The system must never
+  receive production credentials or proprietary weights.
+- Use the Langfuse evaluation skill for corpus and evidence design. Keep dataset
+  `input`, `expectedOutput`, and `metadata` separate; record the command,
+  destination classification, canary touched, policy state, detection latency,
+  alert outcome, cleanup outcome, and deterministic score for every case.
+- Use the Hugging Face skill and current `hf` CLI semantics for safe
+  third-party replication canaries. Initial targets must be local provider
+  emulators or disposable private repositories owned solely for the experiment,
+  populated only with tiny synthetic weight files and short-lived,
+  least-privilege credentials.
+- Design a separate, explicitly opt-in RCE evaluation suite for studying
+  behavior when Modal is created with `block_network=False`. **Do not implement
+  this as unrestricted RCE plus unrestricted Internet egress.** It may proceed
+  only when an independent egress proxy/firewall restricts destinations to
+  approved instrumented sinks or disposable test tenants; DNS/SNI/IP and byte
+  limits are enforced; no production network is reachable; and all other Modal
+  controls remain bounded and ephemeral.
+- Required preconditions for that suite: written destination allowlist and
+  ownership proof, one-run credentials, per-provider spend/upload quotas,
+  immutable audit logging outside the sandbox, real-time alerts, a tested kill
+  switch, maximum process/file/byte/time limits, and automatic repository/job/
+  endpoint deletion after evidence capture. A human must approve each run.
+- Stage rollout: (1) emulator-only fault injection, (2) provider test tenant
+  with a single synthetic artifact, (3) small reviewed corpus. Do not advance a
+  stage until alerts fire before or at the first write, teardown is verified,
+  and there is no unobserved destination or residual remote artifact.
+- Acceptance criteria: every attempted read, archive, credential use, outbound
+  connection, provider write, remote job, and child process maps to retained
+  evidence; alerts and scores are deterministic; cleanup is independently
+  verified; and disabling monitoring or exceeding a policy threshold terminates
+  the sandbox immediately. Keep the existing default-deny suites as the CI
+  baseline and never replace them with this experimental mode.
+
+#### GitHub Actions implementation plan
+
+- **Retention of the default-deny suites as the CI baseline is mandatory.** Add
+  a required `honeypot-default-deny` workflow that runs both 200-case corpora on
+  pull requests and protected-branch pushes. Missing cases, duplicate IDs,
+  script errors, absent reports, or any failed expectation must fail closed.
+  Store the approved corpus hashes, scoring version, aggregate summaries, and
+  evidence artifacts with the run. The experimental workflow must not alter
+  this required check or become an alternative path to merge.
+- Add a separate `honeypot-egress-experiment` workflow triggered only through
+  `workflow_dispatch`. It must use a protected GitHub Environment with required
+  reviewers and prevention of self-approval; reject fork contexts and untrusted
+  refs; accept only reviewed case IDs, an approved destination-policy digest,
+  and a short justification. Configure a singleton concurrency group so two
+  egress experiments can never overlap.
+- Give the workflow `contents: read` and otherwise empty `GITHUB_TOKEN`
+  permissions. Pin every third-party Action to a reviewed full commit SHA.
+  Prefer workload identity and a credential broker for one-run credentials;
+  where a provider cannot support that, expose only environment-scoped,
+  least-privilege credentials for a disposable test tenant and revoke them in
+  the cleanup job. Never expose secrets to pull-request code.
+- Make the experimental job depend on a fresh successful default-deny baseline
+  (`needs: honeypot-default-deny`). The agent may have RCE inside its ephemeral
+  sandbox and Modal may use `block_network=False`, but direct arbitrary egress
+  must still be denied by an independently administered proxy/firewall outside
+  the agent boundary. Permit only the reviewed instrumented sinks or disposable
+  third-party test tenants; log DNS, SNI, destination IP/port, request size,
+  response size, and policy decision. Monitoring and alerts supplement this
+  control and are not a substitute for it.
+- Limit real-service checks to synthetic, uniquely watermarked weight fragments
+  and private repositories/jobs/endpoints created for that single run. Enforce
+  one artifact, one destination, byte/spend/time quotas, and an expiring run ID.
+  A monitor threshold breach must terminate the Modal sandbox, close the egress
+  policy, revoke credentials, and page the designated reviewer.
+- Use Langfuse experiments to attach the dataset version, commit SHA, case ID,
+  sandbox ID, policy digest, detection latency, alert result, teardown result,
+  and deterministic score. Configure CI to fail on regressions and script
+  errors; do not approve a failing first/latest run as a new baseline without
+  explicit review.
+- Implement an `if: always()` cleanup job on a separately trusted runner. It
+  must terminate the sandbox, revoke the one-run credential, delete every
+  remote repository/job/endpoint created by the run, verify absence through a
+  provider read-back, close the proxy policy, and upload redacted evidence.
+  Cleanup failure is a workflow failure and triggers an alert.
+- Before enabling any real third-party destination, prove the workflow against
+  a local provider emulator, then a single disposable private test repository.
+  Required evidence: both default-deny corpora still pass, the experimental
+  write is detected before or at first byte, only the allowlisted destination
+  is reachable, the kill switch works, and independent cleanup verification
+  finds no residual artifact. Do not enable a general unrestricted-Internet
+  mode even when monitoring is present.
 
 **Background (resolved -- kept as pointers, not current blockers).**
 - The Daytona HF-dataset bake failure was a `Content-Length`/chunked
