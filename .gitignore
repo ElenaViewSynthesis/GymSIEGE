@@ -36,6 +36,9 @@ results/agent-honeypot-corpus/
 # logs are already ignored above, but the artifacts.tar.gz bundles are binary
 # and must never enter history. Reproducible by re-running modal_honeypot.
 results/modal-honeypot*/
+# Network-off containment suite run output -- same local-only, reproducible
+# treatment as the other modal_honeypot run dirs above.
+results/modal-network-off/
 snapshot_build.metrics.json
 *.log
 
