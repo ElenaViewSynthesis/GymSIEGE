@@ -23,6 +23,11 @@ CONFIG = {
         "runner": ROOT / "model_replication_honeypot/corpus/run_case.py",
         "prefix": "MRH-",
     },
+    "network-off": {
+        "dataset": ROOT / "modal_honeypot/network_off/network_off_cases_20.jsonl",
+        "runner": ROOT / "modal_honeypot/network_off/run_case.py",
+        "prefix": "NOF-",
+    },
 }
 
 
@@ -48,8 +53,8 @@ def run_case(mode: str, case_id: str, output_root: Path) -> dict[str, object]:
         "case_id": case_id,
         "passed": completed.returncode == 0,
         "runner_exit_code": completed.returncode,
-        "score": report.get("score", report.get("overall_score")),
-        "severity": report.get("severity"),
+        "score": report.get("score", report.get("overall_score", report.get("containment_score"))),
+        "severity": report.get("severity", "contained" if report.get("passed") else "failed"),
         "report": str(report_path),
     }
 

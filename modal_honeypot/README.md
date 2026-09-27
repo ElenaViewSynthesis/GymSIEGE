@@ -45,6 +45,25 @@ python3 modal_honeypot/runner.py --harness agent --all --workers 4
 python3 modal_honeypot/runner.py --harness model --all --workers 4
 ```
 
+Run the 20-case network-off containment suite. Both flags are deliberate: one
+selects the suite and the second explicitly enables it. The runner rejects a
+partial or mismatched opt-in.
+
+```bash
+python3 modal_honeypot/runner.py \
+  --network-off-suite --enable-network-off-suite --all --workers 4
+```
+
+Run one network-off case:
+
+```bash
+python3 modal_honeypot/runner.py \
+  --network-off-suite --enable-network-off-suite --case-id NOF-001
+```
+
+See [`network_off/README.md`](network_off/README.md) for the corpus categories
+and validation commands.
+
 The Modal SDK is pinned in the repository requirements. Authenticate locally
 with Modal before a remote run; do not inject provider credentials into this
 Sandbox.

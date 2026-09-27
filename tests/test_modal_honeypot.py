@@ -30,6 +30,27 @@ class ModalHoneypotTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             MODULE.remote_argv("agent", "MRH-181", 4)
 
+    def test_network_off_requires_explicit_opt_in(self):
+        with self.assertRaises(ValueError):
+            MODULE.remote_argv("network-off", "NOF-001", 4)
+
+    def test_network_off_command_carries_enforcement_marker(self):
+        command = MODULE.remote_argv(
+            "network-off", "NOF-001", 4, network_off_enabled=True,
+        )
+        self.assertIn("MODAL_NETWORK_OFF_ENFORCED=1", command)
+        self.assertIn("network-off", command)
+
+    def test_network_off_rejects_wrong_prefix(self):
+        with self.assertRaises(ValueError):
+            MODULE.remote_argv(
+                "network-off", "APH-001", 4, network_off_enabled=True,
+            )
+
+    def test_network_off_opt_in_is_scoped(self):
+        with self.assertRaises(ValueError):
+            MODULE.remote_argv("agent", "APH-176", 4, network_off_enabled=True)
+
 
 if __name__ == "__main__":
     unittest.main()

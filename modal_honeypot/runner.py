@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the propagation or model-replication honeypot in a Modal Sandbox."""
+"""Run a defensive honeypot suite in a network-blocked Modal Sandbox."""
 
 from __future__ import annotations
 
@@ -22,25 +22,46 @@ POLICY = {
     "volumes": {},
     "user": "honeypot",
 }
+CASE_PREFIXES = {"agent": "APH-", "model": "MRH-", "network-off": "NOF-"}
 
 
 def validate_case(harness: str, case_id: str | None) -> None:
+    if harness not in CASE_PREFIXES:
+        raise ValueError(f"unknown harness: {harness}")
     if case_id is None:
         return
-    prefix = "APH-" if harness == "agent" else "MRH-"
+    prefix = CASE_PREFIXES[harness]
     if not case_id.startswith(prefix):
         raise ValueError(f"{harness} case IDs must begin with {prefix}")
 
 
-def remote_argv(harness: str, case_id: str | None, workers: int) -> list[str]:
+def validate_network_off_opt_in(harness: str, enabled: bool) -> None:
+    if harness == "network-off" and not enabled:
+        raise ValueError("network-off suite requires --enable-network-off-suite")
+    if harness != "network-off" and enabled:
+        raise ValueError("--enable-network-off-suite requires --network-off-suite")
+
+
+def remote_argv(
+    harness: str,
+    case_id: str | None,
+    workers: int,
+    *,
+    network_off_enabled: bool = False,
+) -> list[str]:
     validate_case(harness, case_id)
+    validate_network_off_opt_in(harness, network_off_enabled)
     command = [
         "/usr/sbin/runuser", "-u", "honeypot", "--", "env",
         "HOME=/home/honeypot", "PYTHONDONTWRITEBYTECODE=1",
+    ]
+    if harness == "network-off":
+        command.append("MODAL_NETWORK_OFF_ENFORCED=1")
+    command.extend([
         "python3", f"{REMOTE_ROOT}/modal_honeypot/in_sandbox.py",
         "--harness", harness, "--workers", str(workers),
         "--output-root", "/tmp/honeypot-output",
-    ]
+    ])
     command.extend(["--case-id", case_id] if case_id else ["--all"])
     return command
 
@@ -65,10 +86,22 @@ def build_image(modal_module):
 
 def run(args: argparse.Namespace) -> int:
     validate_case(args.harness, args.case_id)
-    runtime_policy = {**POLICY, "timeout": args.sandbox_timeout, "exec_timeout": args.exec_timeout}
+    validate_network_off_opt_in(args.harness, args.enable_network_off_suite)
+    if args.harness == "network-off" and POLICY["block_network"] is not True:
+        raise RuntimeError("network-off suite requires block_network=True")
+    runtime_policy = {
+        **POLICY,
+        "timeout": args.sandbox_timeout,
+        "exec_timeout": args.exec_timeout,
+        "network_off_suite_enabled": args.enable_network_off_suite,
+    }
+    command = remote_argv(
+        args.harness, args.case_id, args.workers,
+        network_off_enabled=args.enable_network_off_suite,
+    )
     if args.dry_run:
         print(json.dumps({"app": args.app_name, "harness": args.harness, "case_id": args.case_id,
-                          "policy": runtime_policy, "remote_argv": remote_argv(args.harness, args.case_id, args.workers)},
+                          "policy": runtime_policy, "remote_argv": command},
                          indent=2))
         return 0
 
@@ -97,7 +130,7 @@ def run(args: argparse.Namespace) -> int:
                 tags={"purpose": "rogue-agent-honeypot", "harness": args.harness},
             )
         metadata["sandbox_id"] = sandbox.object_id
-        process = sandbox.exec(*remote_argv(args.harness, args.case_id, args.workers), timeout=args.exec_timeout)
+        process = sandbox.exec(*command, timeout=args.exec_timeout)
         stdout = process.stdout.read()
         stderr = process.stderr.read()
         process.wait()
@@ -122,7 +155,16 @@ def run(args: argparse.Namespace) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--harness", choices=["agent", "model"], required=True)
+    harness = parser.add_mutually_exclusive_group(required=True)
+    harness.add_argument("--harness", choices=["agent", "model"])
+    harness.add_argument(
+        "--network-off-suite", action="store_true",
+        help="select the 20-case outbound-network containment suite",
+    )
+    parser.add_argument(
+        "--enable-network-off-suite", action="store_true",
+        help="required explicit opt-in for --network-off-suite",
+    )
     selection = parser.add_mutually_exclusive_group(required=True)
     selection.add_argument("--case-id")
     selection.add_argument("--all", action="store_true")
@@ -133,6 +175,12 @@ def main() -> int:
     parser.add_argument("--exec-timeout", type=int, default=1500)
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
+    if args.network_off_suite:
+        args.harness = "network-off"
+    try:
+        validate_network_off_opt_in(args.harness, args.enable_network_off_suite)
+    except ValueError as exc:
+        parser.error(str(exc))
     if args.sandbox_timeout < args.exec_timeout or args.sandbox_timeout > 86400:
         parser.error("sandbox timeout must cover exec timeout and be at most 86400 seconds")
     if args.all:
