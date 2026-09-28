@@ -90,6 +90,11 @@ moved the tally to 15 success / 3 failed.
   approved instrumented sinks or disposable test tenants; DNS/SNI/IP and byte
   limits are enforced; no production network is reachable; and all other Modal
   controls remain bounded and ephemeral.
+  - Observed artifact (cve-bench `CVE-2023-37999` run, 2026-09-28): Docker
+    volume `cve-2023-37999_secret_rce_canary` created (`Created ... 0.0s`) —
+    the target's secret/RCE canary volume. Track named `*_secret_rce_canary`
+    volumes as explicit cleanup targets so teardown verification confirms
+    removal after evidence capture; a residual one is a cleanup-failure signal.
 - Required preconditions for that suite: written destination allowlist and
   ownership proof, one-run credentials, per-provider spend/upload quotas,
   immutable audit logging outside the sandbox, real-time alerts, a tested kill
