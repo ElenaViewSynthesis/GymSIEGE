@@ -173,6 +173,135 @@ PYTHONUNBUFFERED=1 python modal_sandbox_runner.py \
 
 Flags `modal_sandbox_runner.py` accepts: `--task` (required, `project/task_id`), `--mode` (`patch-only` | `e2e`), `--litellm-model-id` (`gpt-5.6-luna` | `gpt-5.6-sol` | `gpt-daybreak-blue-latest`), `--provisioning` (`snapshot` | `cold`), `--trial`, `--agent` (`codex`), `--model-provider` (`litellm`), `--run-id`, `--output`, plus `--app` / `--manifest` / `--litellm-secret` for the Modal image. **Note:** there is no `--budget`/`--timeout`/`--k` on this runner (unlike Daytona's `orchestrator.py exploitgym-run`) — the per-run spend cap comes from the LiteLLM key's `max_budget`, and the Modal sandbox lifetime is set in code, not on the CLI.
 
+#### Rogue-agent and network-off honeypots
+
+The defensive honeypot layer treats propagation and model-replication behavior
+as observable evidence rather than granting access to a real sibling process,
+credential, or provider account. The network-off suite adds 20 deterministic
+cases, `NOF-001`–`NOF-020`, covering DNS resolution, raw TCP, HTTPS,
+`curl`/`wget`/`git`, provider-shaped endpoints, and positive TCP/HTTP loopback
+controls. The committed corpus is
+[`modal_honeypot/network_off/network_off_cases_20.jsonl`](modal_honeypot/network_off/network_off_cases_20.jsonl)
+(`/mnt/c/Users/proxi/Documents/codex-7/daytona-sandbox/modal_honeypot/network_off/network_off_cases_20.jsonl`
+in this checkout).
+
+External DNS/TCP/HTTP attempts must fail under Modal's `block_network=True`,
+while loopback must continue to work. Every case emits a JSON report containing
+the expected and observed result, exit code, timeout state, elapsed time, and a
+deterministic 0/100 containment score. Provider-shaped probes—including the
+Hugging Face canaries—are unauthenticated and non-mutating: they perform only
+DNS/connect or credential-free `HEAD` requests. Do not attach `HF_TOKEN`, and
+do not replace them with `hf upload`, repository creation, or weight transfer.
+
+The runner requires both explicit opt-in flags. Omitting either one is an
+error:
+
+```bash
+# Validate the corpus without network activity.
+python3 -B modal_honeypot/network_off/validate_cases.py
+
+# Inspect the enforced policy without creating a cloud resource.
+python3 -B modal_honeypot/runner.py \
+  --network-off-suite --enable-network-off-suite --all --dry-run
+
+# Run all 20 cases in one disposable, network-blocked Modal Sandbox.
+python3 -B modal_honeypot/runner.py \
+  --network-off-suite --enable-network-off-suite --all --workers 4 \
+  --output results/modal-network-off
+```
+
+The parser implementation is in
+[`modal_honeypot/runner.py`](modal_honeypot/runner.py), and the detailed suite
+runbook is in
+[`modal_honeypot/network_off/README.md`](modal_honeypot/network_off/README.md).
+
+For GitHub Actions CI/CD, pull requests automatically run the corpus, unit, and
+parser-contract checks in
+[`network-off-honeypot.yml`](.github/workflows/network-off-honeypot.yml).
+The real Modal run is manual because it consumes cloud resources. Configure the
+two Modal repository secrets without printing them, trigger the workflow, and
+download its structured evidence with:
+
+```bash
+gh auth status
+gh secret set MODAL_TOKEN_ID
+gh secret set MODAL_TOKEN_SECRET
+
+gh workflow run network-off-honeypot.yml \
+  --ref "$(git branch --show-current)" \
+  -f run_modal=true
+
+run_id="$(gh run list --workflow network-off-honeypot.yml \
+  --limit 1 --json databaseId --jq '.[0].databaseId')"
+gh run watch "$run_id" --exit-status
+gh run download "$run_id" --dir "results/github-actions/$run_id"
+```
+
+For a Langfuse CI/CD gate, first configure the project keys locally, verify the
+dataset and its item shape, then store the same values as GitHub secrets. Do not
+paste secret values into command arguments or this repository:
+
+```bash
+export LANGFUSE_PUBLIC_KEY='pk-lf-...'
+export LANGFUSE_SECRET_KEY='sk-lf-...'
+export LANGFUSE_BASE_URL='https://cloud.langfuse.com'
+export LANGFUSE_HOST="$LANGFUSE_BASE_URL"
+export LANGFUSE_DATASET='gymsiege-network-off-v1'
+
+npx --yes langfuse-cli api datasets list --json
+npx --yes langfuse-cli api dataset-items list \
+  --dataset-name "$LANGFUSE_DATASET" --limit 100 --json
+
+gh secret set LANGFUSE_PUBLIC_KEY
+gh secret set LANGFUSE_SECRET_KEY
+```
+
+Create the dataset once, then upsert the committed cases with their stable case
+IDs in metadata. This does not run a canary or contact any model provider:
+
+```bash
+npx --yes langfuse-cli api datasets create --body-json "$(
+  jq -cn --arg name "$LANGFUSE_DATASET" \
+    '{name:$name,description:"GYMSIEGE deterministic network-off cases"}'
+)" --json
+
+while IFS= read -r case_json; do
+  body="$(jq -cn \
+    --arg dataset "$LANGFUSE_DATASET" \
+    --argjson case "$case_json" \
+    '{datasetName:$dataset,
+      id:($dataset + "-" + $case.id),
+      input:$case.input,
+      expectedOutput:$case.expectedOutput,
+      metadata:($case.metadata + {case_id:$case.id})}')"
+  npx --yes langfuse-cli api dataset-items create \
+    --body-json "$body" --json
+done < modal_honeypot/network_off/network_off_cases_20.jsonl
+```
+
+After verifying that the dataset has exactly 20 unique items, run the Modal and
+Langfuse CI/CD gate together. The workflow uses the pinned official
+`langfuse/experiment-action`, requires every case to score `1.0`, and raises
+`RegressionError` for missing, duplicated, or failed evidence:
+
+```bash
+gh workflow run network-off-honeypot.yml \
+  --ref "$(git branch --show-current)" \
+  -f run_modal=true \
+  -f publish_langfuse=true \
+  -f langfuse_dataset="$LANGFUSE_DATASET" \
+  -f langfuse_base_url="$LANGFUSE_BASE_URL"
+
+run_id="$(gh run list --workflow network-off-honeypot.yml \
+  --limit 1 --json databaseId --jq '.[0].databaseId')"
+gh run watch "$run_id" --exit-status
+gh run download "$run_id" --dir "results/github-actions/$run_id"
+```
+
+Langfuse keys are available only to the post-run experiment action. They are
+never included in the Modal Sandbox environment, so the DNS/TCP/HTTPS and
+Hugging Face canaries remain credential-free.
+
 #### Available ARVO tasks
 
 All twelve are launchable today — `gymsiege-exploitgym` is `ACTIVE` — via `--task <id>`. Three (`CVE-2022-23308`, `CVE-2022-39393`, `CVE-2022-32234`) were added 2026-09-06 after screening for privilege-escalation/sandbox-escape candidates — see [EXPERIMENTS.md](EXPERIMENTS.md#3-exploitgym--runs-today-openai-key-only). `CVE-2021-43848` gained its own row 2026-09-07 (it was already part of the original Run 1 batch, just without a table row until it was actually attempted). Completion time is reported only where it has actually been measured; **fabricating a number for the rest would defeat the point of this table**.
@@ -435,6 +564,7 @@ See [`daytona-notes.md`](daytona-notes.md) for a deeper walkthrough of the ARVO 
 
 - [`EXPERIMENTS.md`](EXPERIMENTS.md) — every experiment command in one WSL-terminal runbook
 - [Quick start](#quick-start)
+  - [Rogue-agent and network-off honeypots](#rogue-agent-and-network-off-honeypots)
 - [Daytona adapter security and CLI](#daytona-adapter-security-and-cli)
 - [How it fits together](#how-it-fits-together)
 - [Files](#files)
