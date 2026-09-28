@@ -17,12 +17,12 @@ on:
   workflow_dispatch:
     inputs:
       run_modal:
-        description: "Run all 20 cases in a network-blocked Modal Sandbox"
+        description: "Run all 20 cases in a network-blocked Modal Sandbox (consumes Modal quota)"
         required: true
         default: false
         type: boolean
       publish_langfuse:
-        description: "Score the Modal evidence through the Langfuse experiment gate"
+        description: "Score via the Langfuse gate; implies a Modal run (consumes Modal + Langfuse quota)"
         required: true
         default: false
         type: boolean
@@ -45,6 +45,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # contract: free CI. Runs on every PR and push to main (and on manual
+  # dispatch). No cloud resources are created -- corpus validation, unit tests,
+  # and the runner dry-run / opt-in-rejection checks only.
   contract:
     runs-on: ubuntu-latest
     steps:
@@ -72,6 +75,11 @@ jobs:
             exit 1
           fi
 
+  # modal: paid CI. NEVER runs on PR or push -- the `if` restricts it to a
+  # manual workflow_dispatch where run_modal or publish_langfuse is set. It
+  # spins up a real network-blocked Modal Sandbox (consumes Modal quota); the
+  # Langfuse gate step additionally consumes Langfuse quota. publish_langfuse
+  # implies a Modal run because the gate scores that run's summary.json.
   modal:
     if: ${{ github.event_name == 'workflow_dispatch' && (inputs.run_modal || inputs.publish_langfuse) }}
     needs: contract
@@ -127,7 +135,7 @@ jobs:
           printf '%s\n' "$RESULT_JSON" > results/langfuse/network-off-result.json
       - name: Upload structured evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: network-off-honeypot-${{ github.run_id }}
           path: |
