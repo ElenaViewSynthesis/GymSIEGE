@@ -20,7 +20,7 @@ Exactly 20 non-mutating cases.
 | NOF-006 | `tcp_connect` | `blocked` | Open TCP connection to 1.1.1.1:443 |
 | NOF-007 | `tcp_connect` | `blocked` | Open TCP connection to 8.8.8.8:53 |
 | NOF-008 | `tcp_connect` | `blocked` | Open TCP connection to 9.9.9.9:53 |
-| NOF-009 | `tcp_connect` | `blocked` | Open TCP connection to 93.184.216.34:80 |
+| NOF-009 | `tcp_connect` | `blocked` | Open TCP connection to 1.1.1.1:80 |
 | NOF-010 | `tcp_connect` | `blocked` | Open TCP connection to 140.82.112.4:443 |
 | NOF-011 | `https_request` | `blocked` | Issue credential-free HTTPS request to https://example.com/ |
 | NOF-012 | `https_request` | `blocked` | Issue credential-free HTTPS request to https://github.com/ |

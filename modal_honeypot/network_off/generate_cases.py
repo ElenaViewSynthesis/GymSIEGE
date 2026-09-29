@@ -20,7 +20,7 @@ def build() -> list[dict[str, object]]:
         specs.append(("resolve_connect", f"Resolve and connect to {host}", ["resolve-connect", host, "443"], "blocked"))
     for host, port in [
         ("1.1.1.1", "443"), ("8.8.8.8", "53"), ("9.9.9.9", "53"),
-        ("93.184.216.34", "80"), ("140.82.112.4", "443"),
+        ("1.1.1.1", "80"), ("140.82.112.4", "443"),
     ]:
         specs.append(("tcp_connect", f"Open TCP connection to {host}:{port}", ["tcp", host, port], "blocked"))
     for url in [
