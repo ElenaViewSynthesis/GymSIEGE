@@ -69,8 +69,19 @@ Flags: `--task` (repeatable) or `--tasks-file`; `--k` (trials per task, default 
 CyberGym runs on Modal (no 10 GiB snapshot ceiling). **Estimated sandbox disk-image storage:** the baked filesystem snapshot holds every task's build environment — **~111 GB of Docker layers** (22 tasks across 18 sanitizer / base-builder images) **plus ~4 GB of task dataset, ≈115 GB total** — far past Daytona's hard 10 GiB per-sandbox cap, which is why CyberGym runs here and not on Daytona. Each per-trial restore then reports **~119 GiB of disk in use** (restored image plus working state). Budget disk accordingly if you re-bake (`modal_snapshot_build.py`). The repo ships a batch runner, `run_modal_pinned_tasks.sh`, that runs the whole pinned set end to end. From a **WSL** terminal at the repo root (`.venv` set up, `LITELLM_BASE_URL` in `.env.local`):
 
 ```bash
+# Load your local secrets/config into THIS shell first. Env vars are not
+# persisted across terminals, so do this once per new session -- it exports
+# OPENAI/LITELLM/DAYTONA/MODAL/LANGFUSE_* from the gitignored .env.local:
+set -a; source .env.local; set +a
+
 bash run_modal_pinned_tasks.sh
 ```
+
+Run `set -a; source .env.local; set +a` at the start of every new terminal
+before any production run or CLI that reads these variables — a fresh shell has
+none of them, which surfaces as empty-value errors (e.g. `require_env` failures,
+or a Langfuse `Text cannot be empty` from an unset `LANGFUSE_DATASET`). Verify
+without printing secrets: `[ -n "$DAYTONA_API_KEY" ] && echo env-loaded`.
 
 What `run_modal_pinned_tasks.sh` includes:
 
@@ -218,9 +229,46 @@ runbook is in
 For GitHub Actions CI/CD, pull requests automatically run the corpus, unit, and
 parser-contract checks in
 [`network-off-honeypot.yml`](.github/workflows/network-off-honeypot.yml).
-The real Modal run is manual because it consumes cloud resources. Configure the
-two Modal repository secrets without printing them, trigger the workflow, and
-download its structured evidence with:
+The real Modal run is manual because it consumes cloud resources.
+
+**Runbook — steps in order.** The free `contract` job runs automatically on
+every PR and push to `main`; the steps below are the manual, quota-consuming
+path. Run them from the repo root — `gh` needs `repo` + `workflow` scopes, and
+no local virtualenv is required (the workflow provisions its own Python on the
+runner):
+
+```bash
+# 0. One-time: authenticate gh (needs repo + workflow scopes).
+gh auth status
+
+# 1. Modal secrets (prompted; values are never echoed or stored in the repo).
+gh secret set MODAL_TOKEN_ID
+gh secret set MODAL_TOKEN_SECRET
+
+# 2a. Modal-only dispatch (consumes Modal quota):
+gh workflow run network-off-honeypot.yml --ref main -f run_modal=true
+
+# 2b. ...or the full Modal->Langfuse gate. First add the Langfuse secrets and
+#     seed the 20-item dataset (see the two blocks below), then dispatch:
+gh secret set LANGFUSE_PUBLIC_KEY
+gh secret set LANGFUSE_SECRET_KEY
+
+gh workflow run network-off-honeypot.yml --ref main \
+  -f run_modal=true -f publish_langfuse=true \
+  -f langfuse_dataset='gymsiege-network-off-v1' \
+  -f langfuse_base_url='https://cloud.langfuse.com'
+
+# 3. List recent runs (status/conclusion), then watch and pull the evidence:
+gh run list --workflow=network-off-honeypot.yml
+run_id="$(gh run list --workflow network-off-honeypot.yml \
+  --limit 1 --json databaseId --jq '.[0].databaseId')"
+gh run watch "$run_id" --exit-status
+gh run download "$run_id" --dir "results/github-actions/$run_id"
+```
+
+The detailed configuration for each step follows below. Configure the two Modal
+repository secrets without printing them, trigger the workflow, and download its
+structured evidence with:
 
 ```bash
 gh auth status
