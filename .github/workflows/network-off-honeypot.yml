@@ -160,6 +160,12 @@ jobs:
           AWS_DEFAULT_REGION: us-east-1
         run: |
           set -euo pipefail
-          dest="s3://cyberattackgym/network-off-honeypot/${{ github.run_id }}/"
-          aws s3 sync results/ "$dest" --no-progress
-          echo "Uploaded results/ to $dest"
+          dest="s3://cyberattackgym/network-off-honeypot/${{ github.run_id }}"
+          # Scope to this run's evidence only (not the whole committed results/
+          # tree). No --delete and a per-run-id prefix, so prior runs' objects
+          # in S3 are left untouched.
+          aws s3 sync results/modal-network-off/ "$dest/modal-network-off/" --no-progress
+          if [ -d results/langfuse ]; then
+            aws s3 sync results/langfuse/ "$dest/langfuse/" --no-progress
+          fi
+          echo "Uploaded network-off evidence to $dest/"
