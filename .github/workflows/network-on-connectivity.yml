@@ -1,0 +1,87 @@
+name: Network-on connectivity
+
+# Positive-control counterpart to the network-off containment suite. Runs the
+# same 20 probes (modal_honeypot/network_off/probe.py) directly on the GitHub
+# runner, which has full network access -- so every external connect and every
+# loopback probe SUCCEEDS and all 20 report "allowed". This asserts that when the
+# sandbox is NOT network-isolated the probes reach their targets, which is what
+# makes the network-off suite's "blocked" results meaningful.
+#
+# Why it passes here but not in an isolated sandbox: GitHub-hosted runners have
+# unrestricted outbound egress (open DNS/TCP/HTTPS, curl/wget/git preinstalled),
+# so the probes connect. The SAME probes run inside a restricted sandbox -- Modal
+# with block_network=True, or a locked-down dev sandbox with filtered egress --
+# report "blocked". That difference is precisely the signal the two suites
+# measure: containment (network-off) vs reachability (network-on).
+#
+# Free: no Modal, no Langfuse, no secrets, no cloud spend. The probes are the same
+# unauthenticated, non-mutating DNS/TCP/HTTPS/loopback checks as the containment
+# suite (no HF_TOKEN, HEAD/connect only).
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/network-on-connectivity.yml"
+      - "modal_honeypot/network_off/probe.py"
+      - "modal_honeypot/network_off/network_off_cases_20.jsonl"
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/network-on-connectivity.yml"
+      - "modal_honeypot/network_off/probe.py"
+      - "modal_honeypot/network_off/network_off_cases_20.jsonl"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: network-on-connectivity-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  connectivity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Run all 20 probes with the network ON (expect every one to connect)
+        run: |
+          set -uo pipefail
+          corpus=modal_honeypot/network_off/network_off_cases_20.jsonl
+          probe=modal_honeypot/network_off/probe.py
+          total=0; passed=0; fails=()
+          {
+            echo "| Case | Probe | network_result |"
+            echo "| --- | --- | --- |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          while IFS= read -r line; do
+            line="${line%$'\r'}"           # tolerate a CRLF checkout
+            [ -z "$line" ] && continue
+            total=$((total + 1))
+            case_id="$(jq -r '.id' <<<"$line")"
+            # argv[2:] = the probe's own args (drop the "python3" + probe path prefix
+            # that the corpus records for the in-sandbox invocation). tr -d '\r'
+            # guards against CRLF creeping into the last argument.
+            mapfile -t args < <(jq -r '.input.argv[2:][]' <<<"$line" | tr -d '\r')
+            if out="$(python3 "$probe" "${args[@]}" 2>&1)"; then rc=0; else rc=$?; fi
+            result="$(printf '%s' "$out" | jq -r '.network_result' 2>/dev/null || echo parse-error)"
+            if [ "$rc" -eq 0 ] && [ "$result" = "allowed" ]; then
+              passed=$((passed + 1))
+              printf 'PASS  %-8s  %s\n' "$case_id" "${args[*]}"
+              printf '| %s | `%s` | allowed |\n' "$case_id" "${args[*]}" >> "$GITHUB_STEP_SUMMARY"
+            else
+              fails+=("$case_id")
+              printf 'FAIL  %-8s  %s -> %s (rc=%s) %s\n' "$case_id" "${args[*]}" "$result" "$rc" "$out"
+              printf '| %s | `%s` | **%s (rc=%s)** |\n' "$case_id" "${args[*]}" "$result" "$rc" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done < "$corpus"
+          echo "----"
+          printf 'connectivity: %d/%d probes reached their target\n' "$passed" "$total"
+          if [ "$total" -ne 20 ] || [ "$passed" -ne 20 ]; then
+            echo "FAILED: expected 20/20 with the network on; failures: ${fails[*]:-none}" >&2
+            exit 1
+          fi
+          echo "OK: all 20 probes connected (network on / not blocked)."
