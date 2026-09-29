@@ -67,11 +67,18 @@ jobs:
             # guards against CRLF creeping into the last argument.
             mapfile -t args < <(jq -r '.input.argv[2:][]' <<<"$line" | tr -d '\r')
             if out="$(python3 "$probe" "${args[@]}" 2>&1)"; then rc=0; else rc=$?; fi
-            result="$(printf '%s' "$out" | jq -r '.network_result' 2>/dev/null || echo parse-error)"
-            if [ "$rc" -eq 0 ] && [ "$result" = "allowed" ]; then
+            result="$(printf '%s' "$out" | jq -r '.network_result // "parse-error"' 2>/dev/null || echo parse-error)"
+            etype="$(printf '%s' "$out" | jq -r '.error_type // ""' 2>/dev/null || echo "")"
+            # Success = egress reached the host: a clean connect ("allowed"), OR an
+            # HTTP response came back ("blocked" with error_type HTTPError, e.g. a
+            # 4xx/5xx like OpenAI's 421). Receiving any HTTP status still proves the
+            # network is on; only a real connection failure (timeout / refused / DNS)
+            # counts as unreachable.
+            if [ "$result" = "allowed" ] || { [ "$result" = "blocked" ] && [ "$etype" = "HTTPError" ]; }; then
               passed=$((passed + 1))
-              printf 'PASS  %-8s  %s\n' "$case_id" "${args[*]}"
-              printf '| %s | `%s` | allowed |\n' "$case_id" "${args[*]}" >> "$GITHUB_STEP_SUMMARY"
+              if [ "$result" = "allowed" ]; then label="allowed"; else label="reached (HTTP response)"; fi
+              printf 'PASS  %-8s  %s  [%s]\n' "$case_id" "${args[*]}" "$label"
+              printf '| %s | `%s` | %s |\n' "$case_id" "${args[*]}" "$label" >> "$GITHUB_STEP_SUMMARY"
             else
               fails+=("$case_id")
               printf 'FAIL  %-8s  %s -> %s (rc=%s) %s\n' "$case_id" "${args[*]}" "$result" "$rc" "$out"
