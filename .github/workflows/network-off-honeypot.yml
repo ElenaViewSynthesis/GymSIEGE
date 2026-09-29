@@ -87,6 +87,13 @@ jobs:
     env:
       MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
       MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+      # Static AWS keys for the S3 results upload. OIDC is not used because it
+      # needs iam:CreateOpenIDConnectProvider / iam:CreateRole, which the deploy
+      # IAM user lacks. Use a key whose IAM user has s3:PutObject/GetObject and
+      # s3:ListBucket on the cyberattackgym bucket. When unset, the S3 upload is
+      # skipped, so the workflow keeps working before AWS is wired up.
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -143,3 +150,16 @@ jobs:
             results/langfuse/
           if-no-files-found: error
           retention-days: 30
+      # S3 archival of the JSON results/evidence to s3://cyberattackgym. The AWS
+      # CLI (preinstalled on the runner) reads AWS_ACCESS_KEY_ID/SECRET from the
+      # job env. Skipped (not failed) until those secrets are set, so runs work
+      # before AWS is wired up.
+      - name: Upload results to S3 (cyberattackgym)
+        if: ${{ always() && env.AWS_ACCESS_KEY_ID != '' }}
+        env:
+          AWS_DEFAULT_REGION: us-east-1
+        run: |
+          set -euo pipefail
+          dest="s3://cyberattackgym/network-off-honeypot/${{ github.run_id }}/"
+          aws s3 sync results/ "$dest" --no-progress
+          echo "Uploaded results/ to $dest"
