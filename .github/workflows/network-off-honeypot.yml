@@ -32,9 +32,9 @@ on:
         default: "gymsiege-network-off-v1"
         type: string
       langfuse_base_url:
-        description: "Langfuse cloud region or self-hosted base URL"
+        description: "Langfuse cloud region or self-hosted base URL (US region default; LANGFUSE_* secrets must match this region)"
         required: true
-        default: "https://cloud.langfuse.com"
+        default: "https://us.cloud.langfuse.com"
         type: string
 
 permissions:
