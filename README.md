@@ -93,6 +93,20 @@ What `run_modal_pinned_tasks.sh` includes:
 
 **Real cost / time:** one real Modal sandbox and real LiteLLM/LLM spend per task, serially. The last full batch (2026-09-21/22, plus 2026-09-23 re-runs) cost **~$1.28** and took **~9.0 hours of wall time (541.5 min summed)** — dominated by a few slow-compile outliers (ffmpeg/oss-fuzz_385167047 at 177.4 min, binutils/arvo_61822 at 63.7 min), with the median task under 15 minutes. Per-task completion times and the 15/3/2/2 status tally are in [EXPERIMENTS.md](EXPERIMENTS.md#full-22-task-modal-production-run--actual-completion-times-2026-09-16). It **overwrites the canonical `results/modal_trials/` slots in place**, so commit or copy anything you want to keep first.
 
+##### Reproduce it in CI (sharded GitHub Actions)
+
+For a hands-off reproduction, [`cybergym-pinned-modal.yml`](.github/workflows/cybergym-pinned-modal.yml) runs the same pinned set on GitHub Actions. A GitHub-hosted job is capped at 6h while the full serial run is ~9h, so the workflow **shards** the 22 tasks across `N` parallel jobs and runs each shard's slice sequentially — every shard then finishes under the cap. Tasks are assigned **round-robin** (task *i* → shard `i % N`: task 0→shard 0, 1→shard 1, …, 4→shard 0 again), which spreads the slow-compile outliers (ffmpeg, binutils) across different shards instead of clustering them, keeping per-shard wall times balanced. A free `validate` job checks the task corpus on every PR/push; the paid `run` job is manual `workflow_dispatch` only, so nothing spins up a Modal sandbox on push.
+
+The LiteLLM key is injected into each Modal sandbox from the `gymsiege-litellm` Modal secret, so CI never handles it — you only supply the `MODAL_TOKEN_ID`/`MODAL_TOKEN_SECRET` secrets and a `litellm_base_url` reachable **from Modal** (an ngrok tunnel to your local gateway, not `localhost`). Each shard uploads its `results/modal_trials/` slice as a per-shard artifact and to `s3://cyberattackgym/cybergym-pinned/<run_id>/` (when the `AWS_*` secrets are set). Dispatch it with:
+
+```bash
+gh workflow run cybergym-pinned-modal.yml --ref main \
+  -f litellm_base_url='https://<ngrok>.ngrok-free.app' \
+  -f shards=4
+```
+
+At `shards=4` the split is 6/6/5/5 tasks; more shards = shorter per-shard wall time. Same real Modal/LLM spend as the local `run_modal_pinned_tasks.sh` — see the workflow header comments for the full prerequisites.
+
 #### Reproduce the full 920-task master run on Modal
 
 > For the condensed, copy-paste run recipe (regenerate shards → bake 47

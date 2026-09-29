@@ -1,0 +1,181 @@
+name: CyberGym pinned Modal run
+
+# Reproduce the 22-task pinned CyberGym set (txt/tasks.pinned.txt) on Modal via
+# modal_sandbox_runner.py -- the CI equivalent of run_modal_pinned_tasks.sh.
+#
+# The set is split into N parallel shards (round-robin task assignment) so each
+# shard finishes within GitHub-hosted runners' 6h job cap; the full serial run is
+# ~9h (README) and would otherwise not fit. The LiteLLM API key is injected into
+# each Modal sandbox from the `gymsiege-litellm` Modal secret, so CI never handles
+# it -- CI only needs Modal tokens and a LiteLLM gateway URL reachable FROM Modal
+# (e.g. an ngrok tunnel to the local gateway).
+#
+# The paid `run` job is manual-dispatch ONLY; nothing here spins up a Modal
+# sandbox on push or PR.
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/cybergym-pinned-modal.yml"
+      - "run_modal_pinned_tasks.sh"
+      - "txt/tasks.pinned.txt"
+      - "modal_sandbox_runner.py"
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/cybergym-pinned-modal.yml"
+      - "run_modal_pinned_tasks.sh"
+      - "txt/tasks.pinned.txt"
+      - "modal_sandbox_runner.py"
+  workflow_dispatch:
+    inputs:
+      litellm_base_url:
+        description: "Public LiteLLM gateway URL reachable FROM Modal (ngrok tunnel or hosted gateway -- NOT localhost)"
+        required: true
+        type: string
+      shards:
+        description: "Number of parallel shards to split the 22 tasks across (1-22). More shards = shorter per-shard wall time."
+        required: true
+        default: "4"
+        type: string
+      run_id:
+        description: "Shared GYMSIEGE_RUN_ID / Langfuse run id for the whole batch (blank = auto-generated)."
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  # Do not cancel an in-flight paid run when a new commit lands.
+  group: cybergym-pinned-modal-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # validate: free CI. No cloud resources -- checks the pinned task corpus and
+  # that the runner/script parse. Runs on every PR and push, and on dispatch.
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Validate pinned task list and scripts
+        run: |
+          set -euo pipefail
+          mapfile -t tasks < <(sed -E 's/#.*//' txt/tasks.pinned.txt | awk 'NF' | awk '{$1=$1};1')
+          printf 'pinned tasks: %d\n' "${#tasks[@]}"
+          test "${#tasks[@]}" -eq 22
+          dupes="$(printf '%s\n' "${tasks[@]}" | sort | uniq -d)"
+          test -z "$dupes" || { echo "duplicate tasks: $dupes" >&2; exit 1; }
+          bash -n run_modal_pinned_tasks.sh
+          python3 -m py_compile modal_sandbox_runner.py
+
+  # prepare: dispatch only. Builds the shard matrix from the `shards` input and
+  # pins one shared run_id used by every shard. No cloud resources.
+  prepare:
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    needs: validate
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      shards: ${{ steps.plan.outputs.shards }}
+      run_id: ${{ steps.plan.outputs.run_id }}
+    steps:
+      - name: Plan shards and run id
+        id: plan
+        env:
+          SHARDS_INPUT: ${{ inputs.shards }}
+          RUN_ID_INPUT: ${{ inputs.run_id }}
+        run: |
+          set -euo pipefail
+          n="${SHARDS_INPUT:-4}"
+          if ! [ "$n" -ge 1 ] 2>/dev/null; then n=4; fi   # non-numeric -> default 4
+          [ "$n" -gt 22 ] && n=22                          # never more shards than tasks
+          arr="$(seq 0 $((n - 1)) | paste -sd, -)"
+          rid="${RUN_ID_INPUT:-gymsiege-modal-$(date -u +%Y%m%dT%H%M%SZ)-${{ github.run_id }}}"
+          {
+            echo "matrix=[${arr}]"
+            echo "shards=${n}"
+            echo "run_id=${rid}"
+          } >> "$GITHUB_OUTPUT"
+          printf 'planned %s shard(s), run_id=%s\n' "$n" "$rid"
+
+  # run: paid CI. Dispatch only. Each matrix job is one shard that runs its slice
+  # of the pinned tasks sequentially on real Modal sandboxes with real spend.
+  run:
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 350  # just under GitHub's 360-min hard cap
+    strategy:
+      fail-fast: false     # one shard's failure must not cancel the others
+      matrix:
+        shard: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    env:
+      MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+      MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+      # Required by modal_sandbox_runner.py; must be reachable FROM the Modal
+      # cloud sandbox (ngrok tunnel / hosted gateway), not a localhost gateway.
+      LITELLM_BASE_URL: ${{ inputs.litellm_base_url }}
+      GYMSIEGE_RUN_ID: ${{ needs.prepare.outputs.run_id }}
+      SHARDS: ${{ needs.prepare.outputs.shards }}
+      SHARD_INDEX: ${{ matrix.shard }}
+      # Static AWS keys for the optional S3 upload (same pattern as the honeypot
+      # workflow). When unset, the S3 step is skipped, not failed.
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          python3 -m pip install --disable-pip-version-check -r requirements.txt
+      - name: Run shard ${{ matrix.shard }} of pinned CyberGym tasks
+        run: |
+          set -uo pipefail  # not -e: one task's failure must not abort the shard
+          mkdir -p results/modal_trials
+          mapfile -t all < <(sed -E 's/#.*//' txt/tasks.pinned.txt | awk 'NF' | awk '{$1=$1};1')
+          tasks=()
+          for i in "${!all[@]}"; do
+            if [ "$(( i % SHARDS ))" -eq "$SHARD_INDEX" ]; then
+              tasks+=("${all[$i]}")
+            fi
+          done
+          printf 'shard %s/%s: %d task(s), run_id=%s\n' \
+            "$SHARD_INDEX" "$SHARDS" "${#tasks[@]}" "$GYMSIEGE_RUN_ID"
+          for task in "${tasks[@]}"; do
+            safe="${task//\//_}"
+            echo "=== $task ==="
+            # `|| true`: modal_sandbox_runner.py exits 1 on error/oracle_unavailable;
+            # every task must still get its own attempt regardless of earlier results.
+            python3 modal_sandbox_runner.py --task "$task" --mode patch-only \
+              --output "results/modal_trials/${safe}.json" \
+              --run-id "$GYMSIEGE_RUN_ID" \
+              2>&1 | tee "results/modal_trials/${safe}.log" || true
+          done
+          echo "=== shard $SHARD_INDEX done ==="
+      - name: Upload shard results (artifact)
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: cybergym-pinned-${{ github.run_id }}-shard-${{ matrix.shard }}
+          path: results/modal_trials/
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Upload shard results to S3 (cyberattackgym)
+        if: ${{ always() && env.AWS_ACCESS_KEY_ID != '' }}
+        env:
+          AWS_DEFAULT_REGION: us-east-1
+        run: |
+          set -euo pipefail
+          # All shards write task-named files into one shared per-run prefix; no
+          # --delete, so prior runs' objects in S3 are left untouched.
+          dest="s3://cyberattackgym/cybergym-pinned/${{ github.run_id }}"
+          aws s3 sync results/modal_trials/ "$dest/modal_trials/" --no-progress
+          echo "Uploaded shard $SHARD_INDEX results to $dest/"
