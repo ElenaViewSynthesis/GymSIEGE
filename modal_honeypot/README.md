@@ -62,7 +62,10 @@ python3 modal_honeypot/runner.py \
 ```
 
 See [`network_off/README.md`](network_off/README.md) for the corpus categories
-and validation commands.
+and validation commands. Its positive control —
+[`network_on/README.md`](network_on/README.md) — runs the same 20 probes on a
+host with open egress and expects every one to connect (`20/20 reached`),
+confirming the `blocked` results only appear under real containment.
 
 The Modal SDK is pinned in the repository requirements. Authenticate locally
 with Modal before a remote run; do not inject provider credentials into this
