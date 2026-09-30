@@ -1,0 +1,112 @@
+name: Honeypot default-deny baseline
+
+# Required CI baseline for the two 200-case default-deny honeypot corpora
+# (agent-propagation and model-replication). It validates corpus structure and
+# command syntax WITHOUT executing any case, runs the corpus unit tests, and
+# records the approved corpus hashes, scoring (schema) version, and aggregate
+# category summaries as an evidence artifact.
+#
+# Fail-closed: a missing case, duplicate ID, duplicate argv, wrong category
+# distribution, shell syntax error, out-of-range score bound, or any failed unit
+# test aborts the job (validators raise/exit non-zero; `set -euo pipefail`).
+#
+# Free: no Modal, no Langfuse, no cloud spend, no secrets. Pure structural
+# validation (`bash -n` syntax checks + stdlib unittest) on the runner. This is
+# the mandatory baseline the gated egress experiment must depend on; it must not
+# be altered by the experimental workflow or become an alternative path to merge.
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/honeypot-default-deny.yml"
+      - "agent_honeypot/**"
+      - "model_replication_honeypot/**"
+      - "tests/test_agent_honeypot_corpus.py"
+      - "tests/test_model_replication_corpus.py"
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/honeypot-default-deny.yml"
+      - "agent_honeypot/**"
+      - "model_replication_honeypot/**"
+      - "tests/test_agent_honeypot_corpus.py"
+      - "tests/test_model_replication_corpus.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: honeypot-default-deny-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  default-deny:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Validate both 200-case corpora (structure + syntax, no execution)
+        run: |
+          set -euo pipefail
+          mkdir -p results/honeypot-default-deny
+          echo "== agent-propagation corpus =="
+          python3 agent_honeypot/corpus/validate_commands.py \
+            | tee results/honeypot-default-deny/agent-propagation.json
+          echo "== model-replication corpus =="
+          python3 model_replication_honeypot/corpus/validate_commands.py \
+            | tee results/honeypot-default-deny/model-replication.json
+
+      - name: Run corpus unit tests (generator ↔ committed corpus parity)
+        run: |
+          set -euo pipefail
+          python3 -m unittest -v \
+            tests.test_agent_honeypot_corpus \
+            tests.test_model_replication_corpus
+
+      - name: Record corpus hashes, scoring version, and evidence
+        run: |
+          set -euo pipefail
+          agent_corpus=agent_honeypot/corpus/agent_commands_200.jsonl
+          model_corpus=model_replication_honeypot/corpus/model_replication_commands_200.jsonl
+          agent_hash=$(sha256sum "$agent_corpus" | cut -d' ' -f1)
+          model_hash=$(sha256sum "$model_corpus" | cut -d' ' -f1)
+          # Scoring/schema version the two honeypots emit (single source of truth).
+          ver() { python3 -c "import re,sys;print(re.search(r'\"schema_version\":\s*\"([^\"]+)\"',open(sys.argv[1]).read()).group(1))" "$1"; }
+          agent_ver=$(ver agent_honeypot/score_events.py)
+          model_ver=$(ver model_replication_honeypot/score_replication.py)
+
+          jq -n \
+            --arg commit "${GITHUB_SHA:-}" --arg run "${GITHUB_RUN_ID:-}" \
+            --arg ah "$agent_hash" --arg mh "$model_hash" \
+            --arg av "$agent_ver" --arg mv "$model_ver" \
+            --slurpfile asum results/honeypot-default-deny/agent-propagation.json \
+            --slurpfile msum results/honeypot-default-deny/model-replication.json \
+            '{commit: $commit, run_id: $run,
+              scoring_schema_version: {agent: $av, model_replication: $mv},
+              corpora: {
+                agent_propagation: {path: "agent_honeypot/corpus/agent_commands_200.jsonl", sha256: $ah, summary: $asum[0]},
+                model_replication: {path: "model_replication_honeypot/corpus/model_replication_commands_200.jsonl", sha256: $mh, summary: $msum[0]}
+              }}' \
+            > results/honeypot-default-deny/evidence.json
+
+          {
+            echo "### Honeypot default-deny baseline"
+            echo ""
+            echo "| Corpus | Cases | Status | SHA-256 | Schema |"
+            echo "| --- | --- | --- | --- | --- |"
+            echo "| agent-propagation | $(python3 -c "import json;print(json.load(open('results/honeypot-default-deny/agent-propagation.json'))['items'])") | valid | \`${agent_hash:0:16}…\` | $agent_ver |"
+            echo "| model-replication | $(python3 -c "import json;print(json.load(open('results/honeypot-default-deny/model-replication.json'))['items'])") | valid | \`${model_hash:0:16}…\` | $model_ver |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "OK: both default-deny corpora valid (400 cases total)."
+
+      - name: Upload default-deny evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: honeypot-default-deny-${{ github.run_id }}
+          path: results/honeypot-default-deny/
+          if-no-files-found: error
