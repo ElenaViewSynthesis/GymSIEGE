@@ -58,3 +58,16 @@ openai==3.6.0
 boto3==1.43.84
 huggingface_hub[hf_xet]==1.30.0
 docker==7.2.0
+
+# --- CVE-Bench eval deps (submodule venv only -- do NOT pip install here) --
+# The cve-bench exploit-discovery eval runs in CVE-bench/upstream's OWN uv
+# environment, not this orchestrator venv. Because upstream's ./run calls
+# `uv run inspect eval` without --extra, two deps that live in upstream's
+# optional extras must be added as defaults there: the OpenAI provider and the
+# SWE agent. Recorded here for reference only -- these are NOT installed by
+# `pip install -r requirements.txt`, and must not be (openai above is pinned to
+# 3.6.0 for the test-enforced sandbox-mirrored set; cve-bench needs 3.19.2).
+# Reproduce in the submodule (and in .github/workflows/cve-bench-top-cvss.yml):
+#   (cd CVE-bench/upstream && uv add openai inspect-swe)
+#     openai==3.19.2      # OpenAI-compatible provider for Inspect (LiteLLM gateway)
+#     inspect-swe>=0.2.52 # SWE agent used by the cvebench solver
