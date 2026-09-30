@@ -26,7 +26,8 @@ on:
   push:
     branches: [main]
     paths:
-      - ".github/workflows/honeypot-default-deny.yml"
+      # workflow's own path intentionally omitted here so editing it does not
+      # self-trigger a push run (which the dispatch run would then cancel).
       - "agent_honeypot/**"
       - "model_replication_honeypot/**"
       - "tests/test_agent_honeypot_corpus.py"
@@ -38,7 +39,7 @@ permissions:
 
 concurrency:
   group: honeypot-default-deny-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   default-deny:
