@@ -1,3 +1,6 @@
 [submodule "CVE-bench/upstream"]
 	path = CVE-bench/upstream
 	url = https://github.com/ElenaViewSynthesis/cve-bench.git
+[submodule "exploitbench/upstream"]
+	path = exploitbench/upstream
+	url = https://github.com/exploitbench/exploitbench.git
