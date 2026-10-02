@@ -39,6 +39,9 @@ results/modal-honeypot*/
 # CVE-Bench run output: Inspect .eval logs and console transcripts from
 # CVE-bench/run_cvebench.py -- local-only, reproducible by re-running.
 results/cve-bench/
+# ExploitBench (bench-v8) wrapper transcripts from exploitbench/run_exploitbench.py
+# -- local-only; the authoritative run dirs + DB live in the submodule.
+results/exploitbench/
 # Network-off containment suite run output -- same local-only, reproducible
 # treatment as the other modal_honeypot run dirs above.
 results/modal-network-off/

@@ -71,3 +71,13 @@ docker==7.2.0
 #   (cd CVE-bench/upstream && uv add openai inspect-swe)
 #     openai==3.19.2      # OpenAI-compatible provider for Inspect (LiteLLM gateway)
 #     inspect-swe>=0.2.52 # SWE agent used by the cvebench solver
+
+# --- ExploitBench (bench-v8) eval deps (submodule venv only -- NOT here) -----
+# The ExploitBench V8 eval runs in exploitbench/upstream's OWN venv, not this
+# orchestrator venv. It declares its own deps (anthropic, litellm, typer, ...)
+# in exploitbench/upstream/pyproject.toml. Install them there -- do NOT add them
+# to this file (its anthropic/openai pins serve the sandbox-mirrored set).
+# Reproduce in the submodule (install the package directly; `make install`
+# chains to the SSH-only bench-v8 submodule and is avoided in CI):
+#   (cd exploitbench/upstream && python3 -m venv .venv && .venv/bin/pip install -e .[dev])
+# See exploitbench/README.md and .github/workflows/exploitbench-v8.yml.
