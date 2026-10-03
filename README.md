@@ -64,6 +64,29 @@ Flags: `--task` (repeatable) or `--tasks-file`; `--k` (trials per task, default 
 
 **Keep `--max-parallel 1` on this Daytona account.** Each ExploitGym sandbox is 4 vCPU / 8 GiB, and the org-wide hard ceiling is 10 vCPU / 10 GiB total, so only one fits at a time — `--max-parallel 1` = one 4 vCPU / 8 GiB sandbox at a time, well under the ceiling (~25–35 min for six tasks run serially). Higher values fail fast per over-quota task with `Total CPU/memory limit exceeded. Maximum allowed: 10 / 10GiB`, recorded as `ERROR - harness/platform failure` (not a capability result, and no sandbox leaks — the adapter checks and none are created). Modal has no equivalent ceiling, but only hosts the CyberGym provider today.
 
+### ExploitBench V8 — Chromium V8 exploitation (Modal VM)
+
+[ExploitBench](https://github.com/exploitbench/exploitbench) (`bench-v8`) measures how far an agent climbs the V8 exploitation ladder (reach → trigger → primitives → ACE). It runs in a Modal `runtime="vm"` sandbox with a real Docker daemon — the agent's MCP container is launched `--network none`, so egress is off by construction — with model calls routed through the LiteLLM gateway. Full details and the local path are in [`exploitbench/README.md`](exploitbench/README.md).
+
+One-time, build a VM snapshot that bakes ExploitBench plus one V8 image (no LLM spend), then run a cell. From a **WSL** terminal (`.venv` active, `.env.local` sourced for `MODAL_TOKEN_*`):
+
+```bash
+# 1. build the snapshot (pulls one ~70 GB V8 image, snapshots /var/lib/docker)
+bash exploitbench/smoke_build_v8_snapshot.sh
+
+# 2a. paid shakedown — 30 turns (pipeline check; a clean cell reports score 0.0
+#     with exit_reason "budget", i.e. it only ran out of the shakedown budget)
+bash exploitbench/smoke_run_v8_paid.sh
+
+# 2b. full-cell measurement — 300 turns (the real capability result; more spend)
+python modal_exploitbench_runner.py --allow-paid-real-run \
+  --manifest results/exploitbench-smoke/snapshot.json \
+  --app gymsiege-exploitbench-smoke \
+  --seed 1 --turn-budget 300 --cost-cap-usd 10
+```
+
+The paid run needs the `gymsiege-litellm` Modal Secret to carry a minted LiteLLM virtual key (`OPENAI_API_KEY`) and a public gateway URL (`OPENAI_API_BASE`); `localhost` is rejected inside the sandbox. Build first after any pin change — the runner refuses a snapshot whose recorded `mcp_pin` doesn't match.
+
 #### Run all 22 pinned tasks on Modal (CyberGym)
 
 CyberGym runs on Modal (no 10 GiB snapshot ceiling). **Estimated sandbox disk-image storage:** the baked filesystem snapshot holds every task's build environment — **~111 GB of Docker layers** (22 tasks across 18 sanitizer / base-builder images) **plus ~4 GB of task dataset, ≈115 GB total** — far past Daytona's hard 10 GiB per-sandbox cap, which is why CyberGym runs here and not on Daytona. Each per-trial restore then reports **~119 GiB of disk in use** (restored image plus working state). Budget disk accordingly if you re-bake (`modal_snapshot_build.py`). The repo ships a batch runner, `run_modal_pinned_tasks.sh`, that runs the whole pinned set end to end. From a **WSL** terminal at the repo root (`.venv` set up, `LITELLM_BASE_URL` in `.env.local`):
