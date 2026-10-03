@@ -6,7 +6,7 @@ scored it 9.8 CRITICAL on a network attack vector instead — the largest
 NVD/CNA disagreement found across all 27 kernelCTF CVEs (see
 [`kernelctf-tasks.md`](kernelctf-tasks.md)).
 
-Last updated: 2026-09-27 (Europe/London)
+Last updated: 2026-10-03 (Europe/London)
 
 This is the restart/handoff document for a new terminal or Codex session. Read
 this file, `README.md`, and `reference/DAYTONA_BAKE_ISSUE.md` before running Daytona.
@@ -30,6 +30,19 @@ Do not assume any terminal process from the previous session is still alive.
   `LITELLM_BASE_URL` is set, and CyberGym on both Daytona and Modal routes its
   agent calls through it. It carries the `additional_drop_params: ["temperature"]`
   fix (FINDINGS #20) and the `langfuse_otel` Langfuse callback (FINDINGS #21).
+- **ExploitBench (bench-v8) -> self-hosted + local.**
+  `exploitbench/run_exploitbench.py` (demo: `exploitbench/run_v8_cheap.sh`)
+  drives the upstream `exploitbench` CLI over the submodule at
+  `exploitbench/upstream` (pinned 9d0173b, branch eval-v8-v1-beta). The
+  agent-under-test is network-isolated by construction -- every episode is
+  `docker run --network none` -- so, unlike CyberGym/CVE-Bench, there is no
+  egress knob to force. openai/* models route through the gateway via
+  `OPENAI_API_BASE`; default model is openai/gpt-5.6-luna with a 30-turn
+  shakedown and $2 between-episode scheduler cap by default. Enforce the true
+  hard budget on the dedicated LiteLLM virtual key. CI is
+  `.github/workflows/exploitbench-v8.yml` (workflow_dispatch, self-hosted
+  `exploitbench-v8` runner) because the ~70 GB V8 images don't fit a
+  GitHub-hosted runner's ~14 GB disk.
 
 **Shipped since the 2026-09-04 snapshot this section used to describe.**
 - glibc-2.17 Node runtime so old-glibc targets clear `node_compatibility_probe`
@@ -45,6 +58,13 @@ Do not assume any terminal process from the previous session is still alive.
 - Langfuse Layer 1 per-trial host traces (`observability.py`) + Layer 2 gateway
   generation capture (FINDINGS #21).
 - Test suite: **113 pass** (was 22).
+- ExploitBench (bench-v8) incorporated (2026-10-03): submodule + thin wrapper
+  (`run_exploitbench.py`) + cheap-cell demo + self-hosted CI workflow + README
+  + 24 wrapper tests. Pushed to `origin/main` (`ff26471..a6ae198`). See
+  [`exploitbench/README.md`](exploitbench/README.md). Not yet exercised:
+  needs an `exploitbench-v8` runner (Docker, ~80 GB disk) and the
+  `OPENAI_API_KEY` / `EXPLOITBENCH_BASE_URL` secrets; `tier=mock` is the
+  cheapest end-to-end smoke once a runner exists.
 
 **Latest production run -- 22-task Modal set, 2026-09-21/22 (+ 2026-09-23
 re-runs).** 15 `success`, 3 `failed`, 2 `no_patch`, 2 `oracle_mismatch`;
@@ -67,6 +87,18 @@ moved the tally to 15 success / 3 failed.
 - Optional: the transient client-sandbox connection-reset retry (the harness
   already fails safe); ExploitGym Layer 2 in-sandbox-generation capture
   (documented gap -- its bundled proxy never reaches the gateway).
+- **ExploitBench (open):** register a self-hosted `exploitbench-v8` runner
+  (Docker, ~80 GB free disk, reach to gateway + GHCR) and set the
+  `OPENAI_API_KEY` (minted LiteLLM virtual key) + `EXPLOITBENCH_BASE_URL`
+  secrets. Then walk the tiers: `tier=mock` ($0) -> `tier=test` (~$0.10) ->
+  one real cell (`tier=real -f env=v8-cve-2024-1939 -f seeds=1`, ~70 GB pull).
+  Alternative Modal path is now implemented but not live-tested:
+  `modal_exploitbench_build.py` bakes one digest-pinned V8 image into a VM
+  filesystem snapshot and `modal_exploitbench_runner.py` restores it with a
+  named LiteLLM secret and explicit paid-run opt-in. Start with the builder's
+  default `v8-cve-2024-1939`, then a 30-turn/$2 shakedown.
+  Submodule pin 9d0173b must stay fetchable upstream, or re-point to a fork
+  (the path CVE-Bench took).
 
 ### Gated research: monitored propagation and model-replication experiment
 
