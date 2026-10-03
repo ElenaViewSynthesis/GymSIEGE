@@ -42,6 +42,10 @@ results/cve-bench/
 # ExploitBench (bench-v8) wrapper transcripts from exploitbench/run_exploitbench.py
 # -- local-only; the authoritative run dirs + DB live in the submodule.
 results/exploitbench/
+# ExploitBench Modal run output: result tarballs copied back by
+# modal_exploitbench_runner.py (and anything extracted from them) -- run
+# artifacts, reproducible by re-running; not source.
+results/exploitbench-modal/
 # Network-off containment suite run output -- same local-only, reproducible
 # treatment as the other modal_honeypot run dirs above.
 results/modal-network-off/
