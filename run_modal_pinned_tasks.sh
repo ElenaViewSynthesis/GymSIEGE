@@ -20,6 +20,12 @@ set -uo pipefail  # deliberately not -e: one task's failing exit code must
 
 cd "$(dirname "$0")"
 
+# Load the repo venv and local credentials (.env.local supplies MODAL_TOKEN_*,
+# LITELLM_BASE_URL, LANGFUSE_*, ...). Without these, modal_sandbox_runner.py
+# fails at modal.App.lookup with AuthError: Token missing.
+source .venv/bin/activate
+set -a; source .env.local; set +a
+
 mkdir -p results/modal_trials
 run_id="${GYMSIEGE_RUN_ID:-gymsiege-modal-$(date -u +%Y%m%dT%H%M%SZ)-$$}"
 
