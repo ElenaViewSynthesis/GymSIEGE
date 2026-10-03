@@ -733,6 +733,18 @@ python -m pip install -r requirements.txt
 
 Every command in this README assumes the venv is activated in your current shell (plain `python` resolves to it) — run `deactivate` when you're done. See [Activate the venv](#quick-start) at the top for the same instruction repeated where you'll actually need it first.
 
+### The two virtualenvs (orchestrator vs ExploitBench CLI)
+
+There are **two separate venvs**, and conflating them is the usual source of a surprise `command not found`:
+
+- **`.venv`** (repo root) — the **orchestrator** venv set up above. It runs `orchestrator.py`, the `modal_*.py` scripts, and the ExploitBench **wrapper** `exploitbench/run_exploitbench.py`.
+- **`exploitbench/upstream/.venv`** — the **ExploitBench CLI** itself (`exploitbench summary` / `aggregate` / …), installed once with `(cd exploitbench/upstream && python3 -m venv .venv && .venv/bin/pip install -e '.[dev]')` — **not** `make install`, which pulls the SSH-only `bench-v8` submodule.
+
+The Modal path needs no activation of the CLI venv: `run_exploitbench.py` and `modal_exploitbench_runner.py` auto-discover `exploitbench/upstream/.venv/bin/exploitbench`. To run the CLI by hand:
+
+- **Simplest:** call it by path — `exploitbench/upstream/.venv/bin/exploitbench …` — no activation juggling.
+- **If you want the bare name:** `deactivate` the current (orchestrator) venv, then `source exploitbench/upstream/.venv/bin/activate`. Don't conflate the two.
+
 Developer-local values belong in the git-ignored `.env.local`:
 
 ```dotenv
