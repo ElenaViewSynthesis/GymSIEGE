@@ -2,9 +2,11 @@
 
 GYMSIEGE (this repo) runs CyberGym-E2E and ExploitGym as a Daytona-sandbox
 fleet benchmark, plus (new as of 2026-09-15) a second CyberGym-E2E provider
-on Modal (`modal_sandbox_runner.py`). Issue #2 remains open; #1, #3-#10 are
-resolved/investigated and kept below only as closed records — no action needed
-on them. Priority: #2 is a Daytona-specific investigation/decision.
+on Modal (`modal_sandbox_runner.py`). Issues #2 and #11 are open; #1, #3-#10
+are resolved/investigated and kept below only as closed records — no action
+needed on them. Priority: #2 is a Daytona-specific investigation/decision; #11
+is an ExploitBench-on-Modal venv/interpreter diagnosis (blocks the V8 build
+smoke).
 
 ## 1. RESOLVED (2026-09-18) — glibc-2.17 Node runs on old and new targets
 
@@ -669,6 +671,65 @@ the snapshot's `qemu-i386-static`; a no-LLM verification produced a real 1/0
 vulnerable/fixed differential with isolated stages 3/4 passing. See
 `FINDINGS.md#22` and
 `results/modal_oracle_diagnostics/libxaac_arvo_62261_qemu.json`.
+
+## 11. (Investigate) `smoke_build_v8_snapshot.sh` fails with `No module named 'modal'` despite an active `.venv`
+
+`modal_exploitbench_build.py:151-153`, inside `build_snapshot()`:
+
+```python
+try:
+    import modal
+except ImportError as exc:  # pragma: no cover - environment dependent
+    raise RuntimeError("Modal SDK is missing; install requirements.txt") from exc
+```
+
+Repro (WSL), 2026-10-04, with the repo-root `.venv` shown active in the prompt:
+
+```bash
+set -a; source .env.local; set +a
+bash exploitbench/smoke_build_v8_snapshot.sh
+# ...
+# ModuleNotFoundError: No module named 'modal'
+# RuntimeError: Modal SDK is missing; install requirements.txt
+```
+
+The smoke script simply runs `python modal_exploitbench_build.py …`, so the
+`python` resolved in that shell has no `modal` importable. `modal==1.6.0` is
+pinned in `requirements.txt:21`.
+
+**Not yet root-caused — this is the wrinkle to resolve, not an assumed cause.**
+Earlier in the *same* session (secret precheck at ~19:46 BST, prompt also
+`(.venv)`) a bare `python` heredoc executed `import modal` successfully and
+reached Modal's internals, and `modal run …` worked. So `modal` was importable
+under some interpreter in this workspace; the build's `python` is a different
+one. This repo runs **two venvs** (see `exploitbench/README.md`, "The two
+venvs"): `<repo>/.venv` (orchestrator / project scripts) and
+`exploitbench/upstream/.venv` (the ExploitBench CLI). The Modal build/runner
+scripts must execute under a venv that has `modal` installed; the CLI venv does
+not need it and the orchestrator venv may not have had `requirements.txt`
+installed in the shell that ran the smoke.
+
+Diagnostic to pin it (run in the exact shell that reproduces the failure, before
+spending any Modal compute):
+
+```bash
+which -a python
+python -c "import sys; print(sys.executable)"
+python -c "import modal, sys; print('modal', modal.__version__, sys.executable)"  # the real test
+pip show modal 2>/dev/null | head -3
+```
+
+Expected fixes once the diagnostic says which case it is:
+- **`modal` missing from the active venv** → `pip install -r requirements.txt`
+  into that venv (the orchestrator `<repo>/.venv`), then re-run the smoke.
+- **`python` not the venv interpreter** (activation didn't prepend the venv
+  `bin`, or a fresh terminal) → re-`source <repo>/.venv/bin/activate` and
+  confirm `sys.executable` points inside `<repo>/.venv` before launching.
+
+Optional hardening (no behavior change to a working path): have
+`build_snapshot()`'s `ImportError` handler include `sys.executable` in the
+raised message so this failure is self-diagnosing — "Modal SDK is missing for
+`<path>/python`; install requirements.txt into that environment."
 
 ## Constraints for all of the above
 
