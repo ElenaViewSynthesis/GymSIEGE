@@ -107,9 +107,13 @@ moved the tally to 15 success / 3 failed.
     aggregate --benchmark-id gymsiege-modal-v8-cve-2024-1939`.
   - Submodule pin 9d0173b must stay fetchable upstream, or re-point to a fork
     (the path CVE-Bench took).
-  - Remaining (not blocking): `cost_usd` is `null` (`cost_source=unknown`) --
-    the gateway returns no spend, so runs can't be costed yet (the `-` in the
-    aggregate cost column). The self-hosted `exploitbench-v8` runner
+  - Cost column: wired 2026-10-04. `exploitbench_cost.py` fills `cost_usd`
+    from per-token rates (LiteLLM `/model/info`, authoritative, cached into
+    `exploitbench/model_prices.json`), and the runner backfills after each
+    merge. Shows a number once rates exist for the model; still `-` until the
+    gateway model carries `input/output_cost_per_token` or the price map is
+    filled (the gateway returns no per-request spend to capture directly).
+  - Remaining (not blocking): the self-hosted `exploitbench-v8` runner
     (Docker, ~80 GB disk, gateway + GHCR reach, `tier=mock`->`test`->`real`)
     remains an unexercised alternative to the Modal vehicle.
 
