@@ -662,6 +662,7 @@ See [`daytona-notes.md`](daytona-notes.md) for a deeper walkthrough of the ARVO 
 - [Guardrails](#guardrails)
 - [Verification](#verification)
 - [Reproduction helper](#reproduction-helper)
+- [Benchmarks and upstream papers](#benchmarks-and-upstream-papers)
 
 ## How it fits together
 
@@ -1367,3 +1368,18 @@ The local suite verifies task parsing, pass@k/oracle aggregation, ExploitGym sco
 ./demo.sh
 RUN_EXPLOITGYM=1 ./demo.sh
 ```
+
+## Benchmarks and upstream papers
+
+GYMSIEGE is an orchestration/containment layer over four external benchmarks; it
+does not define its own tasks or oracles. Each benchmark's paper and upstream
+repo:
+
+| Benchmark | Role in this codebase | Paper | Upstream |
+|---|---|---|---|
+| **CyberGym** / CyberGym-E2E | End-to-end discovery → PoC → patch over real OSS CVEs; the 22 pinned and 920-task master runs on Daytona/Modal | [arXiv:2506.02548](https://arxiv.org/abs/2506.02548) | [sunblaze-ucb/cybergym-e2e](https://github.com/sunblaze-ucb/cybergym-e2e) |
+| **ExploitGym** | Userspace exploit-development tasks run under the mandatory firewall/proxy/hardened profile | [arXiv:2605.11086](https://arxiv.org/abs/2605.11086) | [sunblaze-ucb/exploitgym](https://github.com/sunblaze-ucb/exploitgym) |
+| **ExploitBench** (bench-v8) | Chromium V8 capability-ladder (16 flags / 5 tiers), swept on the Modal VM runner | [arXiv:2605.14153](https://arxiv.org/abs/2605.14153) | [exploitbench/exploitbench](https://github.com/exploitbench/exploitbench) |
+| **ARVO** | Reproducible OSS-Fuzz vulnerability corpus used as a task source | [arXiv:2408.02153](https://arxiv.org/abs/2408.02153) | [n132/ARVO](https://github.com/n132/ARVO) |
+
+ARVO reproduces findings from Google's [OSS-Fuzz](https://github.com/google/oss-fuzz).
