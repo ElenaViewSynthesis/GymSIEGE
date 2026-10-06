@@ -1,9 +1,11 @@
 # GYMSIEGE
 
-GYMSIEGE runs two public security-agent benchmarks as a **Daytona fleet evaluation**:
+GYMSIEGE runs four public security-agent benchmarks as a **Daytona fleet evaluation**:
 
-- **[CyberGym-E2E](https://github.com/sunblaze-ucb/cybergym-e2e)** — find-vulnerability → PoC → patch, scored by the real ARVO sanitizer oracle.
+- **[CyberGym-E2E](https://github.com/sunblaze-ucb/cybergym-e2e)** — find-vulnerability → PoC → patch, scored by the real [ARVO](https://arxiv.org/abs/2408.02153) sanitizer oracle.
 - **[ExploitGym](https://github.com/sunblaze-ucb/exploitgym)** — exploit-development evaluation, run through the upstream evaluator with its firewall, local LLM proxy, controller, hardened targets, and budget accounting.
+- **[ExploitBench](https://arxiv.org/abs/2605.14153)** — a Chromium V8 capability-ladder (16 flags across five tiers: coverage → trigger → in-cage primitives → cage-escape → arbitrary code execution), run on the Modal VM runner.
+- **[CVE-Bench](https://arxiv.org/abs/2503.17332)** — real-world web-application CVE exploit-discovery eval (zero-day / one-day settings), with the agent run network-isolated and model calls routed through a LiteLLM gateway.
 
 It measures both **agent capability** (pass@k, oracle stages, research navigation success, tokens/cost) and **infrastructure behavior** (provisioning latency, a concurrency failure curve, CPU/memory/disk telemetry, recordings, cleanup reliability).
 
@@ -1371,15 +1373,16 @@ RUN_EXPLOITGYM=1 ./demo.sh
 
 ## Benchmarks and upstream papers
 
-GYMSIEGE is an orchestration/containment layer over four external benchmarks; it
-does not define its own tasks or oracles. Each benchmark's paper and upstream
-repo:
+GYMSIEGE is an orchestration/containment layer over external benchmarks (and the
+corpus they draw on); it does not define its own tasks or oracles. Each one's
+paper and upstream repo:
 
 | Benchmark | Role in this codebase | Paper | Upstream |
 |---|---|---|---|
 | **CyberGym** / CyberGym-E2E | End-to-end discovery → PoC → patch over real OSS CVEs; the 22 pinned and 920-task master runs on Daytona/Modal | [arXiv:2506.02548](https://arxiv.org/abs/2506.02548) | [sunblaze-ucb/cybergym-e2e](https://github.com/sunblaze-ucb/cybergym-e2e) |
 | **ExploitGym** | Userspace exploit-development tasks run under the mandatory firewall/proxy/hardened profile | [arXiv:2605.11086](https://arxiv.org/abs/2605.11086) | [sunblaze-ucb/exploitgym](https://github.com/sunblaze-ucb/exploitgym) |
 | **ExploitBench** (bench-v8) | Chromium V8 capability-ladder (16 flags / 5 tiers), swept on the Modal VM runner | [arXiv:2605.14153](https://arxiv.org/abs/2605.14153) | [exploitbench/exploitbench](https://github.com/exploitbench/exploitbench) |
+| **CVE-Bench** | Real-world web-application CVE exploit-discovery (zero-day / one-day); the top-CVSS-2024 CI eval | [arXiv:2503.17332](https://arxiv.org/abs/2503.17332) | [uiuc-kang-lab/cve-bench](https://github.com/uiuc-kang-lab/cve-bench) |
 | **ARVO** | Reproducible OSS-Fuzz vulnerability corpus used as a task source | [arXiv:2408.02153](https://arxiv.org/abs/2408.02153) | [n132/ARVO](https://github.com/n132/ARVO) |
 
 ARVO reproduces findings from Google's [OSS-Fuzz](https://github.com/google/oss-fuzz).
