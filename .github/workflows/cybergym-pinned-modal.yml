@@ -43,6 +43,11 @@ on:
         required: false
         default: ""
         type: string
+      max_tasks:
+        description: "Cap total tasks before sharding (0 = all 22; e.g. 10 for a cheap dispatch smoke test)."
+        required: false
+        default: "0"
+        type: string
 
 permissions:
   contents: read
@@ -89,11 +94,16 @@ jobs:
         env:
           SHARDS_INPUT: ${{ inputs.shards }}
           RUN_ID_INPUT: ${{ inputs.run_id }}
+          MAX_TASKS_INPUT: ${{ inputs.max_tasks }}
         run: |
           set -euo pipefail
           n="${SHARDS_INPUT:-4}"
           if ! [ "$n" -ge 1 ] 2>/dev/null; then n=4; fi   # non-numeric -> default 4
           [ "$n" -gt 22 ] && n=22                          # never more shards than tasks
+          mt="${MAX_TASKS_INPUT:-0}"
+          if [ "$mt" -gt 0 ] 2>/dev/null && [ "$n" -gt "$mt" ]; then
+            n="$mt"                                        # no more shards than capped tasks (avoid empty shards)
+          fi
           arr="$(seq 0 $((n - 1)) | paste -sd, -)"
           rid="${RUN_ID_INPUT:-gymsiege-modal-$(date -u +%Y%m%dT%H%M%SZ)-${{ github.run_id }}}"
           {
@@ -123,6 +133,7 @@ jobs:
       GYMSIEGE_RUN_ID: ${{ needs.prepare.outputs.run_id }}
       SHARDS: ${{ needs.prepare.outputs.shards }}
       SHARD_INDEX: ${{ matrix.shard }}
+      MAX_TASKS: ${{ inputs.max_tasks }}
       # Static AWS keys for the optional S3 upload (same pattern as the honeypot
       # workflow). When unset, the S3 step is skipped, not failed.
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -141,6 +152,11 @@ jobs:
           set -uo pipefail  # not -e: one task's failure must not abort the shard
           mkdir -p results/modal_trials
           mapfile -t all < <(sed -E 's/#.*//' txt/tasks.pinned.txt | awk 'NF' | awk '{$1=$1};1')
+          # Optional smoke-test cap: keep only the first MAX_TASKS tasks before sharding.
+          if [ "${MAX_TASKS:-0}" -gt 0 ] 2>/dev/null && [ "${MAX_TASKS}" -lt "${#all[@]}" ]; then
+            all=("${all[@]:0:MAX_TASKS}")
+            echo "MAX_TASKS=${MAX_TASKS}: capped to ${#all[@]} task(s) before sharding"
+          fi
           tasks=()
           for i in "${!all[@]}"; do
             if [ "$(( i % SHARDS ))" -eq "$SHARD_INDEX" ]; then

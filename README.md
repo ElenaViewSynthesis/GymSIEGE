@@ -125,12 +125,49 @@ For a hands-off reproduction, [`cybergym-pinned-modal.yml`](.github/workflows/cy
 The LiteLLM key is injected into each Modal sandbox from the `gymsiege-litellm` Modal secret, so CI never handles it — you only supply the `MODAL_TOKEN_ID`/`MODAL_TOKEN_SECRET` secrets and a `litellm_base_url` reachable **from Modal** (an ngrok tunnel to your local gateway, not `localhost`). Each shard uploads its `results/modal_trials/` slice as a per-shard artifact and to `s3://cyberattackgym/cybergym-pinned/<run_id>/` (when the `AWS_*` secrets are set). Dispatch it with:
 
 ```bash
+# preflight: gateway reachable (from your shell; it must also be reachable from Modal)
+# and the Modal secret present
+curl -sS -m 10 -o /dev/null -w 'gateway /v1/models -> HTTP %{http_code}\n' \
+  -H "Authorization: Bearer $OPENAI_API_KEY" \
+  https://exchange-pug-shortly.ngrok-free.dev/v1/models
+modal secret list | grep gymsiege-litellm      # must exist, with OPENAI_API_BASE
+
+# dispatch: 22 pinned tasks across 4 shards
 gh workflow run cybergym-pinned-modal.yml --ref main \
-  -f litellm_base_url='https://<ngrok>.ngrok-free.app' \
+  -f litellm_base_url=https://exchange-pug-shortly.ngrok-free.dev \
   -f shards=4
+
+# variant: more shards = shorter per-shard wall time (round-robin task split, 1-22)
+gh workflow run cybergym-pinned-modal.yml --ref main \
+  -f litellm_base_url=https://exchange-pug-shortly.ngrok-free.dev \
+  -f shards=8
+
+# variant: pin a shared run id (S3 prefix + Langfuse run id for the whole batch)
+gh workflow run cybergym-pinned-modal.yml --ref main \
+  -f litellm_base_url=https://exchange-pug-shortly.ngrok-free.dev \
+  -f shards=4 \
+  -f run_id="pinned-$(date +%Y%m%d-%H%M%S)"
 ```
 
 At `shards=4` the split is 6/6/5/5 tasks; more shards = shorter per-shard wall time. Same real Modal/LLM spend as the local `run_modal_pinned_tasks.sh` — see the workflow header comments for the full prerequisites.
+
+**Cheap dispatch smoke test (`max_tasks`).** To verify the workflow dispatches and runs end-to-end on GitHub Actions without paying for all 22 tasks, cap the task count with `max_tasks` (0 = all 22; the cap is applied to the pinned list *before* sharding, and shards are reduced so none sit empty):
+
+```bash
+# 10-task smoke test across 4 shards (~2-3 tasks/shard)
+gh workflow run cybergym-pinned-modal.yml --ref main \
+  -f litellm_base_url=https://exchange-pug-shortly.ngrok-free.dev \
+  -f shards=4 \
+  -f max_tasks=10
+
+# watch it
+RID=$(gh run list --workflow=cybergym-pinned-modal.yml --event=workflow_dispatch \
+        --limit 1 --json databaseId -q '.[0].databaseId')
+gh run watch "$RID" --exit-status
+gh run view "$RID" --json jobs -q '.jobs[] | "\(.name)\t\(.status)\t\(.conclusion // "-")"'
+```
+
+`max_tasks` only limits paid work; the free `validate` job still checks the full 22-task corpus, so the pinned set stays guarded.
 
 #### Reproduce the full 920-task master run on Modal
 
