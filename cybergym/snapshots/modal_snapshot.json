@@ -1,0 +1,94 @@
+{
+  "provider": "modal",
+  "app": "gymsiege-cybergym",
+  "snapshot_image_id": "im-01M376G3D7WYH73HT614RRXE5C",
+  "upgraded_from_snapshot_image_id": "im-01M2RQB74W4A582AJ9Q77KEBCG",
+  "snapshot_ttl": null,
+  "vm_runtime_bake": true,
+  "task_count": 22,
+  "tasks": [
+    "curl/arvo_66012",
+    "binutils/arvo_47101",
+    "freetype2/arvo_368",
+    "assimp/oss-fuzz_42535201",
+    "opensc/oss-fuzz_42535468",
+    "wt/oss-fuzz_370689421",
+    "ffmpeg/oss-fuzz_385167047",
+    "arrow/arvo_41221",
+    "libtpms/oss-fuzz_42537128",
+    "mruby/arvo_19902",
+    "binutils/arvo_61822",
+    "ffmpeg/oss-fuzz_436997807",
+    "mruby/arvo_53183",
+    "net-snmp/arvo_52465",
+    "libxaac/arvo_62261",
+    "wireshark/arvo_3408",
+    "libdwarf/arvo_56454",
+    "opensc/oss-fuzz_448717172",
+    "p11-kit/arvo_31276",
+    "unit/oss-fuzz_42536363",
+    "upx/oss-fuzz_380327173",
+    "ghostscript/arvo_45320"
+  ],
+  "created_at": 1790169360.0,
+  "duration_s": 1335.0,
+  "upgrade": {
+    "reason": "Add qemu-i386-static for ARCHITECTURE=i386 isolated-oracle arms",
+    "qemu_version": "8.2.2",
+    "verified_fresh_restore": true
+  },
+  "steps": [
+    {
+      "label": "docker_ready",
+      "returncode": 0,
+      "duration_s": 3.168860442994628
+    },
+    {
+      "label": "bootstrap_toolchain",
+      "returncode": 0,
+      "duration_s": 73.52675352498773
+    },
+    {
+      "label": "pull_pinned_images",
+      "returncode": 0,
+      "duration_s": 898.6493137959915
+    },
+    {
+      "label": "validate_snapshot_contents",
+      "returncode": 0,
+      "duration_s": 6.033220271987375
+    },
+    {
+      "label": "cleanup_and_disk_headroom",
+      "returncode": 0,
+      "duration_s": 6.365165617986349
+    },
+    {
+      "label": "snapshot_filesystem",
+      "returncode": 0,
+      "duration_s": 244.55201078599202
+    },
+    {
+      "label": "docker_ready",
+      "returncode": 0,
+      "duration_s": 21.078455115988618
+    },
+    {
+      "label": "verify_snapshot_fork",
+      "returncode": 0,
+      "duration_s": 7.204541465995135
+    },
+    {
+      "label": "install_qemu_user_static",
+      "returncode": 0
+    },
+    {
+      "label": "snapshot_filesystem_upgrade",
+      "returncode": 0
+    },
+    {
+      "label": "verify_i386_runtime_upgrade",
+      "returncode": 0
+    }
+  ]
+}
