@@ -132,6 +132,18 @@ curl -sS -m 10 -o /dev/null -w 'gateway /v1/models -> HTTP %{http_code}\n' \
   https://exchange-pug-shortly.ngrok-free.dev/v1/models
 modal secret list | grep gymsiege-litellm      # must exist, with OPENAI_API_BASE
 
+# if the gateway returns 401, mint a fresh LiteLLM virtual key and refresh BOTH
+# your shell and the Modal secret (CI reads the key from the Modal secret, not
+# your shell). LITELLM_MASTER_KEY comes from .env.local.
+set -a; source .env.local; set +a
+export OPENAI_API_KEY=$(curl -s -X POST \
+  "https://exchange-pug-shortly.ngrok-free.dev/key/generate" \
+  -H "Authorization: Bearer $LITELLM_MASTER_KEY" -H "Content-Type: application/json" \
+  -d '{"max_budget": 20}' | python3 -c 'import sys,json; print(json.load(sys.stdin)["key"])')
+modal secret create gymsiege-litellm \
+  OPENAI_API_KEY="$OPENAI_API_KEY" \
+  OPENAI_API_BASE="https://exchange-pug-shortly.ngrok-free.dev" --force
+
 # dispatch: 22 pinned tasks across 4 shards
 gh workflow run cybergym-pinned-modal.yml --ref main \
   -f litellm_base_url=https://exchange-pug-shortly.ngrok-free.dev \
@@ -147,6 +159,12 @@ gh workflow run cybergym-pinned-modal.yml --ref main \
   -f litellm_base_url=https://exchange-pug-shortly.ngrok-free.dev \
   -f shards=4 \
   -f run_id="pinned-$(date +%Y%m%d-%H%M%S)"
+
+# watch the dispatched run and show per-job (per-shard) status
+RID=$(gh run list --workflow=cybergym-pinned-modal.yml --event=workflow_dispatch \
+        --limit 1 --json databaseId -q '.[0].databaseId')
+gh run watch "$RID" --exit-status
+gh run view "$RID" --json jobs -q '.jobs[] | "\(.name)\t\(.status)\t\(.conclusion // "-")"'
 ```
 
 At `shards=4` the split is 6/6/5/5 tasks; more shards = shorter per-shard wall time. Same real Modal/LLM spend as the local `run_modal_pinned_tasks.sh` — see the workflow header comments for the full prerequisites.
