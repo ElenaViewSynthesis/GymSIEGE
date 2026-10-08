@@ -1487,3 +1487,14 @@ paper and upstream repo:
 | **ARVO** | Reproducible OSS-Fuzz vulnerability corpus used as a task source | [arXiv:2408.02153](https://arxiv.org/abs/2408.02153) | [n132/ARVO](https://github.com/n132/ARVO) |
 
 ARVO reproduces findings from Google's [OSS-Fuzz](https://github.com/google/oss-fuzz).
+
+### CyberGym capability curve
+
+Cumulative confirmed successes across the pinned CyberGym runs, in run-date
+order — each dot is one trial (28 trials over 22 tasks), coloured by outcome,
+and the blue line is the running total of trials that reached a confirmed
+find-the-bug success (S3+S4 passed, isolated-confirmed). Rendered by
+[`cybergym_capability_curve.py`](cybergym_capability_curve.py); the most recent
+trial, `curl/arvo_66012`, is the labelled point at the curve's end.
+
+![CyberGym capability curve: cumulative confirmed successes rising across 28 trials over 22 tasks, each dot a trial coloured by outcome (confirmed success / attempted / no capability signal), with curl/arvo_66012 labelled at the end](results/modal_trials/cybergym_capability_curve.png)
