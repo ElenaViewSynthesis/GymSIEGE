@@ -220,6 +220,25 @@ jobs:
               exit 1
             fi
           fi
+          # Enrich each result/log filename with the task source (arvo/oss-fuzz),
+          # the run mode, the run date, and the $cost -- for human-readable
+          # archival in the artifact and S3. The canonical ${safe}.json name was
+          # used by every guard above; rename ONLY now, after they have run, so
+          # nothing that greps ${safe}.json is affected. Cost shows $NA until the
+          # solver_cost_usd telemetry gap is closed.
+          for task in "${tasks[@]}"; do
+            safe="${task//\//_}"
+            base="results/modal_trials/${safe}"
+            [ -f "${base}.json" ] || continue
+            src="$(printf '%s' "${task##*/}" | sed -E 's/_[0-9]+$//')"   # arvo | oss-fuzz
+            meta="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); mode=d.get("mode") or "patch-only"; date=(d.get("started_at") or "")[:10] or "unknown-date"; c=d.get("solver_cost_usd"); cost=("%.4f"%c) if isinstance(c,(int,float)) else "NA"; print(mode+"\t"+date+"\t"+cost)' "${base}.json")"
+            IFS=$'\t' read -r mode date cost <<< "$meta"
+            new="results/modal_trials/${safe}__${src}__${mode}__${date}__\$${cost}"
+            for ext in json log; do
+              [ -f "${base}.${ext}" ] && mv -f "${base}.${ext}" "${new}.${ext}"
+            done
+            echo "renamed ${safe} -> $(basename "${new}")"
+          done
       - name: Upload shard results (artifact)
         if: always()   # upload even when the no-success guard failed the shard
         uses: actions/upload-artifact@v7
