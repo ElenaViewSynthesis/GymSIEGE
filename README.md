@@ -634,6 +634,18 @@ this repo's gitignored local compose stack, `docker-compose.yml` maps
 `start-litellm-gateway.sh` supplies `.env.local` to Compose for substitution;
 the key values are never copied into YAML or committed.
 
+Check the stack and tail the gateway logs from inside `litellm-gateway/`. Pass
+the **same `--env-file`**: `up` gets it from the start script, but every other
+sub-command (`ps`, `logs`, `down`, `config`) re-interpolates the compose file
+and aborts with `required variable LANGFUSE_PUBLIC_KEY is missing a value`
+unless the env file is supplied (or already exported into your shell via
+`set -a; . ../.env.local; set +a`):
+
+```bash
+docker compose --env-file ../.env.local ps
+docker compose --env-file ../.env.local logs -f litellm   # -f follows; Ctrl-C to stop (container keeps running)
+```
+
 This callback stanza is additive. Do not replace the database-backed
 `gpt-5.6-luna` route or its
 `additional_drop_params: ["temperature"]` deployment setting. After a gateway
