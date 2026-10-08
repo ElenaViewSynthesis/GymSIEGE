@@ -220,6 +220,12 @@ jobs:
               exit 1
             fi
           fi
+          # Backfill solver_cost_usd from each trial's Codex trajectory token
+          # usage x the model rate map, since upstream's own /key/info usage
+          # lookup authenticates with the child key (no key-info permission),
+          # fails, and leaves cost null even on a real-spend success.
+          python3 cybergym_cost.py \
+            --results-dir results/modal_trials --artifacts-dir artifacts || true
           # Enrich each result/log filename with the task source (arvo/oss-fuzz),
           # the run mode, the run date, and the $cost -- for human-readable
           # archival in the artifact and S3. The canonical ${safe}.json name was

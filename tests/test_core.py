@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, patch
 from daytona.common.errors import DaytonaConnectionTimeoutError, DaytonaTimeoutError
 
 import common
+import cybergym_cost
 from cybergym_task_index import parse_crash_log, parse_task_lines
 import modal_sandbox_runner
 import modal_exploitgym_build
@@ -2178,6 +2179,71 @@ class ModalSnapshotManifestTests(unittest.TestCase):
             incomplete.write_text(json.dumps({"provider": "modal"}), encoding="utf-8")
             with self.assertRaises(RuntimeError):
                 modal_sandbox_runner.load_snapshot_manifest(incomplete)
+
+
+class CyberGymCostBackfillTests(unittest.TestCase):
+    RATES = {"gpt-5.6-luna": {"input": 2e-7, "output": 1.2e-6, "cache_read": 2e-8}}
+
+    def _write_trial(self, root: Path, usage: dict) -> Path:
+        (root / "results" / "modal_trials").mkdir(parents=True, exist_ok=True)
+        traj_dir = root / "artifacts" / "curl_arvo_66012" / "patch-only" / "trial-1"
+        traj_dir.mkdir(parents=True, exist_ok=True)
+        (traj_dir / "trajectory_attempt_1.log").write_text(
+            '{"type":"turn.started"}\n'
+            + json.dumps({"type": "turn.completed", "usage": usage})
+            + "\n",
+            encoding="utf-8",
+        )
+        rp = root / "results" / "modal_trials" / "curl_arvo_66012.json"
+        rp.write_text(
+            json.dumps(
+                {
+                    "task": "curl/arvo_66012",
+                    "mode": "patch-only",
+                    "trial": 1,
+                    "status": "success",
+                    "solver_cost_usd": None,
+                    "solver_usage": None,
+                }
+            ),
+            encoding="utf-8",
+        )
+        return rp
+
+    def test_backfills_cost_from_trajectory_and_is_idempotent(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            rp = self._write_trial(
+                root, {"input_tokens": 1000, "cached_input_tokens": 400, "output_tokens": 200}
+            )
+            status = cybergym_cost.backfill_file(rp, root / "artifacts", self.RATES, "gpt-5.6-luna")
+            self.assertTrue(status.startswith("filled:"), status)
+            d = json.loads(rp.read_text(encoding="utf-8"))
+            # 600*2e-7 + 400*2e-8 + 200*1.2e-6 = 0.000120 + 0.000008 + 0.000240 = 0.000368
+            self.assertAlmostEqual(d["solver_cost_usd"], 0.000368, places=9)
+            self.assertEqual(d["solver_usage"]["source"], "trajectory.turn.completed")
+            self.assertEqual(d["solver_usage"]["input_tokens"], 1000)
+            # A second pass must not double-count an already-costed trial.
+            self.assertEqual(
+                cybergym_cost.backfill_file(rp, root / "artifacts", self.RATES, "gpt-5.6-luna"),
+                "already-costed",
+            )
+
+    def test_missing_rate_leaves_cost_null(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            rp = self._write_trial(
+                root, {"input_tokens": 10, "cached_input_tokens": 0, "output_tokens": 5}
+            )
+            status = cybergym_cost.backfill_file(rp, root / "artifacts", {}, "gpt-5.6-luna")
+            self.assertEqual(status, "no-rate:gpt-5.6-luna")
+            self.assertIsNone(json.loads(rp.read_text(encoding="utf-8"))["solver_cost_usd"])
+
+    def test_rates_for_matches_last_path_segment(self) -> None:
+        self.assertEqual(
+            cybergym_cost.rates_for({"gpt-5.6-luna": {"input": 1.0}}, "openai/gpt-5.6-luna"),
+            {"input": 1.0},
+        )
 
 
 if __name__ == "__main__":
