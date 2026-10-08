@@ -194,12 +194,35 @@ jobs:
               2>&1 | tee "results/modal_trials/${safe}.log" || true
           done
           echo "=== shard $SHARD_INDEX done ==="
+          # No-success guard: the per-task `|| true` above keeps one task's
+          # failure from aborting the shard, but it also lets a shard where
+          # EVERY task errored go green. Fail loud instead: if this shard ran
+          # tasks and none reached status=success, exit non-zero so the shard
+          # (and run) turns red -- the agent-phase failure can no longer hide.
+          if [ "${#tasks[@]}" -gt 0 ]; then
+            succ=0
+            for task in "${tasks[@]}"; do
+              safe="${task//\//_}"
+              grep -q '"status": "success"' "results/modal_trials/${safe}.json" 2>/dev/null \
+                && succ=$((succ+1))
+            done
+            echo "shard $SHARD_INDEX: $succ/${#tasks[@]} task(s) reached success"
+            if [ "$succ" -eq 0 ]; then
+              echo "::error::shard $SHARD_INDEX ran ${#tasks[@]} task(s) but none reached status=success -- inspect the run_agent.log artifacts"
+              exit 1
+            fi
+          fi
       - name: Upload shard results (artifact)
-        if: always()
+        if: always()   # upload even when the no-success guard failed the shard
         uses: actions/upload-artifact@v7
         with:
           name: cybergym-pinned-${{ github.run_id }}-shard-${{ matrix.shard }}
-          path: results/modal_trials/
+          # artifacts/ holds the agent's own run_agent.log + trajectory logs
+          # (modal_sandbox_runner.py downloads them there) -- essential for
+          # diagnosing an agent-phase failure, and previously not uploaded.
+          path: |
+            results/modal_trials/
+            artifacts/
           if-no-files-found: warn
           retention-days: 30
       - name: Upload shard results to S3 (cyberattackgym)
@@ -212,4 +235,6 @@ jobs:
           # --delete, so prior runs' objects in S3 are left untouched.
           dest="s3://cyberattackgym/cybergym-pinned/${{ github.run_id }}"
           aws s3 sync results/modal_trials/ "$dest/modal_trials/" --no-progress
+          # Agent logs/trajectories too (best-effort; skip if none were produced).
+          [ -d artifacts ] && aws s3 sync artifacts/ "$dest/artifacts/" --no-progress || true
           echo "Uploaded shard $SHARD_INDEX results to $dest/"
