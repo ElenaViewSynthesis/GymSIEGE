@@ -144,6 +144,10 @@ class BuildResult:
     # from stage3/stage4, which are run_agent.py's network-attached self-report.
     isolated_stage3: Optional[str] = None
     isolated_stage4: Optional[str] = None
+    # Infrastructure/driver failure captured before CyberGym could complete
+    # an attempt. This is deliberately separate from detonation_error, which
+    # belongs only to the network-isolated oracle.
+    failure_detail: Optional[str] = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -441,6 +445,75 @@ class BuildAgent:
                 "start): " + (getattr(firewall_start, "result", "") or "")[-2000:]
             )
 
+        # CyberGym does not consume OPENAI_API_KEY directly. Before it creates
+        # an attempt, upstream run_agent.py calls /key/generate with
+        # LITELLM_MASTER_KEY, then gives the generated child key to Codex. A
+        # Modal secret containing only OPENAI_API_KEY therefore fails in ~2s
+        # with zero attempts and zero spend. Exercise that exact control-plane
+        # path here, then verify the requested model is visible to the child
+        # key. The temporary key is deleted in finally and no credential is
+        # printed to the log.
+        preflight_script = f"""
+import json
+import os
+import sys
+import urllib.error
+import urllib.parse
+import urllib.request
+import uuid
+
+base = os.environ.get("LITELLM_BASE_URL", "").rstrip("/")
+master = os.environ.get("LITELLM_MASTER_KEY", "")
+model = {self.model.litellm_model_id!r}
+if not base:
+    raise SystemExit("gateway preflight: LITELLM_BASE_URL is missing")
+if not master:
+    raise SystemExit(
+        "gateway preflight: LITELLM_MASTER_KEY is missing; CyberGym cannot "
+        "mint its per-trial key (OPENAI_API_KEY alone is insufficient)"
+    )
+
+def request(path, key, payload=None):
+    data = None if payload is None else json.dumps(payload).encode()
+    req = urllib.request.Request(
+        base + path,
+        data=data,
+        headers={{
+            "Authorization": "Bearer " + key,
+            "Content-Type": "application/json",
+            "X-Request-ID": "gymsiege-cybergym-preflight-" + uuid.uuid4().hex,
+        }},
+        method="GET" if payload is None else "POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as response:
+            return json.load(response)
+    except urllib.error.HTTPError as exc:
+        body = exc.read(1000).decode("utf-8", "replace")
+        raise RuntimeError(f"gateway preflight {{path}} returned HTTP {{exc.code}}: {{body}}") from exc
+
+child = None
+try:
+    generated = request(
+        "/key/generate",
+        master,
+        {{"max_budget": 0.01, "key_alias": "gymsiege-preflight-" + uuid.uuid4().hex}},
+    )
+    child = generated.get("key")
+    if not child:
+        raise RuntimeError("gateway preflight /key/generate returned no key")
+    models = {{item.get("id") for item in request("/v1/models", child).get("data", [])}}
+    if model not in models:
+        raise RuntimeError(
+            f"gateway preflight: requested model {{model!r}} is unavailable; "
+            f"served models={{sorted(models)}}"
+        )
+    print(f"gateway preflight OK: host={{urllib.parse.urlparse(base).hostname}} model={{model}}")
+finally:
+    if child:
+        request("/key/delete", master, {{"keys": [child]}})
+"""
+
         cmd = (
             f"cd {shlex.quote(self.remote_dir)} && "
             # ResearchAgent.run's own `mkdir -p {out_dir}` (writing
@@ -452,6 +525,8 @@ class BuildAgent:
             # started. Make BuildAgent responsible for its own output dir
             # instead of depending on that ordering.
             f"mkdir -p {shlex.quote(out_dir)} && "
+            f"python3 -c {shlex.quote(preflight_script)} "
+            f"> {shlex.quote(log_path)} 2>&1 && "
             f"python3 scripts/run_agent.py {shlex.quote(task.path)} "
             f"--agent {shlex.quote(self.model.agent)} "
             f"--mode {shlex.quote(mode)} "
@@ -460,7 +535,7 @@ class BuildAgent:
             f"--model-provider {shlex.quote(self.model.provider)} "
             f"--litellm-model-id {shlex.quote(self.model.litellm_model_id)} "
             f"--agent-output {shlex.quote(out_dir)} "
-            f"> {shlex.quote(log_path)} 2>&1"
+            f">> {shlex.quote(log_path)} 2>&1"
         )
         log.info("[%s] build/PoC/patch loop starting (mode=%s, agent=%s)", task.path, mode, self.model.agent)
         r = await self.sandbox.process.exec(cmd, timeout=timeout + 120)
@@ -549,6 +624,18 @@ class BuildAgent:
 
         usage = summary.get("litellm_api_key_usage")
         solver_cost = _extract_cost_usd(usage)
+        failure_detail = None
+        if not summary:
+            tail_r = await self.sandbox.process.exec(
+                f"tail -c 8000 {shlex.quote(log_path)} 2>/dev/null || true"
+            )
+            log_tail = (getattr(tail_r, "result", "") or "").strip()
+            failure_detail = (
+                f"CyberGym run_agent.py exited with code "
+                f"{getattr(r, 'exit_code', None)} before producing summary.json"
+            )
+            if log_tail:
+                failure_detail += f"\nrun_agent.log tail:\n{log_tail}"
 
         dt = time.monotonic() - t0
         return BuildResult(
@@ -580,6 +667,7 @@ class BuildAgent:
             trajectory_log_paths=trajectory_log_paths,
             isolated_stage3=isolated_stage3,
             isolated_stage4=isolated_stage4,
+            failure_detail=failure_detail,
         )
 
     async def _reconfirm_isolated(

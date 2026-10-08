@@ -399,6 +399,8 @@ class ExploitGymCommandTests(unittest.TestCase):
                 if command.startswith("test -f "):
                     exists = poc_exists if command.endswith("poc.bin") else patch_exists
                     return type("Result", (), {"exit_code": 0 if exists else 1, "result": ""})()
+                if command.startswith("tail -c "):
+                    return type("Result", (), {"exit_code": 0, "result": ""})()
                 raise AssertionError(f"unexpected command: {command}")
 
         class Sandbox:
@@ -453,6 +455,43 @@ class ExploitGymCommandTests(unittest.TestCase):
         test_commands = [command for command in process.commands if command.startswith("test -f ")]
         self.assertEqual(test_commands, ["test -f /out/curl_arvo_66012/run/output/fix.patch"])
         agent._reconfirm_isolated.assert_awaited_once()
+
+    def test_build_runs_exact_cybergym_gateway_preflight_before_agent(self) -> None:
+        agent, process = self._artifact_check_agent(patch_exists=True, poc_exists=True)
+        with patch.dict(os.environ, {"LITELLM_BASE_URL": "https://litellm.example"}):
+            asyncio.run(agent.run(Task("curl", "arvo_66012"), "patch-only", "/out"))
+        command = next(c for c in process.commands if "scripts/run_agent.py" in c)
+        self.assertIn("LITELLM_MASTER_KEY", command)
+        self.assertIn("/key/generate", command)
+        self.assertIn("/key/delete", command)
+        self.assertLess(command.index("/key/generate"), command.index("scripts/run_agent.py"))
+
+    def test_empty_summary_preserves_gateway_failure_in_structured_result(self) -> None:
+        class Process:
+            async def exec(self, command, timeout=None):
+                if "firewall start" in command:
+                    return type("Result", (), {"exit_code": 0, "result": ""})()
+                if "scripts/run_agent.py" in command:
+                    return type("Result", (), {"exit_code": 7, "result": ""})()
+                if "-name summary.json" in command:
+                    return type("Result", (), {"exit_code": 0, "result": ""})()
+                if command.startswith("tail -c "):
+                    return type("Result", (), {
+                        "exit_code": 0,
+                        "result": "gateway preflight: LITELLM_MASTER_KEY is missing",
+                    })()
+                raise AssertionError(f"unexpected command: {command}")
+
+        sandbox = type("Sandbox", (), {"process": Process()})()
+        agent = BuildAgent(sandbox, ModelConfig(), remote_dir="/repo")
+        with patch.dict(os.environ, {"LITELLM_BASE_URL": "https://litellm.example"}):
+            result = asyncio.run(
+                agent.run(Task("curl", "arvo_66012"), "patch-only", "/out")
+            )
+
+        self.assertFalse(result.ok)
+        self.assertIn("exited with code 7", result.failure_detail)
+        self.assertIn("LITELLM_MASTER_KEY is missing", result.failure_detail)
 
     def test_model_defaults_and_frontier_choice(self) -> None:
         parser = build_parser()
@@ -2087,6 +2126,43 @@ class ModalCreateSandboxTests(unittest.IsolatedAsyncioTestCase):
         # fail loudly rather than silently falling back to some other mode.
         with self.assertRaises(ValueError):
             await modal_sandbox_runner._create_sandbox(object(), object(), "fork", "im-fake", [])
+
+
+class ModalTrialSecretsTests(unittest.TestCase):
+    def test_workflow_base_url_overrides_every_agent_alias(self) -> None:
+        calls = []
+
+        class Secret:
+            @staticmethod
+            def from_name(name):
+                calls.append(("name", name))
+                return ("name", name)
+
+            @staticmethod
+            def from_dict(values):
+                calls.append(("dict", values))
+                return ("dict", values)
+
+        modal_mod = type("Modal", (), {"Secret": Secret})()
+        with patch.dict(
+            os.environ,
+            {
+                "LITELLM_BASE_URL": "https://current.example",
+                "OPENAI_API_BASE": "https://stale.example",
+                "OPENAI_BASE_URL": "https://stale.example",
+            },
+        ):
+            secrets = modal_sandbox_runner._trial_secrets(modal_mod, "gymsiege-litellm")
+
+        self.assertEqual(secrets[0], ("name", "gymsiege-litellm"))
+        self.assertEqual(
+            calls[1][1],
+            {
+                "LITELLM_BASE_URL": "https://current.example",
+                "OPENAI_API_BASE": "https://current.example",
+                "OPENAI_BASE_URL": "https://current.example",
+            },
+        )
 
 
 class ModalSnapshotManifestTests(unittest.TestCase):

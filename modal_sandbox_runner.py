@@ -234,11 +234,21 @@ async def _create_sandbox(
 
 def _trial_secrets(modal_mod, litellm_secret_name: str) -> list:
     secrets = [modal_mod.Secret.from_name(litellm_secret_name)]
-    provider_env = {
-        key: os.environ[key]
-        for key in ("LITELLM_BASE_URL", "OPENAI_BASE_URL")
-        if os.environ.get(key)
-    }
+    # Pin every base-URL alias to the workflow input. The named secret is
+    # shared with ExploitBench and may contain an older OPENAI_API_BASE; if the
+    # aliases diverge, CyberGym allowlists one host while Codex dials another.
+    base_url = (
+        os.environ.get("LITELLM_BASE_URL")
+        or os.environ.get("OPENAI_API_BASE")
+        or os.environ.get("OPENAI_BASE_URL")
+    )
+    provider_env = {}
+    if base_url:
+        provider_env = {
+            "LITELLM_BASE_URL": base_url,
+            "OPENAI_API_BASE": base_url,
+            "OPENAI_BASE_URL": base_url,
+        }
     if provider_env:
         secrets.append(modal_mod.Secret.from_dict(provider_env))
     return secrets
@@ -409,6 +419,7 @@ async def run_trial(
         result.missing_required_artifact = build.missing_required_artifact
         result.solver_usage = build.solver_usage
         result.solver_cost_usd = build.solver_cost_usd
+        result.error = build.failure_detail
         result.status = common.classify_trial_status(build)
 
         stage_start(result, "result_collection")

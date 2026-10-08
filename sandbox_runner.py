@@ -240,6 +240,7 @@ async def run_trial(
         result.missing_required_artifact = build.missing_required_artifact
         result.solver_usage = build.solver_usage
         result.solver_cost_usd = build.solver_cost_usd
+        result.error = build.failure_detail
         result.status = common.classify_trial_status(build)
 
         # --- telemetry ---
