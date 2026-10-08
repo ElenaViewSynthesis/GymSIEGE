@@ -59,8 +59,9 @@ snapshot_build.metrics.json
 # personal resume/interview notes, not project documentation
 interview-bullets.md
 
-# ad-hoc agent handoff notes, not project documentation
+# ad-hoc agent handoff notes, not project documentation -- local-only
 codex-handoff-*.md
+HANDOFF-*.md
 
 # Agent CLI skills installed by `hf skills add --claude`. Not committed for
 # two reasons: the content is auto-generated from a pinned huggingface_hub
