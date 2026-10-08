@@ -187,6 +187,30 @@ gh run view "$RID" --json jobs -q '.jobs[] | "\(.name)\t\(.status)\t\(.conclusio
 
 `max_tasks` only limits paid work; the free `validate` job still checks the full 22-task corpus, so the pinned set stays guarded.
 
+**Full 22-task run.** Prove the gateway/tunnel/agent path with a single task first (`shards=1 max_tasks=1`, the cheapest possible check), then drop the cap and fan out. `shards=8` gives ~3 tasks/shard (~75 min worst-case vs the ~9h full serial run), comfortably under the 350-min job cap:
+
+```bash
+# 1. single-task repro first -- cheapest proof the whole path works end-to-end
+gh workflow run cybergym-pinned-modal.yml --ref main \
+  -f litellm_base_url=https://exchange-pug-shortly.ngrok-free.dev \
+  -f shards=1 -f max_tasks=1
+
+# 2. then the full 22 (max_tasks=0 = all). Cost is identical across shard counts;
+#    only wall time changes: shards=11 -> 2/shard (~50 min), shards=22 -> 1/shard (~25 min).
+gh workflow run cybergym-pinned-modal.yml --ref main \
+  -f litellm_base_url=https://exchange-pug-shortly.ngrok-free.dev \
+  -f shards=8 -f max_tasks=0
+
+# 3. watch to completion with the dedicated sharded-run watcher: per-shard status,
+#    per-task roll-up, and it flags a run where 0 tasks reached status=success
+#    (pointing at the run_agent.log artifacts) instead of trusting a green job.
+RID=$(gh run list --workflow=cybergym-pinned-modal.yml --event=workflow_dispatch \
+        --limit 1 --json databaseId -q '.[0].databaseId')
+./monitoring/watch_cybergym_run.sh "$RID"
+```
+
+The gateway **and** the ngrok tunnel must stay up for the whole run (~1–1.5h) or tasks fail with zero model calls; keep [`exploitbench/ngrok_keepalive.ps1`](exploitbench/ngrok_keepalive.ps1) running in its admin PowerShell window so a free-plan tunnel drop self-heals. The shard loop has a **no-success guard**: if a shard ran tasks but none reached `status=success` it exits non-zero (the shard goes red), so an all-error run can no longer hide behind a green job — and each shard uploads `run_agent.log` alongside `results/modal_trials/` for diagnosis.
+
 #### Reproduce the full 920-task master run on Modal
 
 > For the condensed, copy-paste run recipe (regenerate shards → bake 47
