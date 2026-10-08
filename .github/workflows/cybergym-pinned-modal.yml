@@ -5,10 +5,11 @@ name: CyberGym pinned Modal run
 #
 # The set is split into N parallel shards (round-robin task assignment) so each
 # shard finishes within GitHub-hosted runners' 6h job cap; the full serial run is
-# ~9h (README) and would otherwise not fit. The LiteLLM API key is injected into
-# each Modal sandbox from the `gymsiege-litellm` Modal secret, so CI never handles
-# it -- CI only needs Modal tokens and a LiteLLM gateway URL reachable FROM Modal
-# (e.g. an ngrok tunnel to the local gateway).
+# ~9h (README) and would otherwise not fit. The scoped LiteLLM key-generation
+# credential is injected into each Modal sandbox from the `gymsiege-litellm`
+# Modal secret as LITELLM_MASTER_KEY (upstream's required env name). The shared
+# secret may also carry OPENAI_API_KEY for ExploitBench. CI never handles either
+# value; it only needs Modal tokens and a gateway URL reachable FROM Modal.
 #
 # The paid `run` job is manual-dispatch ONLY; nothing here spins up a Modal
 # sandbox on push or PR.
@@ -81,7 +82,7 @@ jobs:
           dupes="$(printf '%s\n' "${tasks[@]}" | sort | uniq -d)"
           test -z "$dupes" || { echo "duplicate tasks: $dupes" >&2; exit 1; }
           bash -n run_modal_pinned_tasks.sh
-          python3 -m py_compile modal_sandbox_runner.py
+          python3 -m py_compile modal_sandbox_runner.py solver_agent.py sandbox_runner.py
 
   # prepare: dispatch only. Builds the shard matrix from the `shards` input and
   # pins one shared run_id used by every shard. No cloud resources.
@@ -192,6 +193,13 @@ jobs:
               --output "results/modal_trials/${safe}.json" \
               --run-id "$GYMSIEGE_RUN_ID" \
               2>&1 | tee "results/modal_trials/${safe}.log" || true
+            # Gateway/auth/model preflight failures are shard-wide rather than
+            # task capability results. Stop instead of restoring every
+            # remaining sandbox only to repeat the same zero-call failure.
+            if grep -q 'gateway preflight' "results/modal_trials/${safe}.json" 2>/dev/null; then
+              echo "::error::CyberGym gateway preflight failed for $task; aborting shard"
+              exit 1
+            fi
           done
           echo "=== shard $SHARD_INDEX done ==="
           # No-success guard: the per-task `|| true` above keeps one task's
