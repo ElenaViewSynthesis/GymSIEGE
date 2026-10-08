@@ -1,6 +1,31 @@
 # HANDOFF — CyberGym pinned Modal run: Codex agent makes zero model calls
 
-**Status: OPEN.** Infra is healthy; the agent/solver phase fails on every task.
+**Status: RESOLVED (2026-10-08).** The shared Modal secret had the wrong
+credential shape for CyberGym. It has been repaired and the runner now fails
+fast with an authenticated sandbox-side preflight.
+
+## Resolution
+
+The baked upstream `scripts/run_agent.py` calls `litellm_generate_api_key()`
+before creating its first attempt. That helper authenticates `/key/generate`
+with `LITELLM_MASTER_KEY`; it does not consume `OPENAI_API_KEY` directly. The
+October CI setup recipe had refreshed `gymsiege-litellm` with only
+`OPENAI_API_KEY` and `OPENAI_API_BASE`, overwriting the scoped key-generation
+credential. This exactly produced the observed empty-summary, zero-call,
+roughly-two-second exit.
+
+The Modal secret now contains both interfaces: `LITELLM_MASTER_KEY` sourced
+from the scoped `LITELLM_SECRET_KEY` for CyberGym, plus `OPENAI_API_KEY` for
+ExploitBench. `solver_agent.py` now creates and deletes a tiny preflight child
+key and verifies the requested model before invoking `run_agent.py`; URL aliases
+are pinned to the workflow input, preflight failures are copied into the trial's
+structured `error`, and CI aborts the shard immediately on such a shared
+infrastructure failure.
+
+Live verification after the repair used `freetype2/arvo_368` against the same
+tracked Modal snapshot. It completed `status=success`, made real model calls
+(`solver_usage.spend=$0.02701317`), produced both artifacts, passed upstream S3
+and S4, passed the independent isolated S3/S4 checks, and cleaned up its sandbox.
 
 ## TL;DR
 
@@ -31,25 +56,13 @@ In `solver_agent.py`, `status = summary.get("status", "error" if not ok_exec els
 **`summary.json` had no attempts** ⇒ `scripts/run_agent.py --agent codex` aborted
 before completing a single attempt, writing no usage and no patch.
 
-## PRIME SUSPECT — the LiteLLM gateway path is broken
+## Original gateway hypothesis — ruled out
 
-Reported 2026-10-08: **LiteLLM on localhost is down**, and hitting the reserved
-ngrok domain `exchange-pug-shortly.ngrok-free.dev` shows a **client/edge IP in
-Norway, not the UK** gateway host. So the ngrok domain is **not terminating at the
-live local gateway** — agent model calls from inside the Modal sandbox reach
-nothing usable and fail fast, which matches the 2 s / `$0` / no-patch signature
-exactly. A one-off `HTTP 200` from a laptop shell is **not** sufficient evidence
-the path is healthy from Modal; verify end-to-end before blaming the agent.
-
-**Resolve first:**
-1. Bring the local LiteLLM gateway back up on `:4000`.
-2. Re-establish the ngrok tunnel so the reserved domain terminates at THIS host;
-   confirm the tunnel's agent region and that the domain is not claimed elsewhere
-   (the Norway edge IP suggests a stale/foreign tunnel or a dead agent falling
-   back to an ngrok edge).
-3. Prove it end-to-end, not just reachable: a request with the minted key should
-   hit the local gateway's logs (watch LiteLLM stdout) and return a model list
-   that matches the local config — tie a request id through.
+At resolution time LiteLLM was listening on local `:4000`, and authenticated
+requests through `exchange-pug-shortly.ngrok-free.dev` reached that container
+and returned the same model inventory. A real Modal trial then completed through
+the public route. The tunnel was worth checking, but it was not the root cause
+of run `37668408810`.
 
 ## SECOND — the agent's own log is not captured (fixed here; needed to see more)
 
@@ -77,10 +90,10 @@ further.
   passed to `run_agent.py` (`:460-461`). A rejected id fails fast with no spend
   (cf. the CVE-Bench `[claude-code:unrecognized_model] gpt-5.6-luna` note). Confirm
   the model id is served by the *local* gateway's config.
-- **Key valid from inside Modal.** The run reads the key from the
-  `gymsiege-litellm` Modal secret, not the shell. Confirm that secret's
-  `OPENAI_API_KEY` authenticates against the *live* gateway (a shell 200 only
-  proves the shell key).
+- **Key valid from inside Modal.** CyberGym reads `LITELLM_MASTER_KEY` from the
+  `gymsiege-litellm` Modal secret and needs `/key/generate` permission. A working
+  shell `OPENAI_API_KEY` neither proves nor supplies that capability. This is
+  now exercised automatically by the sandbox-side preflight.
 
 ## Reproduce (cheap)
 
@@ -96,19 +109,14 @@ gh run download "$RID"          # now includes artifacts/<task>/.../run_agent.lo
 # read run_agent.log for Codex's real error (403 / auth / model id / connect)
 ```
 
-## Resolution plan (ordered)
+## Resolution checklist
 
-1. **Fix the gateway path** (localhost up + ngrok terminating at this host, region
-   sane) and prove it end-to-end from a request that lands in the local logs.
-2. **Re-run one task** (`shards=1 max_tasks=1`) and read `run_agent.log` from the
-   now-uploaded `artifacts/` — stop guessing, read the error.
-3. If it's a `403`/allowlist: reconcile the firewall `--domain` host with the
-   agent's actual endpoint host.
-4. If it's auth: refresh the `gymsiege-litellm` Modal secret's key against the
-   live gateway.
-5. If it's model id: align `--litellm-model-id` with the live gateway's config.
-6. Only after a single task reaches `status=success` with non-`$0` spend, scale
-   back to the full 22 (`shards=8`, no `max_tasks`).
+1. Gateway and ngrok route verified against the local container: complete.
+2. Shared Modal secret repaired with both credential interfaces: complete.
+3. Sandbox-side key-generation/model preflight added: complete.
+4. One real task reached `status=success` with nonzero spend: complete.
+5. Full 22-task scale-out remains an operator choice, not part of this incident
+   fix; use `shards=8`, `max_tasks=0` when desired.
 
 ## Key code references
 

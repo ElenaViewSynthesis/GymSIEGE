@@ -122,7 +122,7 @@ What `run_modal_pinned_tasks.sh` includes:
 
 For a hands-off reproduction, [`cybergym-pinned-modal.yml`](.github/workflows/cybergym-pinned-modal.yml) runs the same pinned set on GitHub Actions. A GitHub-hosted job is capped at 6h while the full serial run is ~9h, so the workflow **shards** the 22 tasks across `N` parallel jobs and runs each shard's slice sequentially — every shard then finishes under the cap. Tasks are assigned **round-robin** (task *i* → shard `i % N`: task 0→shard 0, 1→shard 1, …, 4→shard 0 again), which spreads the slow-compile outliers (ffmpeg, binutils) across different shards instead of clustering them, keeping per-shard wall times balanced. A free `validate` job checks the task corpus on every PR/push; the paid `run` job is manual `workflow_dispatch` only, so nothing spins up a Modal sandbox on push.
 
-The LiteLLM key is injected into each Modal sandbox from the `gymsiege-litellm` Modal secret, so CI never handles it — you only supply the `MODAL_TOKEN_ID`/`MODAL_TOKEN_SECRET` secrets and a `litellm_base_url` reachable **from Modal** (an ngrok tunnel to your local gateway, not `localhost`). Each shard uploads its `results/modal_trials/` slice as a per-shard artifact and to `s3://cyberattackgym/cybergym-pinned/<run_id>/` (when the `AWS_*` secrets are set). Dispatch it with:
+The LiteLLM credentials are injected into each Modal sandbox from the shared `gymsiege-litellm` Modal secret, so CI never handles them. CyberGym specifically requires the scoped key-generation credential under upstream's `LITELLM_MASTER_KEY` env name; `OPENAI_API_KEY` alone is insufficient because `run_agent.py` calls `/key/generate` before its first attempt. The same secret can carry `OPENAI_API_KEY` for ExploitBench. You only supply the `MODAL_TOKEN_ID`/`MODAL_TOKEN_SECRET` secrets and a `litellm_base_url` reachable **from Modal** (an ngrok tunnel to your local gateway, not `localhost`). Each shard uploads its `results/modal_trials/` slice as a per-shard artifact and to `s3://cyberattackgym/cybergym-pinned/<run_id>/` (when the `AWS_*` secrets are set). Dispatch it with:
 
 ```bash
 # preflight: gateway reachable (from your shell; it must also be reachable from Modal)
@@ -130,19 +130,24 @@ The LiteLLM key is injected into each Modal sandbox from the `gymsiege-litellm` 
 curl -sS -m 10 -o /dev/null -w 'gateway /v1/models -> HTTP %{http_code}\n' \
   -H "Authorization: Bearer $OPENAI_API_KEY" \
   https://exchange-pug-shortly.ngrok-free.dev/v1/models
-modal secret list | grep gymsiege-litellm      # must exist, with OPENAI_API_BASE
+modal secret list | grep gymsiege-litellm      # must exist; see refresh command below
 
-# if the gateway returns 401, mint a fresh LiteLLM virtual key and refresh BOTH
-# your shell and the Modal secret (CI reads the key from the Modal secret, not
-# your shell). LITELLM_MASTER_KEY comes from .env.local.
+# Refresh the shared secret atomically. LITELLM_SECRET_KEY is the scoped
+# self-serve/key-generation credential CyberGym needs; OPENAI_API_KEY is the
+# ordinary model credential ExploitBench needs. Do not substitute the true
+# gateway-admin LITELLM_MASTER_KEY for LITELLM_SECRET_KEY.
 set -a; source .env.local; set +a
-export OPENAI_API_KEY=$(curl -s -X POST \
-  "https://exchange-pug-shortly.ngrok-free.dev/key/generate" \
-  -H "Authorization: Bearer $LITELLM_MASTER_KEY" -H "Content-Type: application/json" \
-  -d '{"max_budget": 20}' | python3 -c 'import sys,json; print(json.load(sys.stdin)["key"])')
+export OPENAI_API_KEY=$(curl -sS -X POST \
+  "$LITELLM_BASE_URL/key/generate" \
+  -H "Authorization: Bearer $LITELLM_SECRET_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"max_budget": 20}' \
+  | python3 -c 'import sys,json; print(json.load(sys.stdin)["key"])')
 modal secret create gymsiege-litellm \
+  LITELLM_MASTER_KEY="$LITELLM_SECRET_KEY" \
   OPENAI_API_KEY="$OPENAI_API_KEY" \
-  OPENAI_API_BASE="https://exchange-pug-shortly.ngrok-free.dev" --force
+  OPENAI_API_BASE="$LITELLM_BASE_URL" \
+  LITELLM_BASE_URL="$LITELLM_BASE_URL" --force
 
 # dispatch: 22 pinned tasks across 4 shards
 gh workflow run cybergym-pinned-modal.yml --ref main \
@@ -960,9 +965,9 @@ thin shim giving a raw `modal.Sandbox` the `.process.exec()` /
 `.update_network_settings()` shape `BuildAgent` expects, per
 `modal-docs/modal-virtualization.md`'s own "keep provider operations behind
 a small boundary" directive rather than forking `solver_agent.py` wholesale.
-It needs its own named Modal Secret supplying `LITELLM_MASTER_KEY` (same
-name, `gymsiege-litellm`, as the Daytona secret below — a separate secret
-store, same naming convention already used for `gymsiege-huggingface`).
+It needs the shared Modal Secret to supply `LITELLM_MASTER_KEY` (same name,
+`gymsiege-litellm`, as the Daytona secret below — a separate secret store,
+same naming convention already used for `gymsiege-huggingface`).
 **Source the value from `LITELLM_SECRET_KEY`, never `LITELLM_MASTER_KEY`**
 — same policy as `configure_secrets.py litellm` uses for the Daytona
 secret (see its `PROVIDERS` comment): the sandbox still receives it under
@@ -970,9 +975,14 @@ the env var name `run_agent.py` expects, just sourced from the scoped
 secret key instead of the true gateway admin key:
 
 ```bash
-(umask 177; printf 'LITELLM_MASTER_KEY=%s\n' "$(grep '^LITELLM_SECRET_KEY=' .env.local | cut -d= -f2-)" > /tmp/gymsiege-litellm.env)
-python -m modal secret create gymsiege-litellm --from-dotenv /tmp/gymsiege-litellm.env
-rm -f /tmp/gymsiege-litellm.env
+(umask 177; grep -E '^(LITELLM_SECRET_KEY|OPENAI_API_KEY|LITELLM_BASE_URL)=' .env.local > /tmp/gymsiege-litellm-source.env)
+set -a; source /tmp/gymsiege-litellm-source.env; set +a
+python -m modal secret create gymsiege-litellm \
+  LITELLM_MASTER_KEY="$LITELLM_SECRET_KEY" \
+  OPENAI_API_KEY="$OPENAI_API_KEY" \
+  OPENAI_API_BASE="$LITELLM_BASE_URL" \
+  LITELLM_BASE_URL="$LITELLM_BASE_URL" --force
+rm -f /tmp/gymsiege-litellm-source.env
 ```
 
 Then run one trial directly. Sample production run, confirmed live
