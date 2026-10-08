@@ -28,6 +28,14 @@ pydantic>=2.8.0
 rich>=13.7.0
 python-dotenv>=1.0.1
 
+# Plotting stack (presentation only, same reasoning as the dashboard above:
+# version drift changes how a chart looks, never what a run measured).
+# matplotlib is required by the plotters (cybergym_capability_curve.py,
+# exploitbench/plot_capability_progress.py); scipy only smooths the cumulative
+# curve -- cybergym_capability_curve.py falls back to a polyline without it.
+matplotlib>=3.8.0
+scipy>=1.10.0
+
 # Local test runner for tests/test_core.py. Plain unittest.TestCase classes,
 # so `python -m unittest discover -s tests` also works with no dependency at
 # all -- this is only for whoever prefers pytest's runner/output. Floored,
