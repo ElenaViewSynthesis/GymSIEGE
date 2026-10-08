@@ -1,19 +1,15 @@
 #!/usr/bin/env python3
-"""Cross-run CyberGym capability chart: one point per trial over time, plus a
-cumulative-successes progress curve.
+"""Cross-run CyberGym capability curve: cumulative confirmed successes over the
+trials, in run-date order.
 
-CyberGym is scored on the find-vuln -> PoC -> patch oracle stages, NOT the V8
+CyberGym is scored on the find-vuln -> PoC -> patch oracle stages, not the V8
 16-rung exploitation ladder (that is a different benchmark;
 ``exploitbench/plot_capability_progress.py`` owns the within-episode V8 plot).
-So CyberGym gets its own view here.
 
-Each trial result JSON (``common.TrialResult`` shape) maps to an ordinal
-capability TIER derived from its ``status`` -- the benchmark's own outcome
-category. The middle statuses (``failed``/``no_patch``/``oracle_mismatch``) are
-deliberately grouped so the chart imposes no contested ordering among them; it
-only separates confirmed success, an attempt that produced artifacts, and no
-usable signal. Points are coloured by exact status; a step line tracks the
-cumulative count of confirmed successes across trials in date order.
+The chart is a single monotonic staircase: the running total of trials whose
+``status == "success"`` (S3+S4 passed, isolated-confirmed), stepping up at each
+success and flat at each non-success. A green dot marks each success on the
+curve; ``--highlight`` annotates one trial with an arrow.
 
 Usage:
   python3 cybergym_capability_curve.py \
@@ -26,32 +22,8 @@ from __future__ import annotations
 import argparse
 import glob
 import json
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
-
-# status -> (tier, label, colour). Tier is a presentation ordering, not a
-# benchmark-defined score: confirmed success on top, any artifact-producing
-# attempt in the middle (no ordering asserted between failed/no_patch/
-# oracle_mismatch), no usable signal at the floor.
-_SUCCESS = ("#15803d", 2, "confirmed success")          # S3+S4 passed, isolated-confirmed
-_ATTEMPT = ("#b45309", 1, "attempted / unconfirmed")    # failed | no_patch | oracle_mismatch
-_NONE = ("#9ca3af", 0, "no capability signal")          # error | no_poc | timeout | oracle_unavailable
-_STATUS = {
-    "success": _SUCCESS,
-    "oracle_mismatch": _ATTEMPT,
-    "no_patch": _ATTEMPT,
-    "no_poc": _NONE,
-    "failed": _ATTEMPT,
-    "error": _NONE,
-    "timeout": _NONE,
-    "oracle_unavailable": _NONE,
-}
-TIER_LABELS = {2: "confirmed\nsuccess", 1: "attempted", 0: "no signal"}
-
-
-def _tier(status: str) -> tuple[str, int, str]:
-    return _STATUS.get(status, _NONE)
 
 
 def load_trials(results_dirs: list[str], extra: list[str]) -> list[dict[str, Any]]:
@@ -70,8 +42,7 @@ def load_trials(results_dirs: list[str], extra: list[str]) -> list[dict[str, Any
         started = d.get("started_at")
         if not task or not started:
             continue
-        key = (task, started)
-        seen[key] = {
+        seen[(task, started)] = {
             "task": task,
             "status": d.get("status") or "error",
             "started_at": started,
@@ -82,40 +53,78 @@ def load_trials(results_dirs: list[str], extra: list[str]) -> list[dict[str, Any
     return rows
 
 
+# status -> (category colour). success steps the curve up; the rest are on the
+# flat segments, coloured so the misses are still visible on the curve.
+SUCC, ATT, NONE = "#15803d", "#b45309", "#9ca3af"
+_ATT_STATUS = {"failed", "no_patch", "oracle_mismatch"}
+
+
+def _colour(status: str) -> str:
+    if status == "success":
+        return SUCC
+    return ATT if status in _ATT_STATUS else NONE
+
+
 def render(rows: list[dict[str, Any]], out: Path, highlight: Optional[str]) -> None:
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
+    import matplotlib.colors as mcolors
+    import numpy as np
     from matplotlib.lines import Line2D
+    from matplotlib.patches import Polygon
 
     INK, MUTED, GRID, CURVE = "#111827", "#6b7280", "#e5e7eb", "#2563eb"
 
-    xs = list(range(len(rows)))
-    dates = [datetime.fromisoformat(r["started_at"]) for r in rows]
+    xs = np.arange(len(rows), dtype=float)
     cum, n_succ = [], 0
     for r in rows:
         if r["status"] == "success":
             n_succ += 1
         cum.append(n_succ)
+    cum = np.array(cum, dtype=float)
+    ymax = float(cum.max()) + 1 if len(cum) else 1.0
 
     fig, ax = plt.subplots(figsize=(9, 4.5), dpi=150)
-    ax2 = ax.twinx()
     ax.set_facecolor("white")
     fig.patch.set_facecolor("white")
+    ax.set_xlim(-0.5, len(rows) - 0.5 if rows else 0.5)
+    ax.set_ylim(0, ymax)
 
-    # Progress curve: cumulative confirmed successes across trials (date order).
-    ax2.step(xs, cum, where="post", lw=2, color=CURVE, zorder=2)
-    ax2.set_ylabel("cumulative confirmed successes", color=CURVE, fontsize=10)
-    ax2.set_ylim(0, max(cum + [1]) + 1)
-    ax2.tick_params(colors=CURVE, labelsize=9)
+    # Smooth, monotone curve through the cumulative points (PCHIP keeps it
+    # non-decreasing; falls back to the raw polyline without SciPy).
+    if len(xs) >= 2:
+        try:
+            from scipy.interpolate import PchipInterpolator
+            xd = np.linspace(xs.min(), xs.max(), 400)
+            yd = PchipInterpolator(xs, cum)(xd)
+        except Exception:
+            xd, yd = xs, cum
+    else:
+        xd, yd = xs, cum
 
-    # Per-trial tier points, coloured by exact status.
+    # Blue shadow fading behind: a vertical gradient (opaque near the curve,
+    # fading to nothing at the baseline) clipped to the area under the curve.
+    grad = np.empty((256, 1, 4))
+    grad[:, :, :3] = mcolors.to_rgb(CURVE)
+    grad[:, :, 3] = np.linspace(0.0, 0.32, 256).reshape(-1, 1)
+    im = ax.imshow(grad, aspect="auto", origin="lower", zorder=1,
+                   extent=[float(xs.min()), float(xs.max()), 0.0, ymax])
+    under = Polygon(np.column_stack([np.r_[xd, xd[::-1]], np.r_[yd, np.zeros_like(yd)]]),
+                    closed=True, transform=ax.transData)
+    im.set_clip_path(under)
+
+    # Soft glow + crisp smooth line.
+    for lw, alpha in ((7, 0.06), (4, 0.10)):
+        ax.plot(xd, yd, color=CURVE, lw=lw, alpha=alpha, zorder=2, solid_capstyle="round")
+    ax.plot(xd, yd, color=CURVE, lw=2, zorder=3)
+
+    # Per-trial dots on the curve, coloured by outcome category.
     for i, r in enumerate(rows):
-        colour, tier, _ = _tier(r["status"])
-        ax.scatter(i, tier, s=46, color=colour, zorder=3,
-                   edgecolor="white", linewidth=0.5)
+        ax.scatter(i, cum[i], s=44, color=_colour(r["status"]), zorder=4,
+                   edgecolor="white", linewidth=0.6)
 
-    # Highlight the requested (or newest) trial.
+    # Highlight one trial (default: the newest) with an arrow + task label.
     hi = None
     if highlight:
         for i, r in enumerate(rows):
@@ -124,34 +133,29 @@ def render(rows: list[dict[str, Any]], out: Path, highlight: Optional[str]) -> N
     if hi is None and rows:
         hi = len(rows) - 1
     if hi is not None:
-        r = rows[hi]
-        _, tier, _ = _tier(r["status"])
-        ax.annotate(f"{r['task']}\n{r['started_at'][:10]} — {r['status']}",
-                    xy=(hi, tier), xytext=(-10, -36), textcoords="offset points",
-                    ha="right", fontsize=8, fontweight="bold", color=INK,
+        ax.annotate(rows[hi]["task"], xy=(hi, cum[hi]), xytext=(-12, -30),
+                    textcoords="offset points", ha="right", fontsize=8,
+                    fontweight="bold", color=INK,
                     arrowprops=dict(arrowstyle="->", color=MUTED, lw=1))
 
-    ax.set_yticks([0, 1, 2])
-    ax.set_yticklabels([TIER_LABELS[0], TIER_LABELS[1], TIER_LABELS[2]], fontsize=9)
-    ax.set_ylim(-0.5, 2.5)
-    ax.set_xlim(-0.5, len(rows) - 0.5 if rows else 0.5)
-    ax.set_xlabel("trials, in run-date order", color=INK, fontsize=10)
+    ax.set_xlabel("trial number (ordered by run date)", color=INK, fontsize=10)
+    ax.set_ylabel("cumulative confirmed successes", color=INK, fontsize=10)
     ax.set_title("CyberGym capability across runs (S1–S4 oracle)", color=INK,
                  fontsize=12, fontweight="bold", loc="left")
     ax.grid(True, axis="y", color=GRID, lw=0.8)
     ax.set_axisbelow(True)
-    for spine in ("top",):
+    for spine in ("top", "right"):
         ax.spines[spine].set_visible(False)
-        ax2.spines[spine].set_visible(False)
     ax.tick_params(colors=MUTED, labelsize=9)
 
     legend = [
-        Line2D([0], [0], marker="o", ls="", color=_SUCCESS[0], label=_SUCCESS[2], markersize=7),
-        Line2D([0], [0], marker="o", ls="", color=_ATTEMPT[0], label=_ATTEMPT[2], markersize=7),
-        Line2D([0], [0], marker="o", ls="", color=_NONE[0], label=_NONE[2], markersize=7),
-        Line2D([0], [0], color=CURVE, lw=2, label="cumulative successes"),
+        Line2D([0], [0], marker="o", ls="", color=SUCC, label="confirmed success", markersize=7),
+        Line2D([0], [0], marker="o", ls="", color=ATT, label="attempted", markersize=7),
+        Line2D([0], [0], marker="o", ls="", color=NONE, label="no capability signal", markersize=7),
+        Line2D([0], [0], color=CURVE, lw=2, label="cumulative confirmed successes"),
     ]
-    ax.legend(handles=legend, frameon=False, fontsize=8, loc="center left")
+    ax.legend(handles=legend, frameon=False, fontsize=9, ncol=4,
+              loc="upper center", bbox_to_anchor=(0.5, -0.16))
 
     fig.tight_layout()
     fig.savefig(out, bbox_inches="tight")
@@ -159,7 +163,7 @@ def render(rows: list[dict[str, Any]], out: Path, highlight: Optional[str]) -> N
 
 
 def main(argv: Optional[list[str]] = None) -> int:
-    p = argparse.ArgumentParser(description="Cross-run CyberGym capability chart.")
+    p = argparse.ArgumentParser(description="Cross-run CyberGym cumulative-success curve.")
     p.add_argument("--results-dir", action="append", default=None,
                    help="dir of trial result JSONs (repeatable; default results/modal_trials)")
     p.add_argument("--extra", action="append", default=[],
