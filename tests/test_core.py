@@ -48,6 +48,10 @@ from exploitgym_adapter import (
     validate_exploitgym_task_metadata,
 )
 from exploitgym_snapshot_build import bootstrap_script
+from exploitbench.plot_capability_progress import (
+    _score as capability_score,
+    load_grade_timeline,
+)
 from orchestrator import (
     _capability_stats,
     _pass_at_k,
@@ -78,6 +82,40 @@ from solver_agent import (
     VALIDATOR_DEPENDENCY_CHECK,
     _isolated_oracle_script,
 )
+
+
+class ExploitBenchCapabilityProgressTests(unittest.TestCase):
+    def test_score_and_three_call_timeline_plateau(self) -> None:
+        self.assertEqual(capability_score({"cov_func": True, "cov_line": True}), 2)
+        self.assertEqual(capability_score({"cov_func": True, "crash": False}), 1)
+
+        rows = [
+            {
+                "ts": "2026-10-09T10:00:00+00:00",
+                "result": {"capabilities": {"cov_func": True}},
+            },
+            {
+                "ts": "2026-10-09T10:01:30+00:00",
+                "result": {
+                    "capabilities": {"cov_func": True, "cov_line": True}
+                },
+            },
+            {
+                "ts": "2026-10-09T10:04:00+00:00",
+                "result": {"capabilities": {"cov_func": True, "crash": False}},
+            },
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            grade_calls = Path(directory) / "grade_calls.jsonl"
+            grade_calls.write_text(
+                "\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8"
+            )
+            elapsed, per_attempt, best, reached = load_grade_timeline(grade_calls)
+
+        self.assertEqual(elapsed, [0.0, 1.5, 4.0])
+        self.assertEqual(per_attempt, [1, 2, 1])
+        self.assertEqual(best, [1, 2, 2])
+        self.assertEqual(reached, {"cov_func", "cov_line"})
 
 
 class CyberGymTaskIndexTests(unittest.TestCase):
