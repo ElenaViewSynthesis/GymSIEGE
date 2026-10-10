@@ -22,6 +22,9 @@ the three rate peaks (not per-task scores): the running rate topped out at
 **71.4%** (`binutils/arvo_61822`, trial 14 — 10/14), after earlier highs of
 **70.0%** (`wt/oss-fuzz_370689421`, 7/10) and **69.2%** (`mruby/arvo_19902`,
 9/13), each itself a confirmed exploit-and-patch success.
+Regenerate this Wilson-rate view with
+`python3 cybergym_capability_curve.py --band wilson`; omit the flag (or pass
+`--band none`) for the original cumulative-count staircase.
 
 ![CyberGym capability curve: cumulative success rate across 27 trials over 22 tasks settling at 63.0%, dots coloured by outcome, with a scaled 95% Wilson ribbon, a dotted full 95% interval, and enlarged dots on the three rate peaks](results/modal_trials/cybergym_capability_curve_rate.png)
 

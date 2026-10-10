@@ -32,49 +32,11 @@ highlight arrow defaults to the final/newest trial.
 from __future__ import annotations
 
 import argparse
-import glob
-import json
 import math
 from pathlib import Path
 from typing import Any, Optional
 
-
-def load_trials(results_dirs: list[str], extra: list[str]) -> list[dict[str, Any]]:
-    """Collect trial result JSONs, de-duplicated by (task, started_at)."""
-    paths: list[str] = []
-    for d in results_dirs:
-        paths += glob.glob(str(Path(d) / "*.json"))
-    paths += list(extra)
-    seen: dict[tuple, dict] = {}
-    for p in paths:
-        try:
-            d = json.loads(Path(p).read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            continue
-        task = d.get("task")
-        started = d.get("started_at")
-        if not task or not started:
-            continue
-        seen[(task, started)] = {
-            "task": task,
-            "status": d.get("status") or "error",
-            "started_at": started,
-            "cost": d.get("solver_cost_usd"),
-        }
-    rows = list(seen.values())
-    rows.sort(key=lambda r: r["started_at"])
-    return rows
-
-
-# Same outcome palette as the count variant so the two charts read identically.
-SUCC, ATT, NONE = "#15803d", "#b45309", "#9ca3af"
-_ATT_STATUS = {"failed", "no_patch", "oracle_mismatch"}
-
-
-def _colour(status: str) -> str:
-    if status == "success":
-        return SUCC
-    return ATT if status in _ATT_STATUS else NONE
+from cybergym_capability_curve import ATT, NONE, SUCC, _colour, load_trials
 
 
 def _z_for(confidence: float) -> float:

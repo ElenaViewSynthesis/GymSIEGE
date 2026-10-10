@@ -12,6 +12,8 @@ This is the restart/handoff document for a new terminal or Codex session. Read
 this file, `README.md`, and `reference/DAYTONA_BAKE_ISSUE.md` before running Daytona.
 Do not assume any terminal process from the previous session is still alive.
 
+Open handoff (2026-10-09): `codex-handoff-cybergym-band-flag-and-v8-full-suite.md` — add a `--band wilson` flag to `cybergym_capability_curve.py` (count mode stays intact) and run the full upstream `v8.yaml` suite (~27 envs left).
+
 ## Current verified state (updated 2026-09-22)
 
 **What runs where.**

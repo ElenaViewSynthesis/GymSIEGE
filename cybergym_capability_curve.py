@@ -15,6 +15,7 @@ Usage:
   python3 cybergym_capability_curve.py \
       [--results-dir results/modal_trials]... [--extra PATH.json]... \
       [--out results/modal_trials/cybergym_capability_curve.png] \
+      [--band {none,wilson}] [--confidence 0.95] [--band-scale 0.5] \
       [--highlight curl/arvo_66012]
 """
 from __future__ import annotations
@@ -53,6 +54,35 @@ def load_trials(results_dirs: list[str], extra: list[str]) -> list[dict[str, Any
     return rows
 
 
+def load_trials_detailed(results_dirs: list[str], extra: list[str]) -> list[dict[str, Any]]:
+    """Like ``load_trials`` but keep the whole trial JSON for each deduped run.
+
+    ``load_trials`` projects each result down to (task, status, started_at,
+    cost). The stage funnel -- and any sibling that needs the oracle stage
+    fields (``stage1``..``stage4``, ``isolated_stage3/4``, ``agent_success``
+    vs ``gt_success``) -- needs the full record, so this returns the raw dicts,
+    deduped by (task, started_at) and start-time sorted exactly as above.
+    """
+    paths: list[str] = []
+    for d in results_dirs:
+        paths += glob.glob(str(Path(d) / "*.json"))
+    paths += list(extra)
+    seen: dict[tuple, dict] = {}
+    for p in paths:
+        try:
+            d = json.loads(Path(p).read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        task = d.get("task")
+        started = d.get("started_at")
+        if not task or not started:
+            continue
+        seen[(task, started)] = d
+    rows = list(seen.values())
+    rows.sort(key=lambda r: r.get("started_at") or "")
+    return rows
+
+
 # status -> (category colour). success steps the curve up; the rest are on the
 # flat segments, coloured so the misses are still visible on the curve.
 SUCC, ATT, NONE = "#15803d", "#b45309", "#9ca3af"
@@ -63,6 +93,17 @@ def _colour(status: str) -> str:
     if status == "success":
         return SUCC
     return ATT if status in _ATT_STATUS else NONE
+
+
+def cumulative_success_counts(rows: list[dict[str, Any]]) -> list[int]:
+    """Return the running number of confirmed successes for each trial."""
+    counts: list[int] = []
+    successes = 0
+    for row in rows:
+        if row["status"] == "success":
+            successes += 1
+        counts.append(successes)
+    return counts
 
 
 def render(rows: list[dict[str, Any]], out: Path, highlight: Optional[str]) -> None:
@@ -77,12 +118,9 @@ def render(rows: list[dict[str, Any]], out: Path, highlight: Optional[str]) -> N
     INK, MUTED, GRID, CURVE = "#111827", "#6b7280", "#e5e7eb", "#2563eb"
 
     xs = np.arange(len(rows), dtype=float)
-    cum, n_succ = [], 0
-    for r in rows:
-        if r["status"] == "success":
-            n_succ += 1
-        cum.append(n_succ)
-    cum = np.array(cum, dtype=float)
+    counts = cumulative_success_counts(rows)
+    n_succ = counts[-1] if counts else 0
+    cum = np.array(counts, dtype=float)
     ymax = float(cum.max()) + 1 if len(cum) else 1.0
 
     fig, ax = plt.subplots(figsize=(9, 4.5), dpi=150)
@@ -168,18 +206,46 @@ def main(argv: Optional[list[str]] = None) -> int:
                    help="dir of trial result JSONs (repeatable; default results/modal_trials)")
     p.add_argument("--extra", action="append", default=[],
                    help="extra trial result JSON to include (repeatable)")
-    p.add_argument("--out", type=Path,
-                   default=Path("results/modal_trials/cybergym_capability_curve.png"))
-    p.add_argument("--highlight", default="curl/arvo_66012",
-                   help="task to label (default: curl/arvo_66012; falls back to newest)")
+    p.add_argument("--out", type=Path, default=None,
+                   help="output PNG (default depends on --band)")
+    p.add_argument("--band", choices=("none", "wilson"), default="none",
+                   help="none: cumulative count; wilson: cumulative rate with band")
+    p.add_argument("--confidence", type=float, default=0.95,
+                   help="confidence level for --band wilson (default 0.95)")
+    p.add_argument("--band-scale", type=float, default=0.5,
+                   help="fraction of the Wilson interval used for the filled ribbon")
+    p.add_argument("--top-n", type=int, default=3,
+                   help="rate peaks to label in Wilson mode (default 3; 0 disables)")
+    p.add_argument("--highlight", default=None,
+                   help="task to label (count default: curl/arvo_66012; "
+                        "Wilson default: newest)")
     args = p.parse_args(argv)
 
     results_dirs = args.results_dir or ["results/modal_trials"]
     rows = load_trials(results_dirs, args.extra)
     if not rows:
         raise SystemExit("no trial result JSONs found")
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-    render(rows, args.out, args.highlight)
+    default_name = (
+        "cybergym_capability_curve_rate.png"
+        if args.band == "wilson"
+        else "cybergym_capability_curve.png"
+    )
+    out = args.out or Path("results/modal_trials") / default_name
+    out.parent.mkdir(parents=True, exist_ok=True)
+    if args.band == "wilson":
+        from cybergym_capability_curve_rate import render as render_rate
+
+        render_rate(
+            rows,
+            out,
+            args.confidence,
+            args.band_scale,
+            args.highlight,
+            args.top_n,
+        )
+    else:
+        highlight = "curl/arvo_66012" if args.highlight is None else args.highlight
+        render(rows, out, highlight)
     return 0
 
 
