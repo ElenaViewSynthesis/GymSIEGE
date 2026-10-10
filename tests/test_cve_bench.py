@@ -4,6 +4,7 @@ import contextlib
 import importlib.util
 import io
 import os
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -19,6 +20,18 @@ _spec = importlib.util.spec_from_file_location("run_cvebench", _MODULE_PATH)
 assert _spec and _spec.loader
 rc = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(rc)
+
+_DOCKER_DIR_HELPER_PATH = (
+    Path(__file__).resolve().parent.parent
+    / "CVE-bench"
+    / "ensure_upstream_docker_dir.py"
+)
+_helper_spec = importlib.util.spec_from_file_location(
+    "ensure_upstream_docker_dir", _DOCKER_DIR_HELPER_PATH
+)
+assert _helper_spec and _helper_spec.loader
+docker_dir_helper = importlib.util.module_from_spec(_helper_spec)
+_helper_spec.loader.exec_module(docker_dir_helper)
 
 
 def _make_repo(tmp: str) -> Path:
@@ -58,6 +71,63 @@ class ParseChallengeListTests(unittest.TestCase):
             rc.parse_challenge_list("CVE-2024-36412,notacve")
         with self.assertRaises(ValueError):
             rc.parse_challenge_list("CVE-24-1")  # year too short
+
+
+class PreserveUpstreamDockerDirTests(unittest.TestCase):
+    def _runner(self, directory: str, assignment: str) -> Path:
+        runner = Path(directory) / "run"
+        runner.write_text(
+            "#!/usr/bin/env bash\n"
+            f"{assignment}\n"
+            "printf '%s\\n' \"$CVEBENCH_DOCKER_DIR\"\n",
+            encoding="utf-8",
+        )
+        runner.chmod(0o755)
+        return runner
+
+    def test_patch_preserves_wrapper_value_when_runner_executes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            runner = self._runner(tmp, docker_dir_helper.UPSTREAM_ASSIGNMENT)
+            self.assertTrue(
+                docker_dir_helper.ensure_runner_preserves_docker_dir(runner)
+            )
+            env = {**os.environ, "CVEBENCH_DOCKER_DIR": "/tmp/staged-docker"}
+            result = subprocess.run(
+                ["bash", str(runner)],
+                check=True,
+                capture_output=True,
+                text=True,
+                env=env,
+            )
+        self.assertEqual(result.stdout.strip(), "/tmp/staged-docker")
+
+    def test_patch_is_idempotent(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            runner = self._runner(tmp, docker_dir_helper.UPSTREAM_ASSIGNMENT)
+            self.assertTrue(
+                docker_dir_helper.ensure_runner_preserves_docker_dir(runner)
+            )
+            once = runner.read_bytes()
+            self.assertFalse(
+                docker_dir_helper.ensure_runner_preserves_docker_dir(runner)
+            )
+            self.assertEqual(runner.read_bytes(), once)
+            self.assertEqual(
+                runner.read_text(encoding="utf-8").count(
+                    docker_dir_helper.PRESERVING_ASSIGNMENT
+                ),
+                1,
+            )
+
+    def test_unknown_upstream_shape_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            runner = self._runner(
+                tmp, "export CVEBENCH_DOCKER_DIR=/unexpected/upstream/layout"
+            )
+            original = runner.read_bytes()
+            with self.assertRaisesRegex(RuntimeError, "cannot safely patch"):
+                docker_dir_helper.ensure_runner_preserves_docker_dir(runner)
+            self.assertEqual(runner.read_bytes(), original)
 
 
 class ResolveSolverTests(unittest.TestCase):
