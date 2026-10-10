@@ -49,6 +49,15 @@ results/exploitbench-modal/
 # Network-off containment suite run output -- same local-only, reproducible
 # treatment as the other modal_honeypot run dirs above.
 results/modal-network-off/
+# Locally-regenerated capability-analysis plots/outputs. Only the Wilson-band
+# rate plot (cybergym_capability_curve_rate.png) is embedded in README.md and
+# stays tracked; these other variants (count staircase, full-95 band, per-task
+# forest, stage funnel, oracle-gap CSV) are reproducible and local-only.
+results/modal_trials/cybergym_capability_curve.png
+results/modal_trials/cybergym_capability_curve_rate_full95.png
+results/modal_trials/cybergym_task_forest.png
+results/modal_trials/cybergym_stage_funnel*.png
+results/modal_trials/oracle_gap.csv
 snapshot_build.metrics.json
 *.log
 
@@ -62,6 +71,26 @@ interview-bullets.md
 # ad-hoc agent handoff notes, not project documentation -- local-only
 codex-handoff-*.md
 HANDOFF-*.md
+
+# Downloaded CI run artifacts (gh run download) -- run output, reproducible by
+# re-fetching; never source.
+ci-artifacts/
+
+# Conference-paper PDF drafts and their LaTeX build byproducts -- generated
+# artifacts that live local-only until a release, never source. The repo tracks
+# no PDFs; figure-generating scripts and any .tex sources stay tracked. Track an
+# intentional PDF with `git add -f` if one is ever needed.
+*.pdf
+*.aux
+*.bbl
+*.blg
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.toc
+*.lof
+*.lot
+*.out
 
 # Agent CLI skills installed by `hf skills add --claude`. Not committed for
 # two reasons: the content is auto-generated from a pinned huggingface_hub
