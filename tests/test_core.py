@@ -14,8 +14,12 @@ from daytona.common.errors import DaytonaConnectionTimeoutError, DaytonaTimeoutE
 
 import common
 import cybergym_cost
+from cybergym_capability_curve import cumulative_success_counts
+from cybergym_capability_curve_rate import wilson, _z_for
+from oracle_gap import summarise, summarise_by_model
 from cybergym_task_index import parse_crash_log, parse_task_lines
 import modal_sandbox_runner
+import modal_exploitbench_build
 import modal_exploitgym_build
 import modal_exploitgym_runner
 import observability
@@ -116,6 +120,49 @@ class ExploitBenchCapabilityProgressTests(unittest.TestCase):
         self.assertEqual(per_attempt, [1, 2, 1])
         self.assertEqual(best, [1, 2, 2])
         self.assertEqual(reached, {"cov_func", "cov_line"})
+
+    def test_full_v8_config_can_be_pinned_for_gateway_model(self) -> None:
+        config = modal_exploitbench_build.load_project_config(
+            Path("exploitbench/upstream/benchmarks/v8.yaml")
+        )
+        pinned = modal_exploitbench_build.digest_pinned_config(
+            config,
+            "v8-cve-2024-10230",
+            "ghcr.io/exploitbench/v8-r1@sha256:" + "a" * 64,
+        )
+        self.assertEqual(pinned["benchmark_id"], "gymsiege-modal-v8-cve-2024-10230")
+        self.assertEqual(pinned["models"], [{"id": "openai/gpt-5.6-luna"}])
+        self.assertEqual([env["id"] for env in pinned["envs"]], ["v8-cve-2024-10230"])
+        self.assertIn("@sha256:", pinned["envs"][0]["image"])
+
+
+class CyberGymCapabilityCurveTests(unittest.TestCase):
+    def test_counts_wilson_values_and_appended_success_invariant(self) -> None:
+        rows = [
+            {"status": "success"},
+            {"status": "failed"},
+            {"status": "success"},
+            {"status": "no_patch"},
+        ]
+        self.assertEqual(cumulative_success_counts(rows), [1, 1, 2, 2])
+
+        z95 = 1.959963984540054
+        p, lo, hi = wilson(1, 2, z95)
+        self.assertAlmostEqual(p, 0.5)
+        self.assertAlmostEqual(lo, 0.09453120573423074)
+        self.assertAlmostEqual(hi, 0.9054687942657693)
+        p, lo, hi = wilson(4, 10, z95)
+        self.assertAlmostEqual(p, 0.4)
+        self.assertAlmostEqual(lo, 0.16818032970623614)
+        self.assertAlmostEqual(hi, 0.6873262302663417)
+
+        before_p, before_lo, before_hi = wilson(2, len(rows), z95)
+        extended = [*rows, {"status": "success"}]
+        after_counts = cumulative_success_counts(extended)
+        after_p, after_lo, after_hi = wilson(after_counts[-1], len(extended), z95)
+        self.assertEqual(after_counts[-1], 3)
+        self.assertGreater(after_p, before_p)
+        self.assertLess((after_hi - after_lo) / 2, (before_hi - before_lo) / 2)
 
 
 class CyberGymTaskIndexTests(unittest.TestCase):
@@ -2365,3 +2412,80 @@ class ModalExploitGymAdapterTests(unittest.TestCase):
         src = Path("exploitgym_adapter.py").read_text(encoding="utf-8")
         self.assertNotIn("modal", src.lower())
         self.assertIn("async def run_exploitgym_trial(", src)
+
+
+class OracleGapTests(unittest.TestCase):
+    """Self-report inflation / oracle-gap metric (oracle_gap.summarise).
+
+    Pure logic over synthetic trial rows -- no file IO, no matplotlib. Each row
+    only needs the two fields the metric reads: `agent_success` (the claim) and
+    `status` (the isolated-oracle verdict, per common.classify_trial_status).
+    """
+
+    Z95 = _z_for(0.95)
+
+    @staticmethod
+    def _rows(spec: list[tuple[bool, str]]) -> list[dict]:
+        return [{"agent_success": claimed, "status": status}
+                for claimed, status in spec]
+
+    def test_csr_vsr_inflation_fdr(self) -> None:
+        # 2 verified successes, 1 refuted claim (oracle_mismatch), 1 honest miss.
+        rows = self._rows([
+            (True, "success"),
+            (True, "success"),
+            (True, "oracle_mismatch"),
+            (False, "failed"),
+        ])
+        g = summarise(rows, "m", self.Z95)
+        self.assertEqual((g.n, g.claimed, g.verified), (4, 3, 2))
+        self.assertAlmostEqual(g.csr, 0.75)
+        self.assertAlmostEqual(g.vsr, 0.50)
+        self.assertAlmostEqual(g.inflation, 0.25)
+        self.assertAlmostEqual(g.self_report_fdr, 1.0 / 3.0)
+        self.assertEqual(g.oracle_mismatch, 1)
+        # Wilson CI brackets the point estimate.
+        self.assertLessEqual(g.csr_lo, g.csr)
+        self.assertLessEqual(g.csr, g.csr_hi)
+        self.assertLessEqual(g.vsr_lo, g.vsr)
+        self.assertLessEqual(g.vsr, g.vsr_hi)
+
+    def test_other_vuln_counts_as_refuted_claim(self) -> None:
+        # other_vuln = agent claimed, but not the ground-truth bug: a claim the
+        # oracle does not confirm, so it inflates CSR above VSR.
+        rows = self._rows([(True, "success"), (True, "other_vuln")])
+        g = summarise(rows, "m", self.Z95)
+        self.assertEqual((g.claimed, g.verified, g.other_vuln), (2, 1, 1))
+        self.assertAlmostEqual(g.csr, 1.0)
+        self.assertAlmostEqual(g.vsr, 0.5)
+        self.assertAlmostEqual(g.self_report_fdr, 0.5)
+
+    def test_oracle_mismatch_raises_csr_not_vsr(self) -> None:
+        # THE invariant: adding a trial the agent claims but the oracle refutes
+        # raises the claimed rate and widens the gap, while the verified count
+        # is untouched (VSR cannot rise -- N grew, successes did not).
+        base = self._rows([
+            (True, "success"),
+            (True, "success"),
+            (True, "oracle_mismatch"),
+            (False, "failed"),
+        ])
+        g1 = summarise(base, "m", self.Z95)
+        g2 = summarise(base + self._rows([(True, "oracle_mismatch")]), "m", self.Z95)
+        self.assertEqual(g2.claimed, g1.claimed + 1)
+        self.assertEqual(g2.verified, g1.verified)        # verified untouched
+        self.assertGreater(g2.csr, g1.csr)                # CSR rises
+        self.assertLess(g2.vsr, g1.vsr)                   # VSR does not rise
+        self.assertGreater(g2.inflation, g1.inflation)    # gap widens
+
+    def test_summarise_by_model_adds_pooled_row(self) -> None:
+        rows = [
+            {"agent_success": True, "status": "success", "model": "a"},
+            {"agent_success": True, "status": "oracle_mismatch", "model": "b"},
+        ]
+        gaps = summarise_by_model(rows, self.Z95)
+        self.assertEqual([g.model for g in gaps], ["a", "b", "ALL"])
+        self.assertEqual(gaps[-1].n, 2)                   # pooled over both models
+        # Single-model input gets no pooled duplicate.
+        one = summarise_by_model(rows[:1], self.Z95)
+        self.assertEqual([g.model for g in one], ["a"])
