@@ -2136,6 +2136,48 @@ class _FakeModalProcess:
         self.wait = _Aio(_wait)
 
 
+class _BlockingModalStream:
+    def __init__(self) -> None:
+        self.cancelled = False
+
+        async def _read() -> str:
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                self.cancelled = True
+                raise
+
+        self.read = _Aio(_read)
+
+
+class _BlockingModalProcess:
+    def __init__(self) -> None:
+        self.returncode = None
+        self.stdout = _BlockingModalStream()
+        self.stderr = _BlockingModalStream()
+        self.wait_cancelled = False
+
+        async def _wait() -> None:
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                self.wait_cancelled = True
+                raise
+
+        self.wait = _Aio(_wait)
+
+
+class _BlockingStreamsModalProcess(_BlockingModalProcess):
+    def __init__(self) -> None:
+        super().__init__()
+        self.returncode = 0
+
+        async def _wait() -> int:
+            return 0
+
+        self.wait = _Aio(_wait)
+
+
 class _FakeModalSandbox:
     def __init__(self, process: _FakeModalProcess, policy_calls=None, has_policy_method=True) -> None:
         self.object_id = "sb-fake"
@@ -2163,6 +2205,51 @@ class ModalProcessProxyTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(r.exit_code, 0)
         self.assertIn("GYMSIEGE_ORACLE_JSON", r.result)
         self.assertIn("warn", r.result)
+
+    async def test_exec_caps_client_wait_and_cancels_output_drains(self) -> None:
+        process = _BlockingModalProcess()
+        sandbox = _FakeModalSandbox(process)
+        proxy = modal_sandbox_runner._ModalProcessProxy(sandbox)
+
+        with patch.object(modal_sandbox_runner, "CLIENT_WAIT_GRACE_S", 0.02):
+            with self.assertRaisesRegex(
+                TimeoutError,
+                r"exec client-wait exceeded 0\.02s .*remote timeout=0.*sleep forever",
+            ):
+                await proxy.exec("sleep forever", timeout=0)
+
+        # Let cancellation callbacks run before inspecting the fake tasks.
+        await asyncio.sleep(0)
+        self.assertTrue(process.wait_cancelled)
+        self.assertTrue(process.stdout.cancelled)
+        self.assertTrue(process.stderr.cancelled)
+
+    async def test_exec_without_remote_timeout_still_has_finite_client_cap(self) -> None:
+        process = _BlockingModalProcess()
+        sandbox = _FakeModalSandbox(process)
+        proxy = modal_sandbox_runner._ModalProcessProxy(sandbox)
+
+        with (
+            patch.object(modal_sandbox_runner, "DEFAULT_CLIENT_WAIT_S", 0.01),
+            patch.object(modal_sandbox_runner, "CLIENT_WAIT_GRACE_S", 0.01),
+        ):
+            with self.assertRaisesRegex(
+                TimeoutError, r"exec client-wait exceeded 0\.02s .*remote timeout=None"
+            ):
+                await proxy.exec("find /tmp", timeout=None)
+
+    async def test_exec_cap_also_bounds_output_drain_after_wait_returns(self) -> None:
+        process = _BlockingStreamsModalProcess()
+        sandbox = _FakeModalSandbox(process)
+        proxy = modal_sandbox_runner._ModalProcessProxy(sandbox)
+
+        with patch.object(modal_sandbox_runner, "CLIENT_WAIT_GRACE_S", 0.02):
+            with self.assertRaises(TimeoutError):
+                await proxy.exec("produce unending output", timeout=0)
+
+        await asyncio.sleep(0)
+        self.assertTrue(process.stdout.cancelled)
+        self.assertTrue(process.stderr.cancelled)
 
 
 class ModalSandboxAdapterTests(unittest.IsolatedAsyncioTestCase):

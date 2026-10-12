@@ -120,6 +120,12 @@ TRIAL_SANDBOX_TIMEOUT_S = int(
 )
 TRIAL_SANDBOX_CPU = 2
 TRIAL_SANDBOX_MEMORY_MIB = 8192
+# Modal's remote exec timeout does not bound the SDK's client-side wait retry
+# loop. Keep the client deadline above the remote timeout so a healthy process
+# can finish and its concurrently drained output can settle, while preventing a
+# wedged control-plane connection from consuming the sandbox's entire lifetime.
+CLIENT_WAIT_GRACE_S = 300
+DEFAULT_CLIENT_WAIT_S = 900
 
 
 class _ModalExecResult:
@@ -145,9 +151,24 @@ class _ModalProcessProxy:
         # deadlock a high-output process on stream backpressure.
         stdout_task = asyncio.create_task(process.stdout.read.aio())
         stderr_task = asyncio.create_task(process.stderr.read.aio())
-        try:
+        client_deadline = (
+            timeout if timeout is not None else DEFAULT_CLIENT_WAIT_S
+        ) + CLIENT_WAIT_GRACE_S
+
+        async def _wait_and_drain():
             await process.wait.aio()
-            stdout, stderr = await asyncio.gather(stdout_task, stderr_task)
+            return await asyncio.gather(stdout_task, stderr_task)
+
+        try:
+            stdout, stderr = await asyncio.wait_for(
+                _wait_and_drain(), timeout=client_deadline
+            )
+        except asyncio.TimeoutError as exc:
+            raise TimeoutError(
+                f"exec client-wait exceeded {client_deadline}s "
+                f"(remote timeout={timeout}); connection likely wedged — "
+                f"cmd head: {cmd[:120]!r}"
+            ) from exc
         finally:
             for task in (stdout_task, stderr_task):
                 if not task.done():
