@@ -71,6 +71,7 @@ interview-bullets.md
 # ad-hoc agent handoff notes, not project documentation -- local-only
 codex-handoff-*.md
 HANDOFF-*.md
+RESUME.md
 
 # Downloaded CI run artifacts (gh run download) -- run output, reproducible by
 # re-fetching; never source.
