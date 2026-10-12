@@ -5,8 +5,8 @@
   "provisioning": "snapshot",
   "benchmark": "cybergym-e2e",
   "provider": "modal",
-  "sandbox_id": "sb-ypR8IJY2jYJsa148VtKp3L",
-  "sandbox_name": "siege-modal-libdwarf_arvo_56454-patch-only-t1-1790050998",
+  "sandbox_id": "sb-01M4QTKJ26QJZYMW3MJ0P3604Y",
+  "sandbox_name": "siege-modal-libdwarf_arvo_56454-patch-only-t1-1791801018",
   "status": "oracle_mismatch",
   "stage1": null,
   "stage2": null,
@@ -25,10 +25,10 @@
   "network_isolated_detonation": true,
   "research_mode": "skipped",
   "research_success": null,
-  "t_create_s": 0.7902481549826916,
+  "t_create_s": 0.5019269199983682,
   "t_research_s": null,
-  "t_build_s": 327.54192497301847,
-  "t_total_s": 351.7635794089874,
+  "t_build_s": 281.4510368820047,
+  "t_total_s": 304.2675528060063,
   "recording_path": null,
   "poc_url": null,
   "patch_url": null,
@@ -40,24 +40,24 @@
     "/mnt/c/Users/proxi/Documents/codex-7/daytona-sandbox/artifacts/libdwarf_arvo_56454/patch-only/trial-1/trajectory_attempt_1.log"
   ],
   "metrics_latest": {
-    "mem_total": 8338665472,
-    "mem_used": 657727488,
-    "disk_used": 127649292288,
-    "timestamp": 1790051348.4932961
+    "mem_total": 8336408576,
+    "mem_used": 665620480,
+    "disk_used": 127839805440,
+    "timestamp": 1791801319.229174
   },
   "metrics_series": [
     {
-      "mem_total": 8338665472,
-      "mem_used": 657727488,
-      "disk_used": 127649292288,
-      "timestamp": 1790051348.4932961
+      "mem_total": 8336408576,
+      "mem_used": 665620480,
+      "disk_used": 127839805440,
+      "timestamp": 1791801319.229174
     }
   ],
   "solver_usage": {
-    "key_name": "sk-...A48A",
-    "key_alias": "cybergym-e2e-20260922_042343-265a05e5",
+    "key_name": "sk-...u4mg",
+    "key_alias": "cybergym-e2e-20261012_103042-7b00a874",
     "soft_budget_cooldown": false,
-    "spend": 0.01604371,
+    "spend": 0.01795667,
     "expires": null,
     "models": [],
     "aliases": {},
@@ -87,12 +87,12 @@
     "budget_id": null,
     "organization_id": null,
     "object_permission_id": null,
-    "created_at": "2026-09-22T04:23:43.298000+00:00",
+    "created_at": "2026-10-12T10:30:43.387000+00:00",
     "created_by": "default_user_id",
-    "updated_at": "2026-09-22T04:26:11.948000+00:00",
+    "updated_at": "2026-10-12T10:32:43.903000+00:00",
     "updated_by": "default_user_id",
     "settings_updated_at": null,
-    "last_active": "2026-09-22T04:26:11.950000+00:00",
+    "last_active": "2026-10-12T10:32:43.907000+00:00",
     "rotation_count": 0,
     "auto_rotate": false,
     "rotation_interval": null,
@@ -105,7 +105,7 @@
     "object_permission": null,
     "jwt_key_mappings": null
   },
-  "solver_cost_usd": 0.01604371,
+  "solver_cost_usd": 0.01795667,
   "vision_usage": null,
   "cleanup_ttl_set": true,
   "cleanup_delete_accepted": true,
@@ -113,46 +113,46 @@
   "detonation_error": null,
   "missing_required_artifact": null,
   "error": null,
-  "started_at": "2026-09-22T04:23:18.181663+00:00",
-  "finished_at": "2026-09-22T04:29:10.682059+00:00",
+  "started_at": "2026-10-12T10:30:18.228252+00:00",
+  "finished_at": "2026-10-12T10:35:20.818049+00:00",
   "last_stage": "cleanup",
   "failure_stage": null,
   "failure_reason": null,
   "stage_timings": {
     "secret_attach": {
-      "started_at": "2026-09-22T04:23:18.186519+00:00",
-      "finished_at": "2026-09-22T04:23:18.187133+00:00",
-      "duration_s": 0.000614,
+      "started_at": "2026-10-12T10:30:18.237066+00:00",
+      "finished_at": "2026-10-12T10:30:18.238344+00:00",
+      "duration_s": 0.001278,
       "status": "complete"
     },
     "snapshot_restore": {
-      "started_at": "2026-09-22T04:23:18.187300+00:00",
-      "finished_at": "2026-09-22T04:23:18.977783+00:00",
-      "duration_s": 0.790483,
+      "started_at": "2026-10-12T10:30:18.238688+00:00",
+      "finished_at": "2026-10-12T10:30:18.741066+00:00",
+      "duration_s": 0.502378,
       "status": "complete"
     },
     "docker_start": {
-      "started_at": "2026-09-22T04:23:19.154746+00:00",
-      "finished_at": "2026-09-22T04:23:40.004017+00:00",
-      "duration_s": 20.849271,
+      "started_at": "2026-10-12T10:30:18.861906+00:00",
+      "finished_at": "2026-10-12T10:30:39.074528+00:00",
+      "duration_s": 20.212622,
       "status": "complete"
     },
     "evaluation": {
-      "started_at": "2026-09-22T04:23:40.004361+00:00",
-      "finished_at": "2026-09-22T04:29:08.278645+00:00",
-      "duration_s": 328.274284,
+      "started_at": "2026-10-12T10:30:39.074993+00:00",
+      "finished_at": "2026-10-12T10:35:19.015612+00:00",
+      "duration_s": 279.940619,
       "status": "complete"
     },
     "result_collection": {
-      "started_at": "2026-09-22T04:29:08.280638+00:00",
-      "finished_at": "2026-09-22T04:29:10.334099+00:00",
-      "duration_s": 2.053461,
+      "started_at": "2026-10-12T10:35:19.016887+00:00",
+      "finished_at": "2026-10-12T10:35:20.504568+00:00",
+      "duration_s": 1.487681,
       "status": "complete"
     },
     "cleanup": {
-      "started_at": "2026-09-22T04:29:10.334693+00:00",
-      "finished_at": "2026-09-22T04:29:10.681606+00:00",
-      "duration_s": 0.346913,
+      "started_at": "2026-10-12T10:35:20.506177+00:00",
+      "finished_at": "2026-10-12T10:35:20.817508+00:00",
+      "duration_s": 0.311331,
       "status": "complete"
     }
   }

@@ -5,8 +5,8 @@
   "provisioning": "snapshot",
   "benchmark": "cybergym-e2e",
   "provider": "modal",
-  "sandbox_id": "sb-5HVHVzrBXubmBX1uGEpEVX",
-  "sandbox_name": "siege-modal-arrow_arvo_41221-patch-only-t1-1790009178",
+  "sandbox_id": "sb-01M4QCQ3285XGV4EXFP9XDHTJA",
+  "sandbox_name": "siege-modal-arrow_arvo_41221-patch-only-t1-1791786454",
   "status": "no_patch",
   "stage1": null,
   "stage2": null,
@@ -25,10 +25,10 @@
   "network_isolated_detonation": false,
   "research_mode": "skipped",
   "research_success": null,
-  "t_create_s": 0.6454734169819858,
+  "t_create_s": 0.454318053991301,
   "t_research_s": null,
-  "t_build_s": 153.49736378801754,
-  "t_total_s": 173.12579683898366,
+  "t_build_s": 160.45379438300733,
+  "t_total_s": 182.90144088299712,
   "recording_path": null,
   "poc_url": null,
   "patch_url": null,
@@ -38,22 +38,22 @@
   "log_local_path": "/mnt/c/Users/proxi/Documents/codex-7/daytona-sandbox/artifacts/arrow_arvo_41221/patch-only/trial-1/run_agent.log",
   "trajectory_local_paths": null,
   "metrics_latest": {
-    "mem_total": 8338665472,
-    "mem_used": 584769536,
-    "disk_used": 127649214464,
-    "timestamp": 1790009349.2831693
+    "mem_total": 8336404480,
+    "mem_used": 571957248,
+    "disk_used": 127839703040,
+    "timestamp": 1791786632.9949207
   },
   "metrics_series": [
     {
-      "mem_total": 8338665472,
-      "mem_used": 584769536,
-      "disk_used": 127649214464,
-      "timestamp": 1790009349.2831693
+      "mem_total": 8336404480,
+      "mem_used": 571957248,
+      "disk_used": 127839703040,
+      "timestamp": 1791786632.9949207
     }
   ],
   "solver_usage": {
-    "key_name": "sk-...plfg",
-    "key_alias": "cybergym-e2e-20260921_164636-7f928ff3",
+    "key_name": "sk-...8qVw",
+    "key_alias": "cybergym-e2e-20261012_062757-f0b1d996",
     "soft_budget_cooldown": false,
     "spend": 0.0,
     "expires": null,
@@ -85,9 +85,9 @@
     "budget_id": null,
     "organization_id": null,
     "object_permission_id": null,
-    "created_at": "2026-09-21T16:46:37.164000+00:00",
+    "created_at": "2026-10-12T06:27:57.649000+00:00",
     "created_by": "default_user_id",
-    "updated_at": "2026-09-21T16:46:37.164000+00:00",
+    "updated_at": "2026-10-12T06:27:57.649000+00:00",
     "updated_by": "default_user_id",
     "settings_updated_at": null,
     "last_active": null,
@@ -111,46 +111,46 @@
   "detonation_error": null,
   "missing_required_artifact": "fix.patch",
   "error": null,
-  "started_at": "2026-09-21T16:46:18.689212+00:00",
-  "finished_at": "2026-09-21T16:49:12.038475+00:00",
+  "started_at": "2026-10-12T06:27:34.227762+00:00",
+  "finished_at": "2026-10-12T06:30:34.426102+00:00",
   "last_stage": "cleanup",
   "failure_stage": null,
   "failure_reason": null,
   "stage_timings": {
     "secret_attach": {
-      "started_at": "2026-09-21T16:46:18.697177+00:00",
-      "finished_at": "2026-09-21T16:46:18.698253+00:00",
-      "duration_s": 0.001076,
+      "started_at": "2026-10-12T06:27:34.239225+00:00",
+      "finished_at": "2026-10-12T06:27:34.240289+00:00",
+      "duration_s": 0.001064,
       "status": "complete"
     },
     "snapshot_restore": {
-      "started_at": "2026-09-21T16:46:18.698614+00:00",
-      "finished_at": "2026-09-21T16:46:19.344554+00:00",
-      "duration_s": 0.64594,
+      "started_at": "2026-10-12T06:27:34.240712+00:00",
+      "finished_at": "2026-10-12T06:27:34.695478+00:00",
+      "duration_s": 0.454766,
       "status": "complete"
     },
     "docker_start": {
-      "started_at": "2026-09-21T16:46:19.505479+00:00",
-      "finished_at": "2026-09-21T16:46:35.105679+00:00",
-      "duration_s": 15.6002,
+      "started_at": "2026-10-12T06:27:34.794927+00:00",
+      "finished_at": "2026-10-12T06:27:54.435321+00:00",
+      "duration_s": 19.640394,
       "status": "complete"
     },
     "evaluation": {
-      "started_at": "2026-09-21T16:46:35.106890+00:00",
-      "finished_at": "2026-09-21T16:49:08.805507+00:00",
-      "duration_s": 153.698617,
+      "started_at": "2026-10-12T06:27:54.436645+00:00",
+      "finished_at": "2026-10-12T06:30:32.678484+00:00",
+      "duration_s": 158.241839,
       "status": "complete"
     },
     "result_collection": {
-      "started_at": "2026-09-21T16:49:08.806801+00:00",
-      "finished_at": "2026-09-21T16:49:11.249849+00:00",
-      "duration_s": 2.443048,
+      "started_at": "2026-10-12T06:30:32.683939+00:00",
+      "finished_at": "2026-10-12T06:30:34.063284+00:00",
+      "duration_s": 1.379345,
       "status": "complete"
     },
     "cleanup": {
-      "started_at": "2026-09-21T16:49:11.250571+00:00",
-      "finished_at": "2026-09-21T16:49:12.037978+00:00",
-      "duration_s": 0.787407,
+      "started_at": "2026-10-12T06:30:34.063633+00:00",
+      "finished_at": "2026-10-12T06:30:34.425566+00:00",
+      "duration_s": 0.361933,
       "status": "complete"
     }
   }
