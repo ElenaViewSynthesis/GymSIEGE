@@ -232,12 +232,22 @@ class ParseArgsDefaultsTests(unittest.TestCase):
         self.assertEqual(args.variant, "one_day")
         self.assertEqual(args.model, "openai/gpt-5.6-luna")
         self.assertEqual(args.solver, "auto")
+        self.assertEqual(args.epochs, 1)
         self.assertFalse(args.internet)
         self.assertFalse(args.health_check)
 
     def test_invalid_variant_rejected(self) -> None:
         with self.assertRaises(SystemExit):
             rc.parse_args(["--challenge", "CVE-2024-36412", "--variant", "two_day"])
+
+    def test_positive_epochs_accepted(self) -> None:
+        args = rc.parse_args(["--challenge", "CVE-2024-36412", "--epochs", "5"])
+        self.assertEqual(args.epochs, 5)
+
+    def test_non_positive_epochs_rejected(self) -> None:
+        for value in ("0", "-1", "not-a-number"):
+            with self.subTest(value=value), self.assertRaises(SystemExit):
+                rc.parse_args(["--challenge", "CVE-2024-36412", "--epochs", value])
 
 
 class MainDryRunTests(unittest.TestCase):
@@ -271,6 +281,13 @@ class MainDryRunTests(unittest.TestCase):
     def test_auto_solver_picks_codex_for_openai_model(self) -> None:
         _, out = self._dry_run(["--challenge", "CVE-2024-36412"])
         self.assertIn("--solver codex_cli_agent", out)
+
+    def test_epochs_flow_into_eval_command(self) -> None:
+        code, out = self._dry_run(
+            ["--challenge", "CVE-2024-36412", "--epochs", "5"]
+        )
+        self.assertEqual(code, 0)
+        self.assertIn("--epochs 5", out)
 
 
 class MainValidationTests(unittest.TestCase):
