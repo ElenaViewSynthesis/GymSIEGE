@@ -135,6 +135,24 @@ What `run_modal_pinned_tasks.sh` includes:
 
 **Real cost / time:** one real Modal sandbox and real LiteLLM/LLM spend per task, serially. The last full batch (2026-09-21/22, plus 2026-09-23 re-runs) cost **~$1.28** and took **~9.0 hours of wall time (541.5 min summed)** — dominated by a few slow-compile outliers (ffmpeg/oss-fuzz_385167047 at 177.4 min, binutils/arvo_61822 at 63.7 min), with the median task under 15 minutes. Per-task completion times and the 15/3/2/2 status tally are in [EXPERIMENTS.md](EXPERIMENTS.md#full-22-task-modal-production-run--actual-completion-times-2026-09-16). It **overwrites the canonical `results/modal_trials/` slots in place**, so commit or copy anything you want to keep first.
 
+For paper repeats, use the manifest-driven planner instead of the canonical-slot
+runner. It defaults to a read-only plan, pins the 22-task/model/snapshot cohort,
+writes each replicate to a unique batch path, and retries only infrastructure
+outcomes while preserving every attempt under a nested audit directory:
+
+```bash
+python3 run_modal_repeats.py --batch-id paper-YYYYMMDDTHHMMSSZ
+# Paid only after reviewing the printed cells and cost estimate:
+python3 run_modal_repeats.py --batch-id paper-YYYYMMDDTHHMMSSZ --execute
+```
+
+The frozen declaration is `reference/cybergym_paper_cohort.v1.json`. A terminal
+`success`, `failed`, `no_patch`, or `oracle_mismatch` result is never overwritten;
+resume skips it. `error`, `oracle_unavailable`, missing, and unreadable attempt
+results are infrastructure-invalid and remain outside the batch root consumed by
+the plotting loaders. Valid manually launched repeats can be frozen in the
+manifest's `completed_repeats` list; the planner then counts and skips them.
+
 ##### Reproduce it in CI (sharded GitHub Actions)
 
 For a hands-off reproduction, [`cybergym-pinned-modal.yml`](.github/workflows/cybergym-pinned-modal.yml) runs the same pinned set on GitHub Actions. A GitHub-hosted job is capped at 6h while the full serial run is ~9h, so the workflow **shards** the 22 tasks across `N` parallel jobs and runs each shard's slice sequentially — every shard then finishes under the cap. Tasks are assigned **round-robin** (task *i* → shard `i % N`: task 0→shard 0, 1→shard 1, …, 4→shard 0 again), which spreads the slow-compile outliers (ffmpeg, binutils) across different shards instead of clustering them, keeping per-shard wall times balanced. A free `validate` job checks the task corpus on every PR/push; the paid `run` job is manual `workflow_dispatch` only, so nothing spins up a Modal sandbox on push.

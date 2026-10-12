@@ -19,6 +19,10 @@ results/*.json
 # Nested run output too: common.py writes per-sandbox telemetry to
 # results/telemetry/, which `results/*.json` does not reach.
 results/**/*.json
+# Frozen, compact projections explicitly referenced by paper cohort manifests.
+!results/modal_trials/cohort_inputs/
+!results/modal_trials/cohort_inputs/cybergym-paper-v1/
+!results/modal_trials/cohort_inputs/cybergym-paper-v1/*.json
 # Event-log telemetry (e.g. results/events.ndjson) isn't caught by the
 # *.json patterns above -- same "local-only" treatment as everything else
 # under results/ except the one tracked schema template.
@@ -39,6 +43,10 @@ results/modal-honeypot*/
 # CVE-Bench run output: Inspect .eval logs and console transcripts from
 # CVE-bench/run_cvebench.py -- local-only, reproducible by re-running.
 results/cve-bench/
+# Derived CVE-Bench trial projections and paper figures (local-only).
+results/cve-bench-trials/
+# Manifest-materialized paper cohorts and regenerated figures (local-only).
+results/paper/
 # ExploitBench (bench-v8) wrapper transcripts from exploitbench/run_exploitbench.py
 # -- local-only; the authoritative run dirs + DB live in the submodule.
 results/exploitbench/

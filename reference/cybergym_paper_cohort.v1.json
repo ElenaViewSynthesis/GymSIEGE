@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "cohort_id": "cybergym-paper-v1",
+  "benchmark": "cybergym-e2e",
+  "mode": "patch-only",
+  "provider": "modal",
+  "provisioning": "snapshot",
+  "model_provider": "litellm",
+  "litellm_model_id": "gpt-5.6-luna",
+  "agent": "codex",
+  "snapshot_manifest": "cybergym/snapshots/modal_snapshot.json",
+  "snapshot_image_id": "im-01M376G3D7WYH73HT614RRXE5C",
+  "baseline_revision": "ea75d98dc8a1dd4a792b9492ca78d2c333a196a2",
+  "baseline_trial": 1,
+  "repeat_trials": [2, 3, 4, 5],
+  "completed_repeats": [
+    {
+      "task": "ffmpeg/oss-fuzz_385167047",
+      "trial": 2,
+      "result": "results/modal_trials/cohort_inputs/cybergym-paper-v1/ffmpeg_oss-fuzz_385167047__trial-2.json",
+      "sha256": "09e2fe0ce8b455f1622d401be9f1460841ff7574b0a23e8ef7cbcff0914eaeea"
+    }
+  ],
+  "max_attempts": 3,
+  "retry_sleep_s": 20,
+  "output_root": "results/modal_trials/repeats",
+  "cost_estimate": {
+    "currency": "USD",
+    "historical_cost_per_22_cells": 1.28,
+    "estimated_cost_per_cell": 0.0581818182,
+    "planned_new_cells": 87,
+    "estimated_total": 5.06,
+    "note": "Planning estimate from the prior 22-task batch; not a provider-side hard cap."
+  },
+  "baseline_results": [
+    {"task": "curl/arvo_66012", "result": "results/modal_trials/curl_arvo_66012.json", "sha256": "8f016a1917072659682214c051c954f0817cb93f32d7dd1d7d901361bb5cf159"},
+    {"task": "binutils/arvo_47101", "result": "results/modal_trials/binutils_arvo_47101.json", "sha256": "151ca619eb114a7578ff7d9d24da26b60738410abbec36bee6c9d2f013b9d8b9"},
+    {"task": "freetype2/arvo_368", "result": "results/modal_trials/freetype2_arvo_368.json", "sha256": "fedf643fce9b462addce0a3b9a2f59c6256f15cdf1de3e7b2fe8b6cf84a8330b"},
+    {"task": "assimp/oss-fuzz_42535201", "result": "results/modal_trials/assimp_oss-fuzz_42535201.json", "sha256": "e08795268c893ebd8bffc232bbe2d40c90803ba8635d197c12262dd59186ee51"},
+    {"task": "opensc/oss-fuzz_42535468", "result": "results/modal_trials/opensc_oss-fuzz_42535468.json", "sha256": "f7d3eec80689233ebde7f854728fb4e3d343ced2212a355ecbae2f4e4e3ea3cf"},
+    {"task": "wt/oss-fuzz_370689421", "result": "results/modal_trials/wt_oss-fuzz_370689421.json", "sha256": "07c22468b3d232f1f2822990bd56043733c3e9dc558727ebc3373a0f76a6069c"},
+    {"task": "ffmpeg/oss-fuzz_385167047", "result": "results/modal_trials/cohort_inputs/cybergym-paper-v1/ffmpeg_oss-fuzz_385167047__trial-1.json", "sha256": "0cbf2ae9e8e36421020301d4a151dbb94654558a080f563d4e4aff2d8204dfb4"},
+    {"task": "arrow/arvo_41221", "result": "results/modal_trials/arrow_arvo_41221.json", "sha256": "34e39d0f891de921c3744524d4be6807298942e4c765c7cf727d766f2ea64e79"},
+    {"task": "libtpms/oss-fuzz_42537128", "result": "results/modal_trials/libtpms_oss-fuzz_42537128.json", "sha256": "e1be6e6bdf56f01a4597b9931684e7cffa5e04bc4184d3ef2460a8e9d4cd94f4"},
+    {"task": "mruby/arvo_19902", "result": "results/modal_trials/mruby_arvo_19902.json", "sha256": "15d34621b91590a596938e741a7bc72eee289028e9aa9e14988da84c6fdbfd40"},
+    {"task": "binutils/arvo_61822", "result": "results/modal_trials/binutils_arvo_61822.json", "sha256": "303d4f137e4457982ce5976445eb95fc42249e5e161ee66738da6cf6ae85aa09"},
+    {"task": "ffmpeg/oss-fuzz_436997807", "result": "results/modal_trials/ffmpeg_oss-fuzz_436997807.json", "sha256": "68fbf6a08f00cd8fc73416162c481dc078ab9bed908afffb83ce49b7693cd724"},
+    {"task": "mruby/arvo_53183", "result": "results/modal_trials/mruby_arvo_53183.json", "sha256": "88f549fcbb2208fc5d1dd1642ecc44fa472e1e0690758019ea023034703cd80c"},
+    {"task": "net-snmp/arvo_52465", "result": "results/modal_trials/net-snmp_arvo_52465.json", "sha256": "b1eb1413e84965176fe43cd80fa03679b7529d7c5b5b5348c718c8d4de7ea9e5"},
+    {"task": "libxaac/arvo_62261", "result": "results/modal_trials/libxaac_arvo_62261.json", "sha256": "01fe66a18eede6ee85b60ef1edc53b13616f92f5f1eed7608a7829838ac8de13"},
+    {"task": "wireshark/arvo_3408", "result": "results/modal_trials/wireshark_arvo_3408.json", "sha256": "772027a9477d75235f66f9effb998462d51f5e31615168178502b8e3dba0f875"},
+    {"task": "libdwarf/arvo_56454", "result": "results/modal_trials/libdwarf_arvo_56454.json", "sha256": "b693b8e54cac7bfb819efc998b4340ff45fd1772cf1b7552f17b71d69a2db9ad"},
+    {"task": "opensc/oss-fuzz_448717172", "result": "results/modal_trials/opensc_oss-fuzz_448717172.json", "sha256": "b80891a9cf43dd05d8af354df103f6c5ccd16aba147961a10b227e6da64511e3"},
+    {"task": "p11-kit/arvo_31276", "result": "results/modal_trials/p11-kit_arvo_31276.json", "sha256": "b11162058ac1935e680b74b0c159e8b0b500f2e5240bf5bf015313858b800c0f"},
+    {"task": "unit/oss-fuzz_42536363", "result": "results/modal_trials/unit_oss-fuzz_42536363.json", "sha256": "166969c56213be9d7d44f002a60ee735f4ee7a44b0d22d904814723a01231ca6"},
+    {"task": "upx/oss-fuzz_380327173", "result": "results/modal_trials/upx_oss-fuzz_380327173.json", "sha256": "e2ba7d0f65aac71063573c01724c6a3050ea3b9faa4be1f8888dd7393cc8609f"},
+    {"task": "ghostscript/arvo_45320", "result": "results/modal_trials/ghostscript_arvo_45320.json", "sha256": "c1b68d767af75f6da69e3ed67d49b14743671731e27d18f59bf1a77357548b39"}
+  ]
+}
