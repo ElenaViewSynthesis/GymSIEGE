@@ -87,7 +87,7 @@ def _aggregate(rows: list[dict[str, Any]]) -> "OrderedDict[str, list[str]]":
 
 
 def render(rows: list[dict[str, Any]], out: Path, confidence: float,
-           method: str) -> None:
+           method: str, title: Optional[str] = None) -> None:
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -144,7 +144,9 @@ def render(rows: list[dict[str, Any]], out: Path, confidence: float,
     ax.set_yticklabels([t["task"] for t in tasks], fontsize=7.5, color=INK)
     ax.set_xlabel("per-task success probability (%)", color=INK, fontsize=10)
     ci_pct = int(round(confidence * 100))
-    ax.set_title(f"CyberGym per-task capability  ({method} {ci_pct}% CI, S1–S4 oracle)",
+    plot_title = (title if title is not None
+                  else f"CyberGym per-task capability  ({method} {ci_pct}% CI, S1–S4 oracle)")
+    ax.set_title(plot_title,
                  color=INK, fontsize=12, fontweight="bold", loc="left")
     ax.grid(True, axis="x", color=GRID, lw=0.8)
     ax.set_axisbelow(True)
@@ -182,6 +184,9 @@ def main(argv: Optional[list[str]] = None) -> int:
                    default="jeffreys",
                    help="small-sample interval estimator (default jeffreys; "
                         "jeffreys/clopper need SciPy, else fall back to wilson)")
+    p.add_argument("--title", default=None,
+                   help="plot title (default: the CyberGym S1–S4 oracle title); "
+                        "set verbatim, e.g. for a CVE-bench forest")
     args = p.parse_args(argv)
 
     results_dirs = args.results_dir or ["results/modal_trials"]
@@ -189,7 +194,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     if not rows:
         raise SystemExit("no trial result JSONs found")
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    render(rows, args.out, args.confidence, args.interval)
+    render(rows, args.out, args.confidence, args.interval, args.title)
     return 0
 
 
