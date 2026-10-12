@@ -69,16 +69,24 @@ for task in "${tasks[@]}"; do
       --output "$out" \
       --run-id "$run_id" \
       2>&1 | tee "results/modal_trials/${safe}.log" || true
-    # A result written at/after this attempt's start = the run reached result
-    # collection (any status). No fresh file = it crashed before writing
-    # (the network-timeout case) -> retry.
+    # A fresh JSON proves that result collection ran, but status=error is still
+    # an infrastructure failure rather than a model outcome. Retry errors and
+    # unreadable/empty statuses; preserve genuine model outcomes as data.
     if [ -f "$out" ] && [ "$(stat -c %Y "$out" 2>/dev/null || echo 0)" -ge "$start" ]; then
-      wrote=1
-      break
+      st="$(.venv/bin/python -c "import json,sys; print(json.load(open(sys.argv[1])).get('status') or '')" "$out" 2>/dev/null)"
+      case "$st" in
+        success|failed|no_patch|oracle_mismatch)
+          wrote=1
+          break
+          ;;
+        *)
+          echo "--- $task: fresh JSON but status='$st' (infra error); will retry" >&2
+          ;;
+      esac
     fi
     if [ "$attempt" -lt "$MAX_ATTEMPTS" ]; then
       sleep_for=$(( RETRY_SLEEP * attempt ))
-      echo "--- $task: no result written (attempt $attempt/$MAX_ATTEMPTS, likely network); retrying in ${sleep_for}s" >&2
+      echo "--- $task: no terminal result (attempt $attempt/$MAX_ATTEMPTS, likely infra/network); retrying in ${sleep_for}s" >&2
       sleep "$sleep_for"
     fi
   done
@@ -86,12 +94,12 @@ for task in "${tasks[@]}"; do
     solved=$(( solved + 1 ))
   else
     unsolved+=("$task")
-    echo "!!! $task: still no result after $MAX_ATTEMPTS attempts" >&2
+    echo "!!! $task: still no terminal result after $MAX_ATTEMPTS attempts" >&2
   fi
 done
 
 echo
-echo "=== done -- ${solved}/${#tasks[@]} tasks produced a result in results/modal_trials/ ==="
+echo "=== done -- ${solved}/${#tasks[@]} tasks produced a terminal result in results/modal_trials/ ==="
 if [ "${#unsolved[@]}" -gt 0 ]; then
   echo "=== still failed (${#unsolved[@]}): ${unsolved[*]} ===" >&2
   exit 1
