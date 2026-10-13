@@ -57,14 +57,16 @@ results/exploitbench-modal/
 # Network-off containment suite run output -- same local-only, reproducible
 # treatment as the other modal_honeypot run dirs above.
 results/modal-network-off/
-# Locally-regenerated capability-analysis plots/outputs. Only the Wilson-band
-# rate plot (cybergym_capability_curve_rate.png) is embedded in README.md and
-# stays tracked; these other variants (count staircase, full-95 band, per-task
-# forest, stage funnel, oracle-gap CSV) are reproducible and local-only.
+# Locally-regenerated capability-analysis plots/outputs. The Wilson-band rate
+# plot (cybergym_capability_curve_rate.png) and the by-task stage funnel
+# (cybergym_stage_funnel_bytask.png) are embedded in README.md and stay tracked;
+# the other variants (count staircase, full-95 band, per-task forest, by-trial
+# stage funnel, oracle-gap CSV) are reproducible and local-only.
 results/modal_trials/cybergym_capability_curve.png
 results/modal_trials/cybergym_capability_curve_rate_full95.png
 results/modal_trials/cybergym_task_forest.png
 results/modal_trials/cybergym_stage_funnel*.png
+!results/modal_trials/cybergym_stage_funnel_bytask.png
 results/modal_trials/oracle_gap.csv
 snapshot_build.metrics.json
 *.log

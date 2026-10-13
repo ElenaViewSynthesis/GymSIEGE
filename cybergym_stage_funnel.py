@@ -55,12 +55,42 @@ STAGE_ORDER: list[tuple[str, str]] = [
 # Steps whose drop is an isolation re-check rather than plain attrition.
 _ISOLATION_STEPS = {"isolated_stage3", "isolated_stage4"}
 
+# Plain-English gloss of what clearing each rung actually proves. Printed as a
+# caption beside each bar so the funnel is readable without the module docstring.
+STAGE_BLURB: dict[str, str] = {
+    "__total__": "build + PoC + patch attempted",
+    "stage1": "earlier oracle stage",
+    "stage2": "earlier oracle stage",
+    "stage3": "PoC crashes the vulnerable build",
+    "isolated_stage3": "crash re-confirmed, network off",
+    "stage4": "patch removes the crash",
+    "isolated_stage4": "patch re-confirmed, network off",
+    "__success__": "final status = success",
+}
+
 
 def _passed(d: dict[str, Any], key: str) -> bool:
     if key == "__total__":
         return True
     if key == "__success__":
         return d.get("status") == "success"
+    # The isolated validator's stage verdict alone is not enough to establish
+    # the oracle contract.  In particular, a validator can report S3/S4 passed
+    # even when the raw PoC did not crash the vulnerable build.  Require the
+    # raw network-isolated detonation evidence used by classify_trial_status.
+    if key == "isolated_stage3":
+        return (
+            d.get(key) == "passed"
+            and d.get("network_isolated_detonation") is True
+            and d.get("vul_exit_code") not in (None, 0)
+        )
+    if key == "isolated_stage4":
+        return (
+            d.get(key) == "passed"
+            and d.get("network_isolated_detonation") is True
+            and d.get("vul_exit_code") not in (None, 0)
+            and d.get("fix_exit_code") == 0
+        )
     return d.get(key) == "passed"
 
 
@@ -71,13 +101,26 @@ def _has_data(rows: list[dict[str, Any]], key: str) -> bool:
 
 
 def _counts(rows: list[dict[str, Any]], keys: list[str], by: str) -> list[int]:
+    # A funnel is cumulative: a row clearing a later rung must also have
+    # cleared every earlier displayed rung.  Independent per-field counts can
+    # rise at a later stage (for example S4-isolated > S4), which is a stage
+    # summary but not a valid funnel.
+    def clears_prefix(d: dict[str, Any], end: int) -> bool:
+        return all(_passed(d, key) for key in keys[: end + 1])
+
     if by == "task":
         by_task: "OrderedDict[str, list[dict]]" = OrderedDict()
         for d in rows:
             by_task.setdefault(d.get("task"), []).append(d)
         groups = list(by_task.values())
-        return [sum(1 for g in groups if any(_passed(d, k) for d in g)) for k in keys]
-    return [sum(1 for d in rows if _passed(d, k)) for k in keys]
+        return [
+            sum(1 for group in groups if any(clears_prefix(d, i) for d in group))
+            for i in range(len(keys))
+        ]
+    return [
+        sum(1 for d in rows if clears_prefix(d, i))
+        for i in range(len(keys))
+    ]
 
 
 def render(rows: list[dict[str, Any]], out: Path, by: str, show_empty: bool) -> None:
@@ -89,6 +132,7 @@ def render(rows: list[dict[str, Any]], out: Path, by: str, show_empty: bool) -> 
 
     INK, MUTED, GRID, CURVE = "#111827", "#6b7280", "#e5e7eb", "#2563eb"
     LIGHT = "#bfdbfe"
+    SUCCESS = "#15803d"  # end-to-end headline (matches the forest's green)
 
     stages = [(k, lbl) for (k, lbl) in STAGE_ORDER
               if show_empty or _has_data(rows, k)]
@@ -116,16 +160,43 @@ def render(rows: list[dict[str, Any]], out: Path, by: str, show_empty: bool) -> 
     ax.set_ylim(-0.6, n - 0.4)
     ys = np.arange(n)[::-1]  # first stage on top
 
+    from matplotlib.lines import Line2D
+    from matplotlib.patches import Patch
+
+    GHOST_F, GHOST_E = "#f3f4f6", "#d8dde4"  # baseline outline fill / edge
+
+    # Header over the right-hand conversion column, level with the top bar so
+    # the arrows below read as a labelled axis rather than loose numbers.
+    ax.annotate("stage → stage\nretention · (−dropped)",
+                xy=(half * 1.02, ys[0]), xytext=(0, 0),
+                textcoords="offset points", ha="left", va="center",
+                fontsize=6.8, color=MUTED, fontweight="bold",
+                annotation_clip=False)
+
     prev = None
     for i, (y, key, label, c, cnt) in enumerate(zip(ys, keys, labels, shades, counts)):
+        # Faint full-width baseline: the "attempted" width echoed behind every
+        # rung, so the pale stubs left and right show at a glance how much this
+        # rung shed relative to the top of the funnel.
+        ax.barh(y, total, left=-total / 2.0, height=0.62, facecolor=GHOST_F,
+                edgecolor=GHOST_E, linewidth=0.8, zorder=1)
         w = cnt
         ax.barh(y, w, left=-w / 2.0, height=0.62, color=c, zorder=2,
                 edgecolor="white", linewidth=0.8)
         pct_total = cnt / total * 100.0
         txt_colour = "white" if i < n * 0.6 else INK
-        ax.text(0, y, f"{label}\n{cnt} {unit}  ·  {pct_total:.0f}% of attempted",
+        ax.text(0, y, f"{label}\n{cnt} {unit}  ·  {pct_total:.1f}% of attempted",
                 ha="center", va="center", fontsize=8, fontweight="bold",
                 color=txt_colour, zorder=3)
+
+        # Plain-English gloss of what clearing this rung proves, tucked against
+        # the bar's left edge.
+        blurb = STAGE_BLURB.get(key)
+        if blurb:
+            ax.annotate(blurb, xy=(-w / 2.0 - 0.4, y), xytext=(0, 0),
+                        textcoords="offset points", ha="right", va="center",
+                        fontsize=6.8, color=MUTED, style="italic",
+                        annotation_clip=False)
 
         # Step-to-step conversion, parked to the right of the funnel.
         if prev is not None:
@@ -134,8 +205,8 @@ def render(rows: list[dict[str, Any]], out: Path, by: str, show_empty: bool) -> 
             is_iso = key in _ISOLATION_STEPS
             # Normally a funnel only loses trials; guard the rare non-nested
             # case (a later field passes where an earlier one did not).
-            note = (f"→ {conv:.0f}%  (−{drop})" if drop >= 0
-                    else f"→ {conv:.0f}%  (+{-drop})")
+            note = (f"→ {conv:.1f}%  (−{drop})" if drop >= 0
+                    else f"→ {conv:.1f}%  (+{-drop})")
             colour = "#b45309" if (is_iso and drop > 0) else MUTED
             ax.annotate(note, xy=(half * 1.02, (y + prev_y) / 2.0),
                         xytext=(0, 0), textcoords="offset points",
@@ -143,13 +214,23 @@ def render(rows: list[dict[str, Any]], out: Path, by: str, show_empty: bool) -> 
                         color=colour, fontweight="bold" if is_iso else "normal",
                         annotation_clip=False)
             if is_iso and drop > 0:
-                ax.annotate("isolation gap", xy=(half * 1.02, (y + prev_y) / 2.0),
+                ax.annotate("isolation gap — lost to offline re-detonation",
+                            xy=(half * 1.02, (y + prev_y) / 2.0),
                             xytext=(0, -9), textcoords="offset points",
                             ha="left", va="center", fontsize=6.5,
                             color="#b45309", style="italic", annotation_clip=False)
         prev, prev_y = cnt, y
 
-    ax.set_title(f"CyberGym oracle stage funnel  ({unit}, S1–S4)",
+    # Restate the headline where the eye lands last: the end-to-end rate.
+    end_pct = counts[-1] / total * 100.0
+    ax.annotate(f"end-to-end\n{counts[-1]} / {total} {unit}\n= {end_pct:.1f}%",
+                xy=(half * 1.02, ys[-1]), xytext=(0, 0),
+                textcoords="offset points", ha="left", va="center",
+                fontsize=7.5, color=SUCCESS, fontweight="bold",
+                annotation_clip=False)
+
+    mode_word = "task" if by == "task" else "trial"
+    ax.set_title(f"CyberGym oracle stage funnel  —  {mode_word}-level, patch-only oracle",
                  color=INK, fontsize=12, fontweight="bold", loc="left")
     ax.set_yticks([])
     ax.set_xticks([])
@@ -165,6 +246,34 @@ def render(rows: list[dict[str, Any]], out: Path, by: str, show_empty: bool) -> 
             ax.annotate(f"bottleneck: {a} → {b}  (−{d} {unit})",
                         xy=(0, -0.5), ha="center", va="center",
                         fontsize=8, color=INK, fontweight="bold")
+
+    # Key: what the glyphs mean (added once, below the funnel).
+    handles = [
+        Patch(facecolor=CURVE, edgecolor="white",
+              label="bar: cleared this rung AND every rung above (cumulative)"),
+        Patch(facecolor=GHOST_F, edgecolor=GHOST_E,
+              label="faint outline: all attempted (baseline width)"),
+        Line2D([0], [0], color=MUTED, lw=1.8,
+               label="grey →: ordinary attrition to the next rung"),
+        Line2D([0], [0], color="#b45309", lw=1.8,
+               label="amber →: isolation gap (passed online, failed offline re-run)"),
+    ]
+    ax.legend(handles=handles, loc="upper center",
+              bbox_to_anchor=(0.5, -0.04 - 0.55 / fig_h), frameon=False,
+              fontsize=7.3, ncol=1, handlelength=1.6, labelspacing=0.5,
+              borderaxespad=0.0)
+
+    # Reading guide: the methodology a reviewer needs to trust the shape.
+    caption = (
+        f"Each rung is cumulative — a {mode_word} is counted only if it cleared every rung above it.  "
+        f"‘by {mode_word}’ credits a {mode_word} at a rung when ANY of its trials cleared it (optimistic pass@n).\n"
+        "Patch-only mode: the find-vuln stages S1/S2 are null for every trial and auto-hidden.  "
+        "The two isolated rungs re-run the oracle with the network cut — a drop there is an over-claim, not capability loss."
+    )
+    ax.annotate(caption, xy=(0.5, 0.0), xycoords="axes fraction",
+                xytext=(0, -92 - 150.0 / fig_h), textcoords="offset points",
+                ha="center", va="top", fontsize=6.6, color=MUTED,
+                annotation_clip=False)
 
     fig.tight_layout()
     fig.savefig(out, bbox_inches="tight")
