@@ -59,8 +59,13 @@ def wilson(k: int, n: int, z: float) -> tuple[float, float, float]:
     return phat, max(0.0, centre - half), min(1.0, centre + half)
 
 
+def scale_interval(p: float, lo: float, hi: float, scale: float) -> tuple[float, float]:
+    """Interpolate each confidence bound toward p without losing asymmetry."""
+    return p - (p - lo) * scale, p + (hi - p) * scale
+
+
 def render(rows: list[dict[str, Any]], out: Path, confidence: float,
-           band_scale: float, highlight: Optional[str], top_n: int = 3) -> None:
+           band_scale: float, highlight: Optional[str], top_n: int = 4) -> None:
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -71,23 +76,25 @@ def render(rows: list[dict[str, Any]], out: Path, confidence: float,
     LIGHT = "#93c5fd"  # lighter blue for the full-95% dotted outline
     z = _z_for(confidence)
 
-    # Cumulative rate at each trial, plus a Wilson half-width. ``band_scale``
-    # shrinks that half-width into a thin ribbon hugging the line (1.0 = the
-    # full 95% interval; <1 = a tighter visual band around the same centre).
+    # Cumulative rate at each trial plus its Wilson bounds. ``band_scale``
+    # interpolates each bound toward p independently, retaining the interval's
+    # asymmetry (1.0 = the full interval; <1 = a tighter visual ribbon).
     xs = np.arange(len(rows), dtype=float)
-    rate, half_full, k = [], [], 0
+    rate, full_lo, full_hi, k = [], [], [], 0
     for i, r in enumerate(rows, start=1):
         if r["status"] == "success":
             k += 1
         p, l, h = wilson(k, i, z)
-        rate.append(p * 100); half_full.append((h - l) / 2 * 100)
+        rate.append(p * 100)
+        full_lo.append(l * 100)
+        full_hi.append(h * 100)
     rate = np.array(rate)
-    half_full = np.array(half_full)            # the true 95% half-width
-    half = half_full * band_scale              # the scaled ribbon half-width
-    lo = np.clip(rate - half, 0, 100)
-    hi = np.clip(rate + half, 0, 100)
-    lo_full = np.clip(rate - half_full, 0, 100)  # full 95% interval edges
-    hi_full = np.clip(rate + half_full, 0, 100)
+    lo_full = np.array(full_lo)
+    hi_full = np.array(full_hi)
+    scaled = [scale_interval(p, l, h, band_scale)
+              for p, l, h in zip(rate, lo_full, hi_full)]
+    lo = np.array([bounds[0] for bounds in scaled])
+    hi = np.array([bounds[1] for bounds in scaled])
 
     fig, ax = plt.subplots(figsize=(9, 4.5), dpi=150)
     ax.set_facecolor("white")
@@ -187,22 +194,29 @@ def render(rows: list[dict[str, Any]], out: Path, confidence: float,
             label_y = 84.0  # parked below the title, above the peaks
             last = len(peaks) - 1
             for n, (slot_x, i) in enumerate(zip(slots, peaks)):
-                # The rightmost peak uses a straight diagonal leader instead of
-                # an L-shape: its vertical drop would otherwise run right next to
-                # the neighbouring peak's arrow. The rest keep the orthogonal
-                # (horizontal-then-vertical) leader.
+                slot_x = float(slot_x)
+                # Every inner peak (all but the rightmost) gets a long "reaching"
+                # leader: a single straight diagonal (arc3) whose label is lifted
+                # and whose tail is anchored directly under the task name (relpos
+                # + shrinkA=0), so the arrow runs the full way from the name down
+                # to its dot instead of a short stub or an L-shape that drops
+                # toward a neighbouring peak. The rightmost peak already carries a
+                # long diagonal, so it keeps the default (unlifted) anchor.
+                reach = n != last
+                ly = label_y + 7.0 if reach else label_y
                 # Emphasis: a slightly larger dot over the peak, keeping the
                 # success-green fill so the outcome colour encoding stays intact.
                 ax.scatter(i, rate[i], s=90, color=_colour(rows[i]["status"]),
                            edgecolor="white", linewidth=0.8, zorder=6, clip_on=False)
-                conn = ("arc3,rad=0" if n == last
-                        else "angle,angleA=0,angleB=90,rad=0")
+                arrow = dict(arrowstyle="->", color=MUTED, lw=1,
+                             connectionstyle="arc3,rad=0", shrinkB=5)
+                if reach:
+                    arrow.update(shrinkA=0, shrinkB=3, relpos=(0.5, 0.0))
                 ax.annotate(f"{rows[i]['task']}\n{rate[i]:.1f}%",
-                            xy=(i, rate[i]), xytext=(float(slot_x), label_y),
+                            xy=(i, rate[i]), xytext=(slot_x, ly),
                             textcoords="data", ha="center", va="bottom",
                             fontsize=7.5, fontweight="bold", color=INK,
-                            arrowprops=dict(arrowstyle="->", color=MUTED, lw=1,
-                                            connectionstyle=conn, shrinkB=5))
+                            arrowprops=arrow)
 
     ax.set_xlabel("trial number (ordered by run date)", color=INK, fontsize=10)
     ax.set_ylabel("cumulative success rate (%)", color=INK, fontsize=10)
@@ -248,8 +262,9 @@ def main(argv: Optional[list[str]] = None) -> int:
                         "1.0 = the full interval)")
     p.add_argument("--highlight", default=None,
                    help="task to label (default: the final/newest trial)")
-    p.add_argument("--top-n", type=int, default=3,
-                   help="also label the N highest cumulative-rate peaks (default 3; 0 to disable)")
+    p.add_argument("--top-n", type=int, default=4,
+                   help="also label N run-order cumulative-rate peaks (default 4; "
+                        "these are sequence peaks, not a task ranking)")
     args = p.parse_args(argv)
 
     results_dirs = args.results_dir or ["results/modal_trials"]
