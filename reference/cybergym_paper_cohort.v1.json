@@ -13,12 +13,14 @@
   "baseline_revision": "ea75d98dc8a1dd4a792b9492ca78d2c333a196a2",
   "baseline_trial": 1,
   "repeat_trials": [2, 3, 4, 5],
-  "completed_repeats": [
+  "completed_repeats": [],
+  "excluded_trials": [
     {
       "task": "ffmpeg/oss-fuzz_385167047",
-      "trial": 2,
-      "result": "results/modal_trials/cohort_inputs/cybergym-paper-v1/ffmpeg_oss-fuzz_385167047__trial-2.json",
-      "sha256": "09e2fe0ce8b455f1622d401be9f1460841ff7574b0a23e8ef7cbcff0914eaeea"
+      "trial": 1,
+      "result": "results/modal_trials/cohort_inputs/cybergym-paper-v1/ffmpeg_oss-fuzz_385167047__trial-1.json",
+      "sha256": "0cbf2ae9e8e36421020301d4a151dbb94654558a080f563d4e4aff2d8204dfb4",
+      "reason": "client connectivity loss; excluded from the valid-trial denominator"
     }
   ],
   "max_attempts": 3,
@@ -28,8 +30,8 @@
     "currency": "USD",
     "historical_cost_per_22_cells": 1.28,
     "estimated_cost_per_cell": 0.0581818182,
-    "planned_new_cells": 87,
-    "estimated_total": 5.06,
+    "planned_new_cells": 88,
+    "estimated_total": 5.12,
     "note": "Planning estimate from the prior 22-task batch; not a provider-side hard cap."
   },
   "baseline_results": [
@@ -39,7 +41,7 @@
     {"task": "assimp/oss-fuzz_42535201", "result": "results/modal_trials/assimp_oss-fuzz_42535201.json", "sha256": "e08795268c893ebd8bffc232bbe2d40c90803ba8635d197c12262dd59186ee51"},
     {"task": "opensc/oss-fuzz_42535468", "result": "results/modal_trials/opensc_oss-fuzz_42535468.json", "sha256": "f7d3eec80689233ebde7f854728fb4e3d343ced2212a355ecbae2f4e4e3ea3cf"},
     {"task": "wt/oss-fuzz_370689421", "result": "results/modal_trials/wt_oss-fuzz_370689421.json", "sha256": "07c22468b3d232f1f2822990bd56043733c3e9dc558727ebc3373a0f76a6069c"},
-    {"task": "ffmpeg/oss-fuzz_385167047", "result": "results/modal_trials/cohort_inputs/cybergym-paper-v1/ffmpeg_oss-fuzz_385167047__trial-1.json", "sha256": "0cbf2ae9e8e36421020301d4a151dbb94654558a080f563d4e4aff2d8204dfb4"},
+    {"task": "ffmpeg/oss-fuzz_385167047", "result": "results/modal_trials/ffmpeg_oss-fuzz_385167047.json", "sha256": "e46a1af0961f4c67d05535fcc9ca9c8d9fef5c827fab117eb15d8a49bc51a6fb"},
     {"task": "arrow/arvo_41221", "result": "results/modal_trials/arrow_arvo_41221.json", "sha256": "34e39d0f891de921c3744524d4be6807298942e4c765c7cf727d766f2ea64e79"},
     {"task": "libtpms/oss-fuzz_42537128", "result": "results/modal_trials/libtpms_oss-fuzz_42537128.json", "sha256": "e1be6e6bdf56f01a4597b9931684e7cffa5e04bc4184d3ef2460a8e9d4cd94f4"},
     {"task": "mruby/arvo_19902", "result": "results/modal_trials/mruby_arvo_19902.json", "sha256": "15d34621b91590a596938e741a7bc72eee289028e9aa9e14988da84c6fdbfd40"},
