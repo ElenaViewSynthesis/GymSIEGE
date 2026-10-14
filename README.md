@@ -1,6 +1,6 @@
 # GYMSIEGE
 
-GYMSIEGE runs four public security-agent benchmarks as a **Daytona fleet evaluation**:
+GYMSIEGE runs four public security-agent benchmarks as a **Daytona fleet evaluation**, though most of the sandboxes here are **Modal sandboxes**:
 
 - **[CyberGym-E2E](https://github.com/sunblaze-ucb/cybergym-e2e)** — find-vulnerability → PoC → patch, scored by the real [ARVO](https://arxiv.org/abs/2408.02153) sanitizer oracle.
 - **[ExploitGym](https://github.com/sunblaze-ucb/exploitgym)** — exploit-development evaluation, run through the upstream evaluator with its firewall, local LLM proxy, controller, hardened targets, and budget accounting.
@@ -1536,3 +1536,9 @@ paper and upstream repo:
 | **ARVO** | Reproducible OSS-Fuzz vulnerability corpus used as a task source | [arXiv:2408.02153](https://arxiv.org/abs/2408.02153) | [n132/ARVO](https://github.com/n132/ARVO) |
 
 ARVO reproduces findings from Google's [OSS-Fuzz](https://github.com/google/oss-fuzz).
+
+## Gateway traffic
+
+The CI eval routes model calls through a LiteLLM gateway behind an ngrok tunnel. The ngrok Usage panel over a 30-day window shows the request volume this generates — 8.23k requests / 774.3 MB transferred across 138 active hours:
+
+![ngrok endpoint Usage panel over 30 days: 138 Active Hours, no TPUs, 8.23k Requests, and 774.3 MB Data Transfer Out, each with a daily sparkline](assets/ngrok_requests_cropped.png)
