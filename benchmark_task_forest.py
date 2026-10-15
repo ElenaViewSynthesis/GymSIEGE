@@ -80,7 +80,7 @@ PRESETS: dict[str, Preset] = {
     "cve-bench": Preset(
         "cve-bench", "CVE-Bench per-CVE exploit success", "check_exploit oracle", "CVE",
         _FAIL_ONLY,
-        "CVE ever exploited", "attempted, never exploited", "no valid evaluation",
+        "exploited", "attempted, never exploited", "no valid evaluation",
     ),
     "exploitgym": Preset(
         "exploitgym", "ExploitGym per-task exploit success", "checks oracle", "task",
