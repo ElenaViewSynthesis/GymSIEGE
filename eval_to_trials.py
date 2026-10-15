@@ -98,8 +98,8 @@ def status_from_check(value: Any) -> str:
     return "success" if str(value).strip().lower() in _SUCCESS_TOKENS else "failed"
 
 
-def _is_infra_valid(sample: dict[str, Any], run_status: Any) -> bool:
-    """Only infra-valid samples belong in the pass@1 denominator.
+def _invalid_reason(sample: dict[str, Any], run_status: Any) -> Optional[str]:
+    """Why a sample is infrastructure-invalid, or None when it is valid.
 
     A broken-fixture / crashed-grader zero is not a model miss and must not be
     recorded as ``"failed"``. Gate on: the overall eval succeeded, the sample
@@ -108,13 +108,18 @@ def _is_infra_valid(sample: dict[str, Any], run_status: Any) -> bool:
     not self-certify the way a db-backed grader's structured result does).
     """
     if run_status != "success":
-        return False
+        return f"run_status={run_status}"
     diagnostics = sample.get("diagnostics") or {}
     if diagnostics.get("sample_error") is not None:
-        return False
+        return "sample_error"
     if (diagnostics.get("grader_error_count") or 0) != 0:
-        return False
-    return True
+        return "grader_error"
+    return None
+
+
+def _is_infra_valid(sample: dict[str, Any], run_status: Any) -> bool:
+    """Only infra-valid samples belong in the pass@1 denominator."""
+    return _invalid_reason(sample, run_status) is None
 
 
 def _advance_iso(timestamp: str, seconds: int) -> str:
@@ -180,8 +185,15 @@ def eval_to_trials(
     benchmark: str,
     used: set[tuple[str, str]],
     warnings: list[str],
+    include_invalid: bool = False,
 ) -> tuple[list[dict[str, Any]], int]:
-    """Project one ``extract_eval`` report to trial dicts + an excluded count."""
+    """Project one ``extract_eval`` report to trial dicts + an excluded count.
+
+    With ``include_invalid``, an infrastructure-invalid sample is still counted
+    in ``excluded`` but is also emitted as a ``status: "error"`` record (with an
+    ``invalid_reason``), which the forest keeps out of the per-task denominator
+    and shows in its ``--show-validity`` panel instead of dropping silently.
+    """
     run = report.get("run") or {}
     run_status = run.get("status")
     task_args = run.get("task_args") if isinstance(run.get("task_args"), dict) else {}
@@ -195,9 +207,11 @@ def eval_to_trials(
         if not task or not started_at:
             excluded += 1
             continue
-        if not _is_infra_valid(sample, run_status):
+        invalid_reason = _invalid_reason(sample, run_status)
+        if invalid_reason is not None:
             excluded += 1
-            continue
+            if not include_invalid:
+                continue
 
         # Cross-check the stripped id against a single-challenge task_arg.
         if isinstance(challenges, str) and challenges and challenges != task:
@@ -208,7 +222,7 @@ def eval_to_trials(
 
         scores = sample.get("scores") or {}
         check_value = scores.get("check_exploit") if isinstance(scores, dict) else None
-        status = status_from_check(check_value)
+        status = "error" if invalid_reason else status_from_check(check_value)
 
         started_at = _unique_started_at(
             task,
@@ -220,18 +234,19 @@ def eval_to_trials(
         )
         used.add((task, started_at))
 
-        trials.append(
-            {
-                "task": task,
-                "started_at": started_at,
-                "status": status,
-                # Provenance the forest ignores but that keeps a trial auditable.
-                "benchmark": benchmark,
-                "epoch": sample.get("epoch"),
-                "source_eval": report.get("source"),
-                "check_exploit_value": check_value,
-            }
-        )
+        trial = {
+            "task": task,
+            "started_at": started_at,
+            "status": status,
+            # Provenance the forest ignores but that keeps a trial auditable.
+            "benchmark": benchmark,
+            "epoch": sample.get("epoch"),
+            "source_eval": report.get("source"),
+            "check_exploit_value": check_value,
+        }
+        if invalid_reason:
+            trial["invalid_reason"] = invalid_reason
+        trials.append(trial)
     return trials, excluded
 
 
@@ -263,6 +278,11 @@ def _parser() -> argparse.ArgumentParser:
                              "(default results/cve-bench-trials)")
     parser.add_argument("--benchmark", default="cve-bench",
                         help="provenance tag written to each trial (default cve-bench)")
+    parser.add_argument("--include-invalid", action="store_true",
+                        help="also emit infrastructure-invalid samples as status "
+                             "'error' records (with invalid_reason) so the forest's "
+                             "--show-validity panel can count them; they never "
+                             "enter the success denominator")
     return parser
 
 
@@ -287,7 +307,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         for path in paths:
             report = extractor.extract_eval(path)
             trials, excluded = eval_to_trials(
-                report, benchmark=args.benchmark, used=used, warnings=warnings
+                report, benchmark=args.benchmark, used=used, warnings=warnings,
+                include_invalid=args.include_invalid,
             )
             all_trials.extend(trials)
             total_excluded += excluded
@@ -304,8 +325,10 @@ def main(argv: Optional[list[str]] = None) -> int:
     for warning in warnings:
         print(f"warning: {warning}", file=sys.stderr)
     cves = len({t["task"] for t in all_trials})
+    invalid_note = (" (written as status 'error')" if args.include_invalid
+                    else "")
     print(f"wrote {len(all_trials)} trials ({cves} CVEs) to {args.out_dir}, "
-          f"excluded {total_excluded} invalid")
+          f"excluded {total_excluded} invalid{invalid_note}")
     return 0
 
 

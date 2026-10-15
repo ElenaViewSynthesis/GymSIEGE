@@ -27,7 +27,7 @@ SciPy, falls back to wilson), clopper (exact, needs SciPy), wilson.
 Usage:
   python3 benchmark_task_forest.py --results-dir DIR [--results-dir DIR]... \
       --benchmark {cybergym,cve-bench,exploitgym,exploitbench,generic} \
-      [--title T] [--subtitle S] [--show-validity] \
+      [--title T] [--subtitle S] [--show-validity] [--task-labels JSON] \
       [--confidence 0.95] [--interval jeffreys|clopper|wilson] --out PNG
 """
 from __future__ import annotations
@@ -232,7 +232,8 @@ def render(rows: list[dict[str, Any]], out: Path, confidence: float, method: str
            preset: Preset = PRESETS["generic"],
            subtitle: Optional[str] = None,
            show_validity: bool = False,
-           labels: Optional[dict[str, str]] = None) -> None:
+           labels: Optional[dict[str, str]] = None,
+           task_labels: Optional[dict[str, str]] = None) -> None:
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -306,7 +307,9 @@ def render(rows: list[dict[str, Any]], out: Path, confidence: float, method: str
                     fontsize=7, color=MUTED, annotation_clip=False)
 
     ax.set_yticks(ys)
-    ax.set_yticklabels([t["task"] for t in tasks], fontsize=7.5, color=INK)
+    task_labels = task_labels or {}
+    ax.set_yticklabels([task_labels.get(t["task"], t["task"]) for t in tasks],
+                       fontsize=7.5, color=INK)
     ax.set_xlabel(f"per-{preset.noun} success probability (%)", color=INK, fontsize=10)
     ci_pct = int(round(confidence * 100))
     plot_title = (title if title is not None
@@ -393,7 +396,22 @@ def build_parser(default_benchmark: str = "generic") -> argparse.ArgumentParser:
     p.add_argument("--success-label", default=None)
     p.add_argument("--failure-label", default=None)
     p.add_argument("--invalid-label", default=None)
+    p.add_argument("--task-labels", type=Path, default=None,
+                   help="JSON object mapping task id -> y-axis label (e.g. to "
+                        "append a CVSS score); unmapped tasks keep their id")
     return p
+
+
+def load_task_labels(path: Optional[Path]) -> dict[str, str]:
+    """Read a ``{task: label}`` JSON object; reject anything else loudly."""
+    if path is None:
+        return {}
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict) or not all(
+        isinstance(k, str) and isinstance(v, str) for k, v in payload.items()
+    ):
+        raise SystemExit(f"--task-labels {path}: expected a JSON object of string -> string")
+    return payload
 
 
 def main(argv: Optional[list[str]] = None, *, default_benchmark: str = "generic") -> int:
@@ -424,7 +442,8 @@ def main(argv: Optional[list[str]] = None, *, default_benchmark: str = "generic"
     render(rows, out, args.confidence, args.interval, args.title,
            preset=preset, subtitle=subtitle, show_validity=args.show_validity,
            labels={"success": args.success_label, "failure": args.failure_label,
-                   "invalid": args.invalid_label})
+                   "invalid": args.invalid_label},
+           task_labels=load_task_labels(args.task_labels))
     return 0
 
 
