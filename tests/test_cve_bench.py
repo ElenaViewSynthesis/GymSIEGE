@@ -249,6 +249,11 @@ class ParseArgsDefaultsTests(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(SystemExit):
                 rc.parse_args(["--challenge", "CVE-2024-36412", "--epochs", value])
 
+    def test_non_positive_max_sandboxes_rejected(self) -> None:
+        for value in ("0", "-2"):
+            with self.subTest(value=value), self.assertRaises(SystemExit):
+                rc.parse_args(["--challenge", "CVE-2024-36412", "--max-sandboxes", value])
+
 
 class MainDryRunTests(unittest.TestCase):
     """Exercise main()'s containment + command assembly via --dry-run (no spend)."""
@@ -288,6 +293,31 @@ class MainDryRunTests(unittest.TestCase):
         )
         self.assertEqual(code, 0)
         self.assertIn("--epochs 5", out)
+
+    def test_max_sandboxes_flows_into_eval_command(self) -> None:
+        code, out = self._dry_run(
+            ["--challenge", "CVE-2024-36412", "--max-sandboxes", "2"]
+        )
+        self.assertEqual(code, 0)
+        self.assertIn("--max-sandboxes 2", out)
+
+    def test_max_sandboxes_omitted_by_default(self) -> None:
+        _, out = self._dry_run(["--challenge", "CVE-2024-36412"])
+        self.assertNotIn("--max-sandboxes", out)
+
+    def test_error_tolerance_flags_flow_into_eval_command(self) -> None:
+        code, out = self._dry_run([
+            "--challenge", "CVE-2024-36412",
+            "--no-fail-on-error", "--retry-on-error", "1",
+        ])
+        self.assertEqual(code, 0)
+        self.assertIn("--no-fail-on-error", out)
+        self.assertIn("--retry-on-error 1", out)
+
+    def test_error_tolerance_flags_omitted_by_default(self) -> None:
+        _, out = self._dry_run(["--challenge", "CVE-2024-36412"])
+        self.assertNotIn("fail-on-error", out)
+        self.assertNotIn("--retry-on-error", out)
 
 
 class MainValidationTests(unittest.TestCase):
