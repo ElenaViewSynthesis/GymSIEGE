@@ -177,12 +177,50 @@ python3 run_modal_repeats.py --batch-id paper-YYYYMMDDTHHMMSSZ
 python3 run_modal_repeats.py --batch-id paper-YYYYMMDDTHHMMSSZ --execute
 ```
 
-The frozen declaration is `reference/cybergym_paper_cohort.v1.json`. A terminal
-`success`, `failed`, `no_patch`, or `oracle_mismatch` result is never overwritten;
-resume skips it. `error`, `oracle_unavailable`, missing, and unreadable attempt
-results are infrastructure-invalid and remain outside the batch root consumed by
-the plotting loaders. Valid manually launched repeats can be frozen in the
-manifest's `completed_repeats` list; the planner then counts and skips them.
+The patch-only declaration is `reference/cybergym_paper_cohort.v1.json`. Its E2E
+counterpart is `reference/cybergym_e2e_paper_cohort.v1.json`; it freezes the
+revision, snapshot hash/image, ordered tasks, condition, batch ID, retry policy,
+output paths, and cost basis before any paid call. The flat files already under
+`results/modal_trials_e2e/` are **pilot evidence only** and are neither moved nor
+listed as paper-cohort inputs.
+
+The E2E workflow is deliberately two-stage:
+
+```bash
+# Read-only: exact 22 cells, output path, batch ID, and estimated cost.
+bash run_modal_pinned_e2e.sh
+
+# Paid only after explicit approval: one frozen smoke task.
+bash run_modal_pinned_e2e.sh --phase smoke --execute
+
+# After reviewing the smoke, supply its exact SHA-256.
+bash run_modal_pinned_e2e.sh --phase full --execute \
+  --approved-smoke-sha256 <reviewed-smoke-result-sha256>
+```
+
+Each run uses `_meta/`, `attempts/`, and `published-results/`. Terminal
+`success`, `failed`, `no_patch`, `no_poc`, `other_vuln`, and `oracle_mismatch`
+results are published with exclusive creation and never retried for score
+improvement. Missing, malformed, `error`, and `oracle_unavailable` attempts are
+preserved and hash-recorded in `_meta/excluded_trials.jsonl` before retry.
+
+Only after all 22 frozen cells are published, materialize the immutable paper
+inputs and render the task-level funnel from that directory:
+
+```bash
+python3 materialize_cybergym_cohort.py \
+  --manifest reference/cybergym_e2e_paper_cohort.v1.json \
+  --input-dir results/paper/cybergym-e2e-paper-v1/inputs
+python3 cybergym_stage_funnel.py \
+  --results-dir results/paper/cybergym-e2e-paper-v1/inputs \
+  --by task \
+  --out results/paper/cybergym-e2e-paper-v1/cybergym_stage_funnel_by_task.png
+```
+
+Materialization rejects missing cells, condition mismatches, unrecorded
+publications, changed hashes, and an existing paper directory. It writes cohort
+and exclusion provenance beside the inputs; the funnel writes a companion
+metadata JSON with its labels, counts, denominator, modes, and source hashes.
 
 ##### Reproduce it in CI (sharded GitHub Actions)
 
@@ -878,6 +916,7 @@ dashboard.py  (local uvicorn, or --publish to a live Daytona preview link)
 | `tests/` | Unit tests for task parsing, pass@k/oracle aggregation, ExploitGym score parsing, and the non-disableable hardened command profile. |
 | `demo.sh` | End-to-end reproduction script: bake → smoke run → concurrency probe → dashboard publish. |
 | `run_modal_pinned_tasks.sh` | Loops `modal_sandbox_runner.py --mode patch-only` over every task in `txt/tasks.pinned.txt`, sequentially, writing each result/log to `results/modal_trials/`. Real cost per task; one task's failure doesn't stop the rest. |
+| `run_modal_pinned_e2e.sh` | Safe wrapper around the frozen E2E manifest planner. With no arguments it is read-only; paid execution is split into an explicitly requested smoke phase and a separately approved full continuation. |
 
 Generated/ignored at runtime (not committed): `.venv/`, `data/`, `artifacts/`, `recordings/*.mp4`, `results/*.json`, `results/exploitgym-runs/results.json` (template only is tracked).
 
