@@ -350,12 +350,27 @@ async def run_trial(
     record: bool = False,
     result: TrialResult | None = None,
     session_id: str | None = None,
+    snapshot_manifest: str | None = None,
+    snapshot_manifest_sha256: str | None = None,
+    cohort_id: str | None = None,
+    cohort_manifest_sha256: str | None = None,
+    batch_id: str | None = None,
 ) -> TrialResult:
     started_at = datetime.now(timezone.utc).isoformat()
     name = f"{SANDBOX_NAME_PREFIX}-modal-{task.safe_name}-{mode}-t{trial}-{int(time.time())}"
     if result is None:
         result = TrialResult(task=task.path, mode=mode, trial=trial, provisioning=provisioning)
     result.provider = "modal"
+    selected_model = model or ModelConfig()
+    result.agent = selected_model.agent
+    result.model_provider = selected_model.provider
+    result.litellm_model_id = selected_model.litellm_model_id
+    result.snapshot_manifest = snapshot_manifest
+    result.snapshot_manifest_sha256 = snapshot_manifest_sha256
+    result.snapshot_image_id = manifest["snapshot_image_id"]
+    result.cohort_id = cohort_id
+    result.cohort_manifest_sha256 = cohort_manifest_sha256
+    result.batch_id = batch_id
     result.started_at = started_at
     result.sandbox_name = name
     trace = begin_trial_trace(
@@ -566,6 +581,16 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Langfuse session id shared by every trial in one batch",
     )
+    parser.add_argument("--snapshot-manifest-id", default=None,
+                        help="frozen repository-relative snapshot manifest recorded in the result")
+    parser.add_argument("--snapshot-manifest-sha256", default=None,
+                        help="frozen snapshot-manifest hash recorded in the result")
+    parser.add_argument("--cohort-id", default=None,
+                        help="frozen cohort identifier recorded in the result")
+    parser.add_argument("--cohort-manifest-sha256", default=None,
+                        help="frozen cohort-manifest hash recorded in the result")
+    parser.add_argument("--batch-id", default=None,
+                        help="frozen batch identifier recorded in the result")
     return parser
 
 
@@ -602,6 +627,11 @@ def main() -> None:
             model=model,
             litellm_secret_name=args.litellm_secret,
             session_id=args.run_id or new_run_id(),
+            snapshot_manifest=args.snapshot_manifest_id,
+            snapshot_manifest_sha256=args.snapshot_manifest_sha256,
+            cohort_id=args.cohort_id,
+            cohort_manifest_sha256=args.cohort_manifest_sha256,
+            batch_id=args.batch_id,
         )
     )
     payload = result.to_json()

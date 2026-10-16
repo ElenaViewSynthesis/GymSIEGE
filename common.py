@@ -236,6 +236,15 @@ class TrialResult:
     provisioning: ProvisioningMode
     benchmark: str = "cybergym-e2e"
     provider: str = "daytona"  # "daytona" | "modal"
+    agent: Optional[str] = None
+    model_provider: Optional[str] = None
+    litellm_model_id: Optional[str] = None
+    snapshot_manifest: Optional[str] = None
+    snapshot_manifest_sha256: Optional[str] = None
+    snapshot_image_id: Optional[str] = None
+    cohort_id: Optional[str] = None
+    cohort_manifest_sha256: Optional[str] = None
+    batch_id: Optional[str] = None
     sandbox_id: Optional[str] = None
     sandbox_name: Optional[str] = None
 
