@@ -3,8 +3,9 @@
 
 The default is a read-only plan. Paid execution requires ``--execute``. Each
 attempt is written beneath ``attempts/``; only a genuine terminal model outcome
-is copied, with exclusive creation, into the batch root consumed by the paper
-loaders. Infrastructure failures remain auditable but outside loader scope.
+is copied, with exclusive creation, into ``published-results/``. Infrastructure
+failures remain auditable in an append-only exclusion ledger outside loader
+scope. Schema-v2 E2E manifests also enforce a smoke-first gate.
 """
 from __future__ import annotations
 
@@ -22,10 +23,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from common import TERMINAL_MODEL_STATUSES
+
 
 ROOT = Path(__file__).resolve().parent
 DEFAULT_MANIFEST = ROOT / "reference" / "cybergym_paper_cohort.v1.json"
-TERMINAL_STATUSES = {"success", "failed", "no_patch", "oracle_mismatch"}
+TERMINAL_STATUSES = set(TERMINAL_MODEL_STATUSES)
 RETRYABLE_STATUSES = {"error", "oracle_unavailable"}
 _BATCH_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
@@ -44,8 +47,114 @@ def _read_json(path: Path) -> dict[str, Any]:
     return payload
 
 
+def sha256_path(path: Path) -> str:
+    try:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError as exc:
+        raise ManifestError(f"cannot hash {path}: {exc}") from exc
+
+
+def manifest_sha256(path: Path) -> str:
+    return sha256_path(path)
+
+
+def _tasks(manifest: dict[str, Any]) -> list[str]:
+    if manifest["schema_version"] == 2:
+        return list(manifest["ordered_tasks"])
+    return [entry["task"] for entry in manifest["baseline_results"]]
+
+
+def _trials(manifest: dict[str, Any]) -> list[int]:
+    if manifest["schema_version"] == 2:
+        return list(manifest["trial_numbers"])
+    return list(manifest["repeat_trials"])
+
+
+def _max_attempts(manifest: dict[str, Any]) -> int:
+    if manifest["schema_version"] == 2:
+        return int(manifest["retry_policy"]["max_attempts"])
+    return int(manifest["max_attempts"])
+
+
+def _retry_sleep_s(manifest: dict[str, Any]) -> float:
+    if manifest["schema_version"] == 2:
+        return float(manifest["retry_policy"]["retry_sleep_s"])
+    return float(manifest["retry_sleep_s"])
+
+
 def load_manifest(path: Path) -> dict[str, Any]:
     manifest = _read_json(path)
+    schema_version = manifest.get("schema_version")
+    if schema_version not in (1, 2):
+        raise ManifestError("unsupported schema_version (expected 1 or 2)")
+    if schema_version == 2:
+        required = {
+            "schema_version", "cohort_id", "benchmark", "mode", "provider",
+            "provisioning", "model_provider", "litellm_model_id", "agent",
+            "source_revision", "snapshot_manifest", "snapshot_manifest_sha256",
+            "snapshot_image_id", "ordered_tasks", "trial_numbers", "batch_id",
+            "smoke_task", "retry_policy", "output_root", "exclusion_rules",
+            "paper_output_root", "cost_estimate",
+        }
+        missing = sorted(required - manifest.keys())
+        if missing:
+            raise ManifestError(f"manifest missing fields: {', '.join(missing)}")
+        if manifest["mode"] != "e2e":
+            raise ManifestError("schema-v2 paper manifest must declare mode='e2e'")
+        tasks = manifest["ordered_tasks"]
+        if (
+            not isinstance(tasks, list) or not tasks
+            or any(not isinstance(task, str) or "/" not in task for task in tasks)
+            or len(set(tasks)) != len(tasks)
+        ):
+            raise ManifestError("ordered_tasks must contain unique project/task_id strings")
+        trials = manifest["trial_numbers"]
+        if (
+            not isinstance(trials, list) or not trials
+            or any(not isinstance(trial, int) or trial < 1 for trial in trials)
+            or len(set(trials)) != len(trials)
+        ):
+            raise ManifestError("trial_numbers must contain unique positive integers")
+        if manifest["smoke_task"] not in tasks:
+            raise ManifestError("smoke_task must be present in ordered_tasks")
+        if not _BATCH_ID.fullmatch(str(manifest["batch_id"])):
+            raise ManifestError("batch_id contains unsupported characters")
+        for field in ("snapshot_manifest", "output_root", "paper_output_root"):
+            declared_path = Path(str(manifest[field]))
+            if declared_path.is_absolute() or ".." in declared_path.parts:
+                raise ManifestError(f"{field} must be a repository-relative path")
+        revision = manifest["source_revision"]
+        if (
+            not isinstance(revision, dict)
+            or not revision.get("commit")
+            or not isinstance(revision.get("dirty"), bool)
+            or not revision.get("diff_sha256")
+        ):
+            raise ManifestError("source_revision must freeze commit, dirty, and diff_sha256")
+        retry = manifest["retry_policy"]
+        if not isinstance(retry, dict):
+            raise ManifestError("retry_policy must be an object")
+        if not isinstance(retry.get("max_attempts"), int) or retry["max_attempts"] < 1:
+            raise ManifestError("retry_policy.max_attempts must be a positive integer")
+        if not isinstance(retry.get("retry_sleep_s"), (int, float)) or retry["retry_sleep_s"] < 0:
+            raise ManifestError("retry_policy.retry_sleep_s must be non-negative")
+        if set(retry.get("retryable_statuses", [])) != RETRYABLE_STATUSES:
+            raise ManifestError("retry_policy.retryable_statuses does not match runner policy")
+        if set(manifest.get("exclusion_rules", {}).get("terminal_statuses", [])) != TERMINAL_STATUSES:
+            raise ManifestError("exclusion_rules.terminal_statuses does not match runner policy")
+        cost = manifest["cost_estimate"]
+        planned_count = len(tasks) * len(trials)
+        try:
+            per_cell = float(cost["estimated_cost_per_cell"])
+            total = float(cost["estimated_total"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ManifestError("cost_estimate must declare per-cell and total estimates") from exc
+        if cost.get("planned_cells") != planned_count:
+            raise ManifestError("cost_estimate.planned_cells does not match frozen cells")
+        if abs(total - per_cell * planned_count) > 1e-9:
+            raise ManifestError("cost_estimate.estimated_total does not match per-cell estimate")
+        return manifest
+
     required = {
         "schema_version", "cohort_id", "benchmark", "mode", "provider",
         "provisioning", "model_provider", "litellm_model_id", "agent",
@@ -56,8 +165,6 @@ def load_manifest(path: Path) -> dict[str, Any]:
     missing = sorted(required - manifest.keys())
     if missing:
         raise ManifestError(f"manifest missing fields: {', '.join(missing)}")
-    if manifest["schema_version"] != 1:
-        raise ManifestError("unsupported schema_version (expected 1)")
     entries = manifest["baseline_results"]
     if not isinstance(entries, list) or not entries:
         raise ManifestError("baseline_results must be a non-empty list")
@@ -123,9 +230,39 @@ def _validate_frozen_result(
         )
 
 
+def _tracked_diff_sha256(root: Path) -> tuple[bool, str]:
+    process = subprocess.run(
+        ["git", "diff", "--binary", "HEAD", "--", "."],
+        cwd=root, check=True, capture_output=True,
+    )
+    return bool(process.stdout), hashlib.sha256(process.stdout).hexdigest()
+
+
+def _validate_source_revision(manifest: dict[str, Any], root: Path) -> None:
+    declared = manifest["source_revision"]
+    actual_commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=root, check=True,
+        capture_output=True, text=True,
+    ).stdout.strip()
+    if declared.get("commit") != actual_commit:
+        raise ManifestError(
+            f"source revision mismatch: manifest={declared.get('commit')!r}, "
+            f"checkout={actual_commit!r}"
+        )
+    dirty, diff_hash = _tracked_diff_sha256(root)
+    if declared.get("dirty") is not dirty:
+        raise ManifestError("source dirty-tree marker does not match the checkout")
+    if declared.get("diff_sha256") != diff_hash:
+        raise ManifestError("source tracked-diff SHA-256 does not match the checkout")
+
+
 def validate_frozen_inputs(manifest: dict[str, Any], root: Path = ROOT) -> None:
     snapshot_path = root / manifest["snapshot_manifest"]
     snapshot = _read_json(snapshot_path)
+    if manifest["schema_version"] == 2:
+        if sha256_path(snapshot_path) != manifest["snapshot_manifest_sha256"]:
+            raise ManifestError(f"snapshot manifest SHA-256 mismatch: {snapshot_path}")
+        _validate_source_revision(manifest, root)
     if snapshot.get("snapshot_image_id") != manifest["snapshot_image_id"]:
         raise ManifestError(
             "snapshot image mismatch: cohort declares "
@@ -133,9 +270,12 @@ def validate_frozen_inputs(manifest: dict[str, Any], root: Path = ROOT) -> None:
             f"{snapshot.get('snapshot_image_id')!r}"
         )
     snapshot_tasks = snapshot.get("tasks")
-    declared_tasks = [entry["task"] for entry in manifest["baseline_results"]]
+    declared_tasks = _tasks(manifest)
     if snapshot_tasks != declared_tasks:
         raise ManifestError("cohort task order/content does not match snapshot manifest")
+
+    if manifest["schema_version"] == 2:
+        return
 
     for entry in manifest["baseline_results"]:
         _validate_frozen_result(entry, manifest["baseline_trial"], root)
@@ -144,6 +284,8 @@ def validate_frozen_inputs(manifest: dict[str, Any], root: Path = ROOT) -> None:
 
 
 def completed_repeat_map(manifest: dict[str, Any], root: Path = ROOT) -> dict[tuple[str, int], Path]:
+    if manifest["schema_version"] == 2:
+        return {}
     return {
         (entry["task"], entry["trial"]): root / entry["result"]
         for entry in manifest["completed_repeats"]
@@ -153,13 +295,13 @@ def completed_repeat_map(manifest: dict[str, Any], root: Path = ROOT) -> dict[tu
 def planned_cells(
     manifest: dict[str, Any], selected_tasks: set[str] | None = None
 ) -> list[tuple[str, int]]:
-    tasks = [entry["task"] for entry in manifest["baseline_results"]]
+    tasks = _tasks(manifest)
     if selected_tasks:
         unknown = sorted(selected_tasks - set(tasks))
         if unknown:
             raise ManifestError(f"task(s) not in cohort: {', '.join(unknown)}")
         tasks = [task for task in tasks if task in selected_tasks]
-    return [(task, trial) for task in tasks for trial in manifest["repeat_trials"]]
+    return [(task, trial) for task in tasks for trial in _trials(manifest)]
 
 
 def _safe_task(task: str) -> str:
@@ -167,10 +309,46 @@ def _safe_task(task: str) -> str:
 
 
 def final_path(batch_dir: Path, task: str, trial: int) -> Path:
-    return batch_dir / f"{_safe_task(task)}__trial-{trial}.json"
+    return batch_dir / "published-results" / f"{_safe_task(task)}__trial-{trial}.json"
 
 
-def terminal_result(path: Path, task: str, trial: int) -> bool:
+def _validate_result_payload(
+    payload: dict[str, Any], manifest: dict[str, Any], task: str, trial: int,
+    cohort_hash: str,
+) -> None:
+    expected = {
+        "task": task,
+        "trial": trial,
+        "benchmark": manifest["benchmark"],
+        "mode": manifest["mode"],
+        "provider": manifest["provider"],
+        "provisioning": manifest["provisioning"],
+        "agent": manifest["agent"],
+        "model_provider": manifest["model_provider"],
+        "litellm_model_id": manifest["litellm_model_id"],
+        "snapshot_manifest": manifest["snapshot_manifest"],
+        "snapshot_manifest_sha256": manifest["snapshot_manifest_sha256"],
+        "snapshot_image_id": manifest["snapshot_image_id"],
+        "cohort_id": manifest["cohort_id"],
+        "cohort_manifest_sha256": cohort_hash,
+        "batch_id": manifest["batch_id"],
+    }
+    for field, value in expected.items():
+        if field not in payload:
+            raise ManifestError(f"result missing frozen condition field {field!r}")
+        if payload[field] != value:
+            raise ManifestError(
+                f"result condition mismatch for {field}: expected {value!r}, "
+                f"got {payload[field]!r}"
+            )
+    if payload.get("status") not in TERMINAL_STATUSES:
+        raise ManifestError(f"result status is not terminal: {payload.get('status')!r}")
+
+
+def terminal_result(
+    path: Path, task: str, trial: int, *, manifest: dict[str, Any] | None = None,
+    cohort_hash: str | None = None,
+) -> bool:
     if not path.is_file():
         return False
     try:
@@ -183,6 +361,10 @@ def terminal_result(path: Path, task: str, trial: int) -> bool:
         raise ManifestError(
             f"existing final result is non-terminal; archive it before retrying: {path}"
         )
+    if manifest is not None and manifest["schema_version"] == 2:
+        if cohort_hash is None:
+            raise ManifestError("cohort hash is required for schema-v2 result validation")
+        _validate_result_payload(payload, manifest, task, trial, cohort_hash)
     return True
 
 
@@ -205,12 +387,97 @@ def _publish_terminal(attempt_path: Path, destination: Path) -> None:
         shutil.copyfileobj(source, target)
 
 
+def _publication_path(batch_dir: Path, task: str, trial: int) -> Path:
+    return batch_dir / "_meta" / "publications" / f"{_safe_task(task)}__trial-{trial}.json"
+
+
+def _publish_validated_terminal(
+    attempt_path: Path, destination: Path, batch_dir: Path, task: str, trial: int,
+    attempt_number: int, manifest: dict[str, Any], cohort_hash: str,
+) -> None:
+    payload = _read_json(attempt_path)
+    _validate_result_payload(payload, manifest, task, trial, cohort_hash)
+    _publish_terminal(attempt_path, destination)
+    record = {
+        "task": task,
+        "trial": trial,
+        "attempt": attempt_number,
+        "status": payload["status"],
+        "attempt_artifact": str(attempt_path.relative_to(ROOT)),
+        "attempt_sha256": sha256_path(attempt_path),
+        "published_result": str(destination.relative_to(ROOT)),
+        "published_result_sha256": sha256_path(destination),
+        "cohort_manifest_sha256": cohort_hash,
+    }
+    publication = _publication_path(batch_dir, task, trial)
+    publication.parent.mkdir(parents=True, exist_ok=True)
+    with publication.open("x", encoding="utf-8") as handle:
+        json.dump(record, handle, indent=2)
+        handle.write("\n")
+
+
+def _write_failure_artifact(
+    result_path: Path, *, task: str, trial: int, attempt: int,
+    returncode: int, reason: str,
+) -> Path:
+    failure_path = result_path.with_suffix(".failure.json")
+    payload = {
+        "artifact_kind": "runner_failure",
+        "task": task,
+        "trial": trial,
+        "attempt": attempt,
+        "returncode": returncode,
+        "reason": reason,
+    }
+    with failure_path.open("x", encoding="utf-8") as handle:
+        json.dump(payload, handle, indent=2)
+        handle.write("\n")
+    return failure_path
+
+
+def _record_exclusion(
+    batch_dir: Path, *, task: str, trial: int, attempt: int,
+    artifact_path: Path, status: Any, reason: str,
+) -> None:
+    row = {
+        "task": task,
+        "trial": trial,
+        "attempt": attempt,
+        "artifact": str(artifact_path.relative_to(ROOT)),
+        "sha256": sha256_path(artifact_path),
+        "status": status,
+        "reason": reason,
+    }
+    ledger = batch_dir / "_meta" / "excluded_trials.jsonl"
+    ledger.parent.mkdir(parents=True, exist_ok=True)
+    with ledger.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(row, sort_keys=True) + "\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+
+
 def _load_local_env() -> None:
     try:
-        from dotenv import load_dotenv
+        from dotenv import dotenv_values
     except ImportError as exc:  # pragma: no cover - dependency is in requirements
         raise ManifestError("python-dotenv is required for paid execution") from exc
-    load_dotenv(ROOT / ".env.local", override=False)
+    # ``common`` loads .env.defaults first, where credential placeholders are
+    # intentionally empty.  python-dotenv treats those empty strings as set, so
+    # load_dotenv(..., override=False) would never hydrate the real local values.
+    # Fill only missing/empty variables to preserve any non-empty shell override.
+    for name, value in dotenv_values(ROOT / ".env.local").items():
+        if value is not None and not os.environ.get(name):
+            os.environ[name] = value
+
+
+def _modal_command(*args: str) -> list[str]:
+    venv_modal = Path(sys.executable).with_name("modal")
+    if venv_modal.is_file() and os.access(venv_modal, os.X_OK):
+        return [str(venv_modal), *args]
+    modal = shutil.which("modal")
+    if modal:
+        return [modal, *args]
+    raise ManifestError("Modal CLI is not installed; paid execution not started")
 
 
 def paid_preflight(manifest: dict[str, Any]) -> None:
@@ -222,9 +489,9 @@ def paid_preflight(manifest: dict[str, Any]) -> None:
         socket.getaddrinfo("api.modal.com", 443)
     except OSError as exc:
         raise ManifestError(f"cannot resolve api.modal.com; paid execution not started: {exc}") from exc
-    subprocess.run(["modal", "profile", "current"], cwd=ROOT, check=True)
+    subprocess.run(_modal_command("profile", "current"), cwd=ROOT, check=True)
     secrets = subprocess.run(
-        ["modal", "secret", "list"], cwd=ROOT, check=True,
+        _modal_command("secret", "list"), cwd=ROOT, check=True,
         capture_output=True, text=True,
     )
     secret_name = os.environ.get("GYMSIEGE_MODAL_LITELLM_SECRET_NAME", "gymsiege-litellm")
@@ -248,6 +515,7 @@ def _write_batch_metadata(
     with meta.open("x", encoding="utf-8") as handle:
         json.dump(payload, handle, indent=2)
         handle.write("\n")
+    (batch_dir / "_meta" / "excluded_trials.jsonl").touch(exist_ok=False)
 
 
 def _validate_batch_metadata(manifest_path: Path, batch_dir: Path, batch_id: str) -> None:
@@ -262,17 +530,44 @@ def _validate_batch_metadata(manifest_path: Path, batch_dir: Path, batch_id: str
         )
 
 
+def inspect_attempt(path: Path) -> tuple[Any, str | None, bool]:
+    """Return (status, exclusion reason, retryable) without mutating an attempt."""
+    if not path.is_file():
+        return None, "missing_result: runner produced no result JSON", True
+    try:
+        status = _read_json(path).get("status")
+    except ManifestError as exc:
+        return None, f"malformed_result: {exc}", True
+    if status in TERMINAL_STATUSES:
+        return status, None, False
+    if status in RETRYABLE_STATUSES:
+        return status, f"infrastructure_invalid_status: {status}", True
+    return status, f"unrecognized_nonterminal_status: {status!r}", False
+
+
 def run_cell(
-    manifest: dict[str, Any], batch_dir: Path, batch_id: str, task: str, trial: int
+    manifest: dict[str, Any], manifest_path: Path, batch_dir: Path,
+    batch_id: str, task: str, trial: int,
 ) -> bool:
+    cohort_hash = manifest_sha256(manifest_path)
     destination = final_path(batch_dir, task, trial)
-    if terminal_result(destination, task, trial):
+    if terminal_result(
+        destination, task, trial, manifest=manifest, cohort_hash=cohort_hash,
+    ):
         print(f"SKIP {task} trial={trial}: terminal result already exists at {destination}")
         return True
 
     run_id = f"gymsiege-{manifest['cohort_id']}-{batch_id}"
-    for attempt in range(1, manifest["max_attempts"] + 1):
+    max_attempts = _max_attempts(manifest)
+    for _ in range(max_attempts):
         attempt_path, log_path = _next_attempt_paths(batch_dir, task, trial)
+        attempt = int(attempt_path.stem.removeprefix("attempt-"))
+        if attempt > max_attempts:
+            print(
+                f"WARN {task} trial={trial}: retry policy exhausted "
+                f"({max_attempts} attempts preserved)", file=sys.stderr,
+            )
+            return False
         command = [
             sys.executable, str(ROOT / "modal_sandbox_runner.py"),
             "--task", task,
@@ -286,40 +581,71 @@ def run_cell(
             "--run-id", run_id,
             "--output", str(attempt_path),
         ]
-        print(f"RUN  {task} trial={trial} attempt={attempt}/{manifest['max_attempts']}")
+        if manifest["schema_version"] == 2:
+            command.extend([
+                "--snapshot-manifest-id", manifest["snapshot_manifest"],
+                "--snapshot-manifest-sha256", manifest["snapshot_manifest_sha256"],
+                "--cohort-id", manifest["cohort_id"],
+                "--cohort-manifest-sha256", cohort_hash,
+                "--batch-id", batch_id,
+            ])
+        print(f"RUN  {task} trial={trial} attempt={attempt}/{max_attempts}")
         with log_path.open("x", encoding="utf-8") as log:
-            process = subprocess.Popen(
-                command, cwd=ROOT, stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT, text=True, bufsize=1,
-            )
-            assert process.stdout is not None
-            for line in process.stdout:
-                print(line, end="")
-                log.write(line)
-                log.flush()
-            returncode = process.wait()
-
-        status = None
-        if attempt_path.is_file():
             try:
-                status = _read_json(attempt_path).get("status")
-            except ManifestError:
-                status = None
-        if status in TERMINAL_STATUSES:
-            _publish_terminal(attempt_path, destination)
-            print(f"DONE {task} trial={trial}: status={status} -> {destination}")
-            return True
+                process = subprocess.Popen(
+                    command, cwd=ROOT, stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT, text=True, bufsize=1,
+                )
+            except OSError as exc:
+                returncode = 127
+                log.write(f"runner launch failed: {type(exc).__name__}: {exc}\n")
+                log.flush()
+            else:
+                assert process.stdout is not None
+                for line in process.stdout:
+                    print(line, end="")
+                    log.write(line)
+                    log.flush()
+                returncode = process.wait()
 
-        retryable = status in RETRYABLE_STATUSES or status is None
+        status, exclusion_reason, retryable = inspect_attempt(attempt_path)
+        exclusion_artifact = attempt_path
+        if not attempt_path.is_file():
+            exclusion_artifact = _write_failure_artifact(
+                attempt_path, task=task, trial=trial, attempt=attempt,
+                returncode=returncode, reason=exclusion_reason or "missing_result",
+            )
+        if status in TERMINAL_STATUSES:
+            try:
+                if manifest["schema_version"] == 2:
+                    _publish_validated_terminal(
+                        attempt_path, destination, batch_dir, task, trial, attempt,
+                        manifest, cohort_hash,
+                    )
+                else:
+                    _publish_terminal(attempt_path, destination)
+            except ManifestError as exc:
+                exclusion_reason = f"condition_mismatch: {exc}"
+                retryable = False
+            else:
+                print(f"DONE {task} trial={trial}: status={status} -> {destination}")
+                return True
+
+        if exclusion_reason is None:
+            exclusion_reason = f"unrecognized_nonterminal_status: {status!r}"
+        _record_exclusion(
+            batch_dir, task=task, trial=trial, attempt=attempt,
+            artifact_path=exclusion_artifact, status=status, reason=exclusion_reason,
+        )
         print(
             f"WARN {task} trial={trial}: returncode={returncode}, status={status!r}; "
-            f"{'retrying infrastructure failure' if retryable else 'not a terminal model outcome'}",
+            f"{exclusion_reason}; {'retrying' if retryable else 'stopping cell'}",
             file=sys.stderr,
         )
         if not retryable:
             return False
-        if attempt < manifest["max_attempts"]:
-            time.sleep(manifest["retry_sleep_s"] * attempt)
+        if attempt < max_attempts:
+            time.sleep(_retry_sleep_s(manifest) * attempt)
     return False
 
 
@@ -330,9 +656,40 @@ def build_parser() -> argparse.ArgumentParser:
                         help="unique output batch name (default: UTC timestamp)")
     parser.add_argument("--task", action="append", default=[],
                         help="run only this cohort task (repeatable; default all)")
+    parser.add_argument(
+        "--phase", choices=("plan", "smoke", "full"), default="plan",
+        help="schema-v2 gate: read-only full plan, paid smoke, or paid full continuation",
+    )
+    parser.add_argument(
+        "--approved-smoke-sha256", default=None,
+        help="required for schema-v2 full execution; exact reviewed smoke result hash",
+    )
     parser.add_argument("--execute", action="store_true",
                         help="start paid Modal/model calls (default is read-only plan)")
     return parser
+
+
+def _validate_smoke_approval(
+    manifest: dict[str, Any], batch_dir: Path, cohort_hash: str,
+    approved_hash: str | None,
+) -> None:
+    trials = _trials(manifest)
+    if len(trials) != 1:
+        raise ManifestError("smoke approval currently requires exactly one trial number")
+    task, trial = manifest["smoke_task"], trials[0]
+    result_path = final_path(batch_dir, task, trial)
+    if not terminal_result(
+        result_path, task, trial, manifest=manifest, cohort_hash=cohort_hash,
+    ):
+        raise ManifestError("reviewed smoke result does not exist")
+    actual_hash = sha256_path(result_path)
+    if not approved_hash:
+        raise ManifestError(
+            "full execution requires --approved-smoke-sha256 after manual smoke review; "
+            f"current smoke hash is {actual_hash}"
+        )
+    if approved_hash != actual_hash:
+        raise ManifestError("approved smoke hash does not match the published smoke result")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -341,22 +698,43 @@ def main(argv: list[str] | None = None) -> int:
     try:
         manifest = load_manifest(manifest_path)
         validate_frozen_inputs(manifest)
-        cells = planned_cells(manifest, set(args.task) or None)
-    except ManifestError as exc:
+        all_cells = planned_cells(manifest, set(args.task) or None)
+    except (ManifestError, OSError, subprocess.CalledProcessError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
-    batch_id = args.batch_id or datetime.now(timezone.utc).strftime("paper-%Y%m%dT%H%M%SZ")
+    if manifest["schema_version"] == 2:
+        if args.batch_id and args.batch_id != manifest["batch_id"]:
+            print("error: --batch-id must match the frozen schema-v2 batch_id", file=sys.stderr)
+            return 2
+        if args.execute and args.phase == "plan":
+            print("error: --execute requires --phase smoke or --phase full", file=sys.stderr)
+            return 2
+        if args.execute and args.task:
+            print("error: schema-v2 paid execution does not allow --task to bypass phase gates", file=sys.stderr)
+            return 2
+        batch_id = manifest["batch_id"]
+        if args.phase == "smoke":
+            cells = planned_cells(manifest, {manifest["smoke_task"]})
+        else:
+            cells = all_cells
+    else:
+        batch_id = args.batch_id or datetime.now(timezone.utc).strftime("paper-%Y%m%dT%H%M%SZ")
+        cells = all_cells
     if not _BATCH_ID.fullmatch(batch_id):
         print("error: --batch-id may contain only letters, digits, dot, underscore, hyphen", file=sys.stderr)
         return 2
     batch_dir = ROOT / manifest["output_root"] / batch_id
+    cohort_hash = manifest_sha256(manifest_path)
     try:
         imported = completed_repeat_map(manifest)
         existing_batch = {
             (task, trial)
             for task, trial in cells
-            if terminal_result(final_path(batch_dir, task, trial), task, trial)
+            if terminal_result(
+                final_path(batch_dir, task, trial), task, trial,
+                manifest=manifest, cohort_hash=cohort_hash,
+            )
         }
     except ManifestError as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -369,7 +747,9 @@ def main(argv: list[str] | None = None) -> int:
     print(f"condition: model={manifest['litellm_model_id']} mode={manifest['mode']} "
           f"snapshot={manifest['snapshot_image_id']}")
     print(f"batch: {batch_id}")
+    print(f"manifest sha256: {cohort_hash}")
     print(f"output: {batch_dir}")
+    print(f"phase: {args.phase}")
     print(f"cells: {len(cells)} selected, {len(pending)} not already present")
     print(f"estimated paid model cost for pending cells: ${len(pending) * estimate_per_cell:.2f} "
           "(historical estimate, not a hard cap)")
@@ -386,10 +766,17 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  {state:8s} {task} trial={trial} -> {path}")
 
     if not args.execute:
-        print("PLAN ONLY: no Modal sandbox or model call started; pass --execute after approval.")
+        print(
+            "PLAN ONLY: no Modal sandbox or model call started; use --phase smoke "
+            "--execute only after explicit paid-run approval."
+        )
         return 0
 
     try:
+        if manifest["schema_version"] == 2 and args.phase == "full":
+            _validate_smoke_approval(
+                manifest, batch_dir, cohort_hash, args.approved_smoke_sha256,
+            )
         paid_preflight(manifest)
         if not batch_dir.exists():
             batch_dir.mkdir(parents=True)
@@ -403,7 +790,7 @@ def main(argv: list[str] | None = None) -> int:
     failed = []
     for task, trial in pending:
         try:
-            if not run_cell(manifest, batch_dir, batch_id, task, trial):
+            if not run_cell(manifest, manifest_path, batch_dir, batch_id, task, trial):
                 failed.append((task, trial))
         except (ManifestError, OSError) as exc:
             print(f"error: {exc}", file=sys.stderr)

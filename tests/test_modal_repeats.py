@@ -2,11 +2,39 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
 
 import pytest
 
 import run_modal_repeats as repeats
+
+
+def test_local_env_fills_empty_defaults_without_overriding_shell(tmp_path, monkeypatch):
+    (tmp_path / ".env.local").write_text(
+        "MODAL_TOKEN_ID=local-id\nMODAL_TOKEN_SECRET=local-secret\n"
+    )
+    monkeypatch.setattr(repeats, "ROOT", tmp_path)
+    monkeypatch.setenv("MODAL_TOKEN_ID", "")
+    monkeypatch.setenv("MODAL_TOKEN_SECRET", "shell-secret")
+
+    repeats._load_local_env()
+
+    assert os.environ["MODAL_TOKEN_ID"] == "local-id"
+    assert os.environ["MODAL_TOKEN_SECRET"] == "shell-secret"
+
+
+def test_modal_command_prefers_cli_next_to_active_python(tmp_path, monkeypatch):
+    python = tmp_path / "bin" / "python"
+    modal = python.with_name("modal")
+    modal.parent.mkdir()
+    modal.write_text("#!/bin/sh\n")
+    modal.chmod(0o755)
+    monkeypatch.setattr(repeats.sys, "executable", str(python))
+
+    assert repeats._modal_command("profile", "current") == [
+        str(modal), "profile", "current",
+    ]
 
 
 def _manifest(root: Path) -> Path:
@@ -83,6 +111,7 @@ def test_completed_repeat_is_frozen_and_mapped(tmp_path):
 
 def test_existing_terminal_result_is_reusable_but_never_overwritten(tmp_path):
     destination = repeats.final_path(tmp_path, "a/one", 2)
+    destination.parent.mkdir(parents=True)
     destination.write_text(json.dumps({"task": "a/one", "trial": 2, "status": "success"}))
     assert repeats.terminal_result(destination, "a/one", 2)
     attempt = tmp_path / "attempt.json"
@@ -94,6 +123,7 @@ def test_existing_terminal_result_is_reusable_but_never_overwritten(tmp_path):
 
 def test_nonterminal_final_requires_manual_archive(tmp_path):
     destination = repeats.final_path(tmp_path, "a/one", 2)
+    destination.parent.mkdir(parents=True)
     destination.write_text(json.dumps({"task": "a/one", "trial": 2, "status": "error"}))
     with pytest.raises(repeats.ManifestError, match="archive it"):
         repeats.terminal_result(destination, "a/one", 2)
@@ -117,3 +147,43 @@ def test_batch_metadata_prevents_resume_with_changed_manifest(tmp_path):
     manifest_path.write_text(manifest_path.read_text() + "\n")
     with pytest.raises(repeats.ManifestError, match="changed"):
         repeats._validate_batch_metadata(manifest_path, batch, "batch-1")
+
+
+@pytest.mark.parametrize("status", ["no_poc", "other_vuln"])
+def test_new_terminal_model_outcomes_are_publishable(tmp_path, status):
+    destination = repeats.final_path(tmp_path, "a/one", 2)
+    destination.parent.mkdir(parents=True)
+    destination.write_text(json.dumps({"task": "a/one", "trial": 2, "status": status}))
+    assert repeats.terminal_result(destination, "a/one", 2)
+
+
+@pytest.mark.parametrize("status", ["error", "oracle_unavailable", "timeout"])
+def test_infrastructure_or_unknown_outcomes_are_not_terminal(tmp_path, status):
+    destination = repeats.final_path(tmp_path, "a/one", 2)
+    destination.parent.mkdir(parents=True)
+    destination.write_text(json.dumps({"task": "a/one", "trial": 2, "status": status}))
+    with pytest.raises(repeats.ManifestError, match="non-terminal"):
+        repeats.terminal_result(destination, "a/one", 2)
+
+
+def test_missing_and_malformed_attempts_are_retryable(tmp_path):
+    missing = tmp_path / "missing.json"
+    assert repeats.inspect_attempt(missing) == (
+        None, "missing_result: runner produced no result JSON", True,
+    )
+    malformed = tmp_path / "malformed.json"
+    malformed.write_text("{")
+    status, reason, retryable = repeats.inspect_attempt(malformed)
+    assert status is None
+    assert reason.startswith("malformed_result:")
+    assert retryable is True
+
+
+@pytest.mark.parametrize("status", sorted(repeats.RETRYABLE_STATUSES))
+def test_infrastructure_invalid_attempts_are_retryable(tmp_path, status):
+    attempt = tmp_path / "attempt.json"
+    attempt.write_text(json.dumps({"status": status}))
+    actual, reason, retryable = repeats.inspect_attempt(attempt)
+    assert actual == status
+    assert reason == f"infrastructure_invalid_status: {status}"
+    assert retryable is True
