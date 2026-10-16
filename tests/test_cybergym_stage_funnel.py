@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from cybergym_stage_funnel import _counts
+from cybergym_stage_funnel import CORE_STAGE_LABELS, _counts
 from cybergym_capability_curve_rate import scale_interval, wilson, _z_for
 
 
@@ -14,6 +14,15 @@ KEYS = [
     "isolated_stage4",
     "__success__",
 ]
+
+
+def test_four_evidence_labels_match_stored_stage_semantics():
+    assert CORE_STAGE_LABELS == (
+        ("stage3", "S3 functionality passes"),
+        ("isolated_stage3", "S3 offline functionality passes"),
+        ("stage4", "S4 ground-truth PoC blocked"),
+        ("isolated_stage4", "S4 offline ground-truth PoC blocked"),
+    )
 
 
 def _row(task: str, **updates):

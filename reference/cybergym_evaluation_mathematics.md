@@ -92,10 +92,10 @@ and the absolute attrition is \(D_j=F_{j-1}-F_j\).
 | Rung | Count | Percent of 22 | Previous-rung conversion |
 |---|---:|---:|---:|
 | Attempted | 22 | 100.0% | — |
-| S3 PoC reproduces | 19 | 86.4% | 86.4% |
-| S3 isolated-confirmed | 18 | 81.8% | 94.7% |
-| S4 patch holds | 16 | 72.7% | 88.9% |
-| S4 isolated-confirmed | 16 | 72.7% | 100.0% |
+| S3 functionality passes | 19 | 86.4% | 86.4% |
+| S3 offline functionality passes | 18 | 81.8% | 94.7% |
+| S4 ground-truth PoC blocked | 16 | 72.7% | 88.9% |
+| S4 offline ground-truth PoC blocked | 16 | 72.7% | 100.0% |
 | Confirmed success | 16 | 72.7% | 100.0% |
 
 The isolated-S3 loss is the libdwarf oracle mismatch: its validator stage

@@ -31,16 +31,17 @@ Regenerate this Wilson-rate view with
 Where the curve collapses each trial to one success bit, the **task-level oracle
 stage funnel** reopens that bit into the ladder it actually is. Counting by task
 (the optimistic pass@n view — a task clears a rung if **any** of its trials did),
-the 22 attempted tasks narrow 22 → 19 → 18 → 16 → 16 → 16: PoC reproduces → S3
-isolated-confirmed → S4 patch holds → S4 isolated-confirmed → confirmed success,
+the 22 attempted tasks narrow 22 → 19 → 18 → 16 → 16 → 16: S3
+functionality passes → S3 offline functionality passes → S4 ground-truth PoC
+blocked → S4 offline ground-truth PoC blocked → confirmed success,
 settling at **72.7%** (16/22) end-to-end. The bottleneck is the first rung,
-`attempted → S3 PoC reproduces` (−3 tasks); the amber step S3 → S3-isolated (−1)
-is the **isolation gap** — a task that looked solved online but failed offline
-re-detonation, an over-claim signal rather than plain attrition. Patch-only mode
-nulls and hides S1/S2. Regenerate with
+`attempted → S3 functionality passes` (−3 tasks); the amber S3 offline
+re-check (−1) is the **isolation gap** — a task whose functionality verdict
+did not survive network isolation. Patch-only mode nulls and hides S1/S2.
+Regenerate with
 `python3 cybergym_stage_funnel.py --by task`.
 
-![CyberGym oracle stage funnel, by task: 22 tasks attempted narrowing 22→19→18→16→16→16 through S3 PoC reproduces, S3 isolated-confirmed, S4 patch holds, S4 isolated-confirmed, to 16 confirmed successes (72.7%), with the bottleneck at attempted→S3 (−3 tasks) and a one-task isolation gap at S3→S3-isolated](results/modal_trials/cybergym_stage_funnel_bytask.png)
+![CyberGym patch-only oracle stage funnel, by task: 22 tasks attempted narrowing 22→19→18→16→16→16 through S3 functionality passes, S3 offline functionality passes, S4 ground-truth PoC blocked, and S4 offline ground-truth PoC blocked, to 16 confirmed successes (72.7%)](results/modal_trials/cybergym_stage_funnel_bytask.png)
 
 ## CVE-Bench top-10 forest
 

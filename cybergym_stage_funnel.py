@@ -6,10 +6,10 @@ The capability curve collapses the whole oracle to a single success bit. This
 plot opens that bit back up into the ladder it actually is:
 
   S1/S2        earlier oracle stages (null in patch-only mode -> auto-hidden)
-  S3           the PoC reproduces the crash on the vulnerable build
-  S4           the patch makes the crash go away
-  S3 isolated  S3 re-confirmed under network-isolated detonation
-  S4 isolated  S4 re-confirmed under isolation
+  S3           the patched program passes the functionality tests
+  S4           the patched program neutralizes the ground-truth PoC
+  S3 isolated  the S3 functionality tests pass with the network disabled
+  S4 isolated  the S4 ground-truth-PoC check passes with the network disabled
   success      final confirmed success (status == "success")
 
 Two things a reviewer reads straight off the funnel:
@@ -34,6 +34,8 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 from collections import OrderedDict
 from pathlib import Path
 from typing import Any, Optional
@@ -42,14 +44,18 @@ from cybergym_capability_curve import load_trials_detailed
 
 # (field, label).  __total__ and __success__ are synthetic endpoints; the rest
 # read a stage field that is "passed" when the rung is cleared.
+CORE_STAGE_LABELS: tuple[tuple[str, str], ...] = (
+    ("stage3", "S3 functionality passes"),
+    ("isolated_stage3", "S3 offline functionality passes"),
+    ("stage4", "S4 ground-truth PoC blocked"),
+    ("isolated_stage4", "S4 offline ground-truth PoC blocked"),
+)
+
 STAGE_ORDER: list[tuple[str, str]] = [
     ("__total__", "attempted"),
     ("stage1", "S1 reached"),
     ("stage2", "S2 reached"),
-    ("stage3", "S3 PoC reproduces"),
-    ("isolated_stage3", "S3 isolated-confirmed"),
-    ("stage4", "S4 patch holds"),
-    ("isolated_stage4", "S4 isolated-confirmed"),
+    *CORE_STAGE_LABELS,
     ("__success__", "confirmed success"),
 ]
 # Steps whose drop is an isolation re-check rather than plain attrition.
@@ -61,10 +67,10 @@ STAGE_BLURB: dict[str, str] = {
     "__total__": "build + PoC + patch attempted",
     "stage1": "earlier oracle stage",
     "stage2": "earlier oracle stage",
-    "stage3": "PoC crashes the vulnerable build",
-    "isolated_stage3": "crash re-confirmed, network off",
-    "stage4": "patch removes the crash",
-    "isolated_stage4": "patch re-confirmed, network off",
+    "stage3": "patched functionality tests pass",
+    "isolated_stage3": "patched functionality passes, network off",
+    "stage4": "ground-truth PoC is neutralized by patch",
+    "isolated_stage4": "ground-truth PoC is neutralized, network off",
     "__success__": "final status = success",
 }
 
@@ -123,7 +129,9 @@ def _counts(rows: list[dict[str, Any]], keys: list[str], by: str) -> list[int]:
     ]
 
 
-def render(rows: list[dict[str, Any]], out: Path, by: str, show_empty: bool) -> None:
+def render(
+    rows: list[dict[str, Any]], out: Path, by: str, show_empty: bool,
+) -> dict[str, Any]:
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -230,7 +238,9 @@ def render(rows: list[dict[str, Any]], out: Path, by: str, show_empty: bool) -> 
                 annotation_clip=False)
 
     mode_word = "task" if by == "task" else "trial"
-    ax.set_title(f"CyberGym oracle stage funnel  —  {mode_word}-level, patch-only oracle",
+    modes = {str(row.get("mode")) for row in rows if row.get("mode")}
+    condition = next(iter(modes)) if len(modes) == 1 else "mixed-mode"
+    ax.set_title(f"CyberGym oracle stage funnel  —  {mode_word}-level, {condition}",
                  color=INK, fontsize=12, fontweight="bold", loc="left")
     ax.set_yticks([])
     ax.set_xticks([])
@@ -267,8 +277,8 @@ def render(rows: list[dict[str, Any]], out: Path, by: str, show_empty: bool) -> 
     caption = (
         f"Each rung is cumulative — a {mode_word} is counted only if it cleared every rung above it.  "
         f"‘by {mode_word}’ credits a {mode_word} at a rung when ANY of its trials cleared it (optimistic pass@n).\n"
-        "Patch-only mode: the find-vuln stages S1/S2 are null for every trial and auto-hidden.  "
-        "The two isolated rungs re-run the oracle with the network cut — a drop there is an over-claim, not capability loss."
+        "Stages without stored evidence are auto-hidden.  The offline rungs repeat the same S3/S4 checks "
+        "with the network cut; they do not independently prove vulnerable-build crash reproduction."
     )
     ax.annotate(caption, xy=(0.5, 0.0), xycoords="axes fraction",
                 xytext=(0, -92 - 150.0 / fig_h), textcoords="offset points",
@@ -279,6 +289,18 @@ def render(rows: list[dict[str, Any]], out: Path, by: str, show_empty: bool) -> 
     fig.savefig(out, bbox_inches="tight")
     print(f"wrote {out}  ({total} {unit} attempted -> {counts[-1]} confirmed; "
           f"stages: {', '.join(f'{l}={c}' for l, c in zip(labels, counts))})")
+    return {
+        "counting_unit": unit,
+        "input_count": len(rows),
+        "distinct_task_count": len({row.get("task") for row in rows}),
+        "attempted_count": total,
+        "confirmed_success_count": counts[-1],
+        "modes": sorted(modes),
+        "stages": [
+            {"field": key, "label": label, "count": count}
+            for (key, label), count in zip(stages, counts)
+        ],
+    }
 
 
 def main(argv: Optional[list[str]] = None) -> int:
@@ -300,7 +322,37 @@ def main(argv: Optional[list[str]] = None) -> int:
     if not rows:
         raise SystemExit("no trial result JSONs found")
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    render(rows, args.out, args.by, args.show_empty)
+    summary = render(rows, args.out, args.by, args.show_empty)
+    source_paths = sorted({
+        path.resolve()
+        for directory in results_dirs
+        for path in Path(directory).glob("*.json")
+    } | {Path(path).resolve() for path in args.extra})
+    summary["source_results"] = [
+        {
+            "path": str(path.relative_to(Path.cwd().resolve()))
+            if path.is_relative_to(Path.cwd().resolve()) else str(path),
+            "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        }
+        for path in source_paths if path.is_file()
+    ]
+    provenance_paths = {
+        Path(directory).resolve().parent / "cohort-provenance.json"
+        for directory in results_dirs
+    }
+    provenances = []
+    for path in sorted(provenance_paths):
+        if path.is_file():
+            provenances.append(json.loads(path.read_text(encoding="utf-8")))
+    summary["cohort_provenance"] = provenances
+    metadata_path = args.out.with_suffix(".metadata.json")
+    metadata = (json.dumps(summary, indent=2) + "\n").encode()
+    if metadata_path.exists() and metadata_path.read_bytes() != metadata:
+        raise SystemExit(f"refusing to overwrite different figure metadata: {metadata_path}")
+    if not metadata_path.exists():
+        with metadata_path.open("xb") as handle:
+            handle.write(metadata)
+    print(f"wrote {metadata_path}")
     return 0
 
 
