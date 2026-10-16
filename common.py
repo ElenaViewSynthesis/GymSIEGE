@@ -79,6 +79,13 @@ SANDBOX_SAFETY_TTL_MINUTES = int(os.environ.get("GYMSIEGE_TTL_MIN", "60"))
 Mode = Literal["e2e", "patch-only"]
 ProvisioningMode = Literal["snapshot", "cold", "fork"]
 
+# Outcomes caused by the model/agent belong in capability denominators. Only
+# harness/platform outcomes are excluded and retried by experiment runners.
+TERMINAL_MODEL_STATUSES = frozenset({
+    "success", "failed", "no_patch", "no_poc", "other_vuln", "oracle_mismatch",
+})
+INFRASTRUCTURE_INVALID_STATUSES = frozenset({"error", "oracle_unavailable", "timeout"})
+
 CONCURRENCY_LADDER = [1, 2, 4, 8, 16, 32]
 
 # --------------------------------------------------------------------------

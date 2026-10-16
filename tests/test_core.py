@@ -1217,10 +1217,10 @@ class AggregationTests(unittest.TestCase):
             TrialResult("p/no-output", "e2e", 1, "snapshot", status="no_poc"),
         ]
         summary = _pass_at_k(trials, "e2e")
-        self.assertEqual(summary["n_tasks"], 1)
+        self.assertEqual(summary["n_tasks"], 2)
         self.assertEqual(summary["pass_at_1"], 0.0)
-        self.assertEqual(summary["pass_at_k"], 1.0)
-        self.assertIsNone(summary["per_task"]["p/no-output"]["pass@k"])
+        self.assertEqual(summary["pass_at_k"], 0.5)
+        self.assertFalse(summary["per_task"]["p/no-output"]["pass@k"])
 
     def test_oracle_unavailable_excluded(self) -> None:
         unavailable = TrialResult("p/a", "e2e", 1, "snapshot", status="oracle_unavailable")
@@ -1238,11 +1238,11 @@ class AggregationTests(unittest.TestCase):
             network_isolated_detonation=True,
         )
         summary = _capability_stats([unavailable, no_patch, no_poc, passing])
-        self.assertEqual(summary["n_oracle_eligible"], 1)
-        self.assertEqual(summary["n_capability_eligible"], 1)
+        self.assertEqual(summary["n_oracle_eligible"], 3)
+        self.assertEqual(summary["n_capability_eligible"], 3)
         self.assertEqual(summary["n_oracle_unavailable"], 1)
         self.assertEqual(summary["n_agent_output_missing"], 2)
-        self.assertEqual(summary["poc_trigger_rate"], 1.0)
+        self.assertEqual(summary["poc_trigger_rate"], 1 / 3)
 
     def test_result_schema_labels_benchmark(self) -> None:
         result = ExploitGymTrialResult("user:x/y", 1, "codex", "gpt-test")

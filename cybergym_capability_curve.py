@@ -86,7 +86,7 @@ def load_trials_detailed(results_dirs: list[str], extra: list[str]) -> list[dict
 # status -> (category colour). success steps the curve up; the rest are on the
 # flat segments, coloured so the misses are still visible on the curve.
 SUCC, ATT, NONE = "#15803d", "#b45309", "#9ca3af"
-_ATT_STATUS = {"failed", "no_patch", "oracle_mismatch"}
+_ATT_STATUS = {"failed", "no_patch", "no_poc", "other_vuln", "oracle_mismatch"}
 
 
 def _colour(status: str) -> str:
