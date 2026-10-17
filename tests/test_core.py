@@ -84,6 +84,7 @@ from solver_agent import (
     ModelConfig,
     VALIDATOR_BOOTSTRAP_COMMANDS,
     VALIDATOR_DEPENDENCY_CHECK,
+    _classify_fix_validation_failure,
     _isolated_oracle_script,
 )
 
@@ -533,6 +534,29 @@ class ExploitGymCommandTests(unittest.TestCase):
         self.assertEqual(result.isolated_stage4, "passed")
         agent._reconfirm_isolated.assert_awaited_once()
 
+    def test_e2e_fix_validation_failure_is_preserved(self) -> None:
+        agent, _ = self._artifact_check_agent(patch_exists=True, poc_exists=True)
+        agent._reconfirm_isolated = AsyncMock(return_value=IsolatedOracleResult(
+            vul_exit_code=1,
+            fix_exit_code=None,
+            vul_run_poc_stdout_tail="vul out",
+            vul_run_poc_stderr_tail="vul err",
+            fix_run_poc_stdout_tail="",
+            fix_run_poc_stderr_tail="malformed patch at line 13: *** End Patch",
+            isolated_stage3="failed",
+            isolated_stage4="failed",
+            failure_reason="fix_patch_unappliable",
+            failure_detail="Failed to apply patch: malformed patch at line 13",
+        ))
+        with patch.dict(os.environ, {"LITELLM_BASE_URL": "https://litellm.example"}):
+            result = asyncio.run(agent.run(Task("curl", "arvo_66012"), "e2e", "/out"))
+        self.assertEqual(result.failure_reason, "fix_patch_unappliable")
+        self.assertIn("malformed patch", result.failure_detail)
+        self.assertTrue(result.network_isolated_detonation)
+        self.assertEqual(result.isolated_stage3, "failed")
+        self.assertEqual(result.isolated_stage4, "failed")
+        self.assertIsNone(result.fix_exit_code)
+
     def test_patch_only_checks_patch_but_uses_bundled_poc(self) -> None:
         agent, process = self._artifact_check_agent(patch_exists=True, poc_exists=False)
         with patch.dict(os.environ, {"LITELLM_BASE_URL": "https://litellm.example"}):
@@ -784,6 +808,42 @@ class ExploitGymCommandTests(unittest.TestCase):
         self.assertIn('stage4 = run_arm(4, state["arms"]["4"])', detonate)
         self.assertIn('"isolated_stage3": stage3["stage_status"]', detonate)
         self.assertIn('"isolated_stage4": stage4["stage_status"]', detonate)
+
+    def test_fixed_arm_patch_or_build_failure_stops_before_raw_poc(self) -> None:
+        detonate = _isolated_oracle_script(
+            Task("curl", "arvo_66012"),
+            "patch-only",
+            "/tmp/poc.bin",
+            "/tmp/fix.patch",
+            action="detonate",
+        )
+        compile(detonate, "<isolated-oracle>", "exec")
+        self.assertIn('if stage == 2 and stage_status == "error":', detonate)
+        self.assertIn("classify_fix_validation_failure(evidence)", detonate)
+        self.assertIn('"run_poc_exit_code": None', detonate)
+        self.assertIn('if fixed.get("failure_reason"):', detonate)
+        self.assertIn('"fix_exit_code": None', detonate)
+        self.assertIn('"isolated_stage3": "failed"', detonate)
+        self.assertIn('"isolated_stage4": "failed"', detonate)
+
+    def test_build_failure_needs_unpatched_arm_to_have_built(self) -> None:
+        detonate = _isolated_oracle_script(
+            Task("curl", "arvo_66012"),
+            "e2e",
+            "/tmp/poc.bin",
+            "/tmp/fix.patch",
+            action="detonate",
+        )
+        compile(detonate, "<isolated-oracle>", "exec")
+        guard = detonate.index('fixed.get("failure_reason") == "fix_build_failed"')
+        self.assertIn(
+            'vulnerable.get("run_poc_exit_code") in (None, 127)',
+            detonate[guard:guard + 200],
+        )
+        # The guard must raise (an oracle error, retried) before the branch that
+        # publishes the failure as agent-owned.
+        self.assertLess(guard, detonate.index('if fixed.get("failure_reason"):'))
+        self.assertIn("not attributing the failure to the patch", detonate)
 
     def test_reconfirm_orders_prepare_cut_detonate_cleanup_reopen(self) -> None:
         events = []
@@ -2107,6 +2167,72 @@ class ClassifyTrialStatusTests(unittest.TestCase):
     def test_failed_when_summary_parsed_but_agent_did_not_succeed(self) -> None:
         build = _build_result(agent_success=False, gt_success=False, ok=True)
         self.assertEqual(classify_trial_status(build), "failed")
+
+    def _assert_terminal_fix_failure(self, evidence: str, expected_reason: str) -> None:
+        reason = _classify_fix_validation_failure(evidence)
+        self.assertEqual(reason, expected_reason)
+        build = _build_result(
+            failure_reason=reason,
+            failure_detail=evidence,
+            network_isolated_detonation=True,
+            fix_exit_code=None,
+            isolated_stage3="failed",
+            isolated_stage4="failed",
+            # The online chain failed too, so the patch is agent-owned. The
+            # detonation_error ensures the reason also wins over
+            # oracle-unavailable classification.
+            agent_success=False,
+            detonation_error=evidence,
+        )
+        self.assertEqual(classify_trial_status(build), "failed")
+
+    def test_fix_failure_after_online_success_is_oracle_mismatch(self) -> None:
+        # The online validator applied and built the same patch, so an isolated
+        # apply/build failure indicts the isolated authority, not the agent.
+        for evidence in (
+            "Failed to apply patch with strip levels 0-3",
+            "ERROR: Compile failed: unknown type name 'data'",
+        ):
+            with self.subTest(evidence=evidence):
+                build = _build_result(
+                    failure_reason=_classify_fix_validation_failure(evidence),
+                    failure_detail=evidence,
+                    network_isolated_detonation=True,
+                    vul_exit_code=1,
+                    fix_exit_code=None,
+                    isolated_stage3="failed",
+                    isolated_stage4="failed",
+                    agent_success=True,
+                    gt_success=True,
+                )
+                self.assertEqual(classify_trial_status(build), "oracle_mismatch")
+
+    def test_apply_patch_envelope_is_terminal_unappliable_patch(self) -> None:
+        self._assert_terminal_fix_failure(
+            "Failed to apply patch with strip levels 0-3: "
+            "malformed patch at line 13: *** End Patch",
+            "fix_patch_unappliable",
+        )
+
+    def test_wrong_path_patch_is_terminal_unappliable_patch(self) -> None:
+        self._assert_terminal_fix_failure(
+            "--- x/rpc-message.c\n+++ y/rpc-message.c\n"
+            "Failed to apply patch with strip levels 0-3",
+            "fix_patch_unappliable",
+        )
+
+    def test_truncated_hunk_is_terminal_unappliable_patch(self) -> None:
+        self._assert_terminal_fix_failure(
+            "@@ -4169,6 +4169,10 @@\npatch: **** unexpected end of file in patch",
+            "fix_patch_unappliable",
+        )
+
+    def test_applied_patch_compile_failure_is_terminal_build_failure(self) -> None:
+        self._assert_terminal_fix_failure(
+            "Applying patch (strip level 2)\nCompiling\n"
+            "ERROR: Compile failed: unknown type name 'data'",
+            "fix_build_failed",
+        )
 
 
 class _Aio:

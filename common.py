@@ -301,6 +301,7 @@ class TrialResult:
     last_stage: Optional[str] = None
     failure_stage: Optional[str] = None
     failure_reason: Optional[str] = None
+    failure_detail: Optional[str] = None
     stage_timings: dict[str, dict[str, Any]] = dataclasses.field(default_factory=dict)
 
     def to_json(self) -> dict[str, Any]:
@@ -369,10 +370,19 @@ def classify_trial_status(build: Any) -> str:
         )
     )
     missing_artifact = getattr(build, "missing_required_artifact", None)
+    fix_failure = getattr(build, "failure_reason", None)
     if missing_artifact == "fix.patch":
         return "no_patch"
     elif missing_artifact == "poc.bin":
         return "no_poc"
+    elif (
+        fix_failure in {"fix_patch_unappliable", "fix_build_failed"}
+        and not build.agent_success
+    ):
+        # The patch is agent-owned only when the online chain failed too. If
+        # the online validator applied and built the same patch, the isolated
+        # arm is the broken authority, so fall through to oracle_mismatch.
+        return "failed"
     elif build.detonation_error and looks_oracle_unavailable(build.detonation_error):
         return "oracle_unavailable"
     elif build.agent_success and (not isolated_ok or isolated_stage_mismatch):

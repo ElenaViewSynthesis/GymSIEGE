@@ -453,9 +453,12 @@ async def run_trial(
         result.network_isolated_detonation = build.network_isolated_detonation
         result.detonation_error = build.detonation_error
         result.missing_required_artifact = build.missing_required_artifact
+        result.failure_reason = build.failure_reason
+        result.failure_detail = build.failure_detail
         result.solver_usage = build.solver_usage
         result.solver_cost_usd = build.solver_cost_usd
-        result.error = build.failure_detail
+        if not build.failure_reason:
+            result.error = build.failure_detail
         result.status = common.classify_trial_status(build)
 
         stage_start(result, "result_collection")
