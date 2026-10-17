@@ -1,0 +1,11 @@
+{
+  "task": "mruby/arvo_53183",
+  "trial": 1,
+  "attempt": 1,
+  "status": "failed",
+  "attempt_artifact": "results/modal_trials_e2e/cybergym-e2e-paper-v1-r2/attempts/mruby_arvo_53183__trial-1/attempt-01.json",
+  "attempt_sha256": "8de83e412efd84c409ce2ef9a7adebc7196b9e645aa9e36b6405dbc1dbd5ddd9",
+  "published_result": "results/modal_trials_e2e/cybergym-e2e-paper-v1-r2/published-results/mruby_arvo_53183__trial-1.json",
+  "published_result_sha256": "8de83e412efd84c409ce2ef9a7adebc7196b9e645aa9e36b6405dbc1dbd5ddd9",
+  "cohort_manifest_sha256": "ee9b4a1df6719595ceda335639e3ff763f2f7a32fc7f1074e87cb44b0c444c9c"
+}

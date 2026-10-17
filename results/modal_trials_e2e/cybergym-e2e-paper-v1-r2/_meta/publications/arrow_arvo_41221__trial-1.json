@@ -1,0 +1,11 @@
+{
+  "task": "arrow/arvo_41221",
+  "trial": 1,
+  "attempt": 1,
+  "status": "no_patch",
+  "attempt_artifact": "results/modal_trials_e2e/cybergym-e2e-paper-v1-r2/attempts/arrow_arvo_41221__trial-1/attempt-01.json",
+  "attempt_sha256": "4a7cf7e2e5e7ea966fc4db0fe824f22c523a46d08feb8c18eea067acb5b8aeb4",
+  "published_result": "results/modal_trials_e2e/cybergym-e2e-paper-v1-r2/published-results/arrow_arvo_41221__trial-1.json",
+  "published_result_sha256": "4a7cf7e2e5e7ea966fc4db0fe824f22c523a46d08feb8c18eea067acb5b8aeb4",
+  "cohort_manifest_sha256": "ee9b4a1df6719595ceda335639e3ff763f2f7a32fc7f1074e87cb44b0c444c9c"
+}

@@ -1,0 +1,11 @@
+{
+  "task": "binutils/arvo_61822",
+  "trial": 1,
+  "attempt": 1,
+  "status": "failed",
+  "attempt_artifact": "results/modal_trials_e2e/cybergym-e2e-paper-v1-r2/attempts/binutils_arvo_61822__trial-1/attempt-01.json",
+  "attempt_sha256": "17d44b0ed1c0771dff8d9f88a1311737324bf13580f94dd9b1fc096cca98129f",
+  "published_result": "results/modal_trials_e2e/cybergym-e2e-paper-v1-r2/published-results/binutils_arvo_61822__trial-1.json",
+  "published_result_sha256": "17d44b0ed1c0771dff8d9f88a1311737324bf13580f94dd9b1fc096cca98129f",
+  "cohort_manifest_sha256": "ee9b4a1df6719595ceda335639e3ff763f2f7a32fc7f1074e87cb44b0c444c9c"
+}

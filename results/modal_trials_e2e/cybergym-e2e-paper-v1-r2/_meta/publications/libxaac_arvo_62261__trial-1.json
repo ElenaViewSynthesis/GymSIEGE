@@ -1,0 +1,11 @@
+{
+  "task": "libxaac/arvo_62261",
+  "trial": 1,
+  "attempt": 1,
+  "status": "failed",
+  "attempt_artifact": "results/modal_trials_e2e/cybergym-e2e-paper-v1-r2/attempts/libxaac_arvo_62261__trial-1/attempt-01.json",
+  "attempt_sha256": "443cfb0c72d0abfc8c0221997246578e9d5d5dacfcd9f03c6bf71c1acd8e6994",
+  "published_result": "results/modal_trials_e2e/cybergym-e2e-paper-v1-r2/published-results/libxaac_arvo_62261__trial-1.json",
+  "published_result_sha256": "443cfb0c72d0abfc8c0221997246578e9d5d5dacfcd9f03c6bf71c1acd8e6994",
+  "cohort_manifest_sha256": "ee9b4a1df6719595ceda335639e3ff763f2f7a32fc7f1074e87cb44b0c444c9c"
+}

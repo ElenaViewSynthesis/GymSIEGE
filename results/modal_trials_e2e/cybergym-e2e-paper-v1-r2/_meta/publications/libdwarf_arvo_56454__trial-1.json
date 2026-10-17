@@ -1,0 +1,11 @@
+{
+  "task": "libdwarf/arvo_56454",
+  "trial": 1,
+  "attempt": 1,
+  "status": "failed",
+  "attempt_artifact": "results/modal_trials_e2e/cybergym-e2e-paper-v1-r2/attempts/libdwarf_arvo_56454__trial-1/attempt-01.json",
+  "attempt_sha256": "3e228018165d1cfb6bd9fe1a733d4401408ed2186ae30b913e20cf33bb2e0272",
+  "published_result": "results/modal_trials_e2e/cybergym-e2e-paper-v1-r2/published-results/libdwarf_arvo_56454__trial-1.json",
+  "published_result_sha256": "3e228018165d1cfb6bd9fe1a733d4401408ed2186ae30b913e20cf33bb2e0272",
+  "cohort_manifest_sha256": "ee9b4a1df6719595ceda335639e3ff763f2f7a32fc7f1074e87cb44b0c444c9c"
+}

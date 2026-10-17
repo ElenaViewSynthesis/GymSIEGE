@@ -1,0 +1,11 @@
+{
+  "task": "freetype2/arvo_368",
+  "trial": 1,
+  "attempt": 1,
+  "status": "failed",
+  "attempt_artifact": "results/modal_trials_e2e/cybergym-e2e-paper-v1-r2/attempts/freetype2_arvo_368__trial-1/attempt-01.json",
+  "attempt_sha256": "3cce713979e5d9cd5331b05c55d77d1f41d6cd11b8a2845ce5c72009b3224687",
+  "published_result": "results/modal_trials_e2e/cybergym-e2e-paper-v1-r2/published-results/freetype2_arvo_368__trial-1.json",
+  "published_result_sha256": "3cce713979e5d9cd5331b05c55d77d1f41d6cd11b8a2845ce5c72009b3224687",
+  "cohort_manifest_sha256": "ee9b4a1df6719595ceda335639e3ff763f2f7a32fc7f1074e87cb44b0c444c9c"
+}

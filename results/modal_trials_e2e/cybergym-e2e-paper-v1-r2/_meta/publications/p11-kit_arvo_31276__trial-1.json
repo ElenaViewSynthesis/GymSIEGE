@@ -1,0 +1,11 @@
+{
+  "task": "p11-kit/arvo_31276",
+  "trial": 1,
+  "attempt": 1,
+  "status": "failed",
+  "attempt_artifact": "results/modal_trials_e2e/cybergym-e2e-paper-v1-r2/attempts/p11-kit_arvo_31276__trial-1/attempt-01.json",
+  "attempt_sha256": "d565b44cbaa1f3d98b4a0a820c5f4f22ef1ae7df3002c1a77ab2da2fd87fd6cc",
+  "published_result": "results/modal_trials_e2e/cybergym-e2e-paper-v1-r2/published-results/p11-kit_arvo_31276__trial-1.json",
+  "published_result_sha256": "d565b44cbaa1f3d98b4a0a820c5f4f22ef1ae7df3002c1a77ab2da2fd87fd6cc",
+  "cohort_manifest_sha256": "ee9b4a1df6719595ceda335639e3ff763f2f7a32fc7f1074e87cb44b0c444c9c"
+}
