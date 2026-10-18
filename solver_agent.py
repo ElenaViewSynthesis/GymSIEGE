@@ -41,6 +41,7 @@ from urllib.parse import urlparse
 from pydantic import BaseModel
 
 from common import (
+    AGENT_INFRASTRUCTURE_ERROR_REGEX,
     AGENT_TIMEOUT_S,
     CYBERGYM_REMOTE_DIR,
     Mode,
@@ -625,6 +626,21 @@ finally:
                 poc_path = None
                 log.info("[%s] agent produced no poc.bin; skipping isolated oracle", task.path)
 
+        if missing_required_artifact:
+            infra_marker = await self._detect_agent_infrastructure_error(
+                trajectory_log_paths, log_path
+            )
+            if infra_marker:
+                failure_reason = "agent_infrastructure_error"
+                failure_detail = (
+                    f"agent delivered no {missing_required_artifact}; "
+                    f"infrastructure marker: {infra_marker}"
+                )
+                log.warning(
+                    "[%s] missing %s attributed to infrastructure (retryable): %s",
+                    task.path, missing_required_artifact, infra_marker,
+                )
+
         if poc_path and patch_path and summary and not missing_required_artifact:
             try:
                 oracle = await self._reconfirm_isolated(
@@ -695,6 +711,32 @@ finally:
             failure_reason=failure_reason,
             failure_detail=failure_detail,
         )
+
+    async def _detect_agent_infrastructure_error(
+        self, trajectory_log_paths: list[str], log_path: str
+    ) -> Optional[str]:
+        """Return the first gateway/tunnel/install failure marker in the logs.
+
+        Scans the agent trajectory logs and run_agent.log on the sandbox with a
+        remote ``grep -hoE`` so only the marker text -- never the surrounding
+        transcript -- is read back. Returns None when the agent simply produced
+        no artifact on its own, which stays a terminal model outcome.
+        """
+        files = [p for p in (*trajectory_log_paths, log_path) if p]
+        if not files:
+            return None
+        quoted = " ".join(shlex.quote(f) for f in files)
+        cmd = (
+            f"grep -hoE {shlex.quote(AGENT_INFRASTRUCTURE_ERROR_REGEX)} {quoted} "
+            "2>/dev/null | head -n1"
+        )
+        try:
+            r = await self.sandbox.process.exec(cmd)
+        except Exception as exc:  # a scan failure must not mask the real result
+            log.warning("infrastructure-marker scan failed: %s", exc)
+            return None
+        marker = (getattr(r, "result", "") or "").strip()
+        return marker or None
 
     async def _reconfirm_isolated(
         self, task: Task, mode: Mode, poc_path: str, patch_path: str

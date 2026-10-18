@@ -462,7 +462,7 @@ class SecretAttachRestartTests(unittest.IsolatedAsyncioTestCase):
 
 class ExploitGymCommandTests(unittest.TestCase):
     @staticmethod
-    def _artifact_check_agent(*, patch_exists: bool, poc_exists: bool):
+    def _artifact_check_agent(*, patch_exists: bool, poc_exists: bool, infra_marker: str = ""):
         summary_path = "/out/curl_arvo_66012/run/summary.json"
 
         class Process:
@@ -483,6 +483,8 @@ class ExploitGymCommandTests(unittest.TestCase):
                     return type("Result", (), {"exit_code": 0, "result": json.dumps(summary)})()
                 if "/trajectory " in command:
                     return type("Result", (), {"exit_code": 0, "result": ""})()
+                if command.startswith("grep -hoE "):
+                    return type("Result", (), {"exit_code": 0, "result": infra_marker})()
                 if command.startswith("test -f "):
                     exists = poc_exists if command.endswith("poc.bin") else patch_exists
                     return type("Result", (), {"exit_code": 0 if exists else 1, "result": ""})()
@@ -524,6 +526,28 @@ class ExploitGymCommandTests(unittest.TestCase):
         self.assertIsNone(result.poc_path)
         agent._reconfirm_isolated.assert_not_awaited()
         self.assertIn("test -f /out/curl_arvo_66012/run/output/poc.bin", process.commands)
+
+    def test_missing_patch_with_gateway_marker_is_flagged_infrastructure(self) -> None:
+        agent, process = self._artifact_check_agent(
+            patch_exists=False, poc_exists=True, infra_marker="ERR_NGROK_3200",
+        )
+        with patch.dict(os.environ, {"LITELLM_BASE_URL": "https://litellm.example"}):
+            result = asyncio.run(agent.run(Task("curl", "arvo_66012"), "patch-only", "/out"))
+        self.assertEqual(result.missing_required_artifact, "fix.patch")
+        self.assertEqual(result.failure_reason, "agent_infrastructure_error")
+        self.assertIn("ERR_NGROK_3200", result.failure_detail or "")
+        self.assertEqual(classify_trial_status(result), "error")
+        self.assertTrue(any(c.startswith("grep -hoE ") for c in process.commands))
+
+    def test_missing_patch_without_marker_stays_terminal_no_patch(self) -> None:
+        agent, _ = self._artifact_check_agent(
+            patch_exists=False, poc_exists=True, infra_marker="",
+        )
+        with patch.dict(os.environ, {"LITELLM_BASE_URL": "https://litellm.example"}):
+            result = asyncio.run(agent.run(Task("curl", "arvo_66012"), "patch-only", "/out"))
+        self.assertEqual(result.missing_required_artifact, "fix.patch")
+        self.assertIsNone(result.failure_reason)
+        self.assertEqual(classify_trial_status(result), "no_patch")
 
     def test_e2e_existing_artifacts_reach_oracle(self) -> None:
         agent, _ = self._artifact_check_agent(patch_exists=True, poc_exists=True)

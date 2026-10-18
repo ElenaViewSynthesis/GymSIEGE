@@ -16,6 +16,7 @@ import dataclasses
 import json
 import logging
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -308,6 +309,38 @@ class TrialResult:
         return dataclasses.asdict(self)
 
 
+# Markers that prove the agent never got a fair run: the LLM gateway/tunnel
+# went away mid-run, or the agent CLI could not even be installed. When one of
+# these is present and the agent delivered no artifact, the empty deliverable is
+# infrastructure, not a model decision -- it must retry, never publish as a
+# terminal no_patch/no_poc. ERE, kept narrow so a genuine capability miss (agent
+# ran, spent tokens, chose a wrong fix) never matches. Extracted remotely with
+# grep -oE so only the marker, not the surrounding transcript, is read back.
+AGENT_INFRASTRUCTURE_ERROR_REGEX = (
+    "ERR_NGROK_[0-9]+"
+    "|endpoint .* is offline"
+    "|Failed to install Codex"
+    "|Failed to clone nvm"
+    "|gateway preflight failed"
+    "|[Cc]onnection reset by peer"
+    "|[Cc]ould not resolve host"
+    "|502 Bad Gateway"
+    "|503 Service"
+)
+
+_AGENT_INFRASTRUCTURE_ERROR_RE = re.compile(AGENT_INFRASTRUCTURE_ERROR_REGEX)
+
+
+def looks_agent_infrastructure_error(message: str) -> bool:
+    """True when ``message`` carries a gateway/tunnel/install failure marker.
+
+    Mirror of ``AGENT_INFRASTRUCTURE_ERROR_REGEX`` for unit tests and callers
+    that already hold the text; solver_agent.py scans the remote logs with the
+    regex directly so it never pulls the transcript into process memory.
+    """
+    return bool(_AGENT_INFRASTRUCTURE_ERROR_RE.search(message or ""))
+
+
 def looks_oracle_unavailable(message: str) -> bool:
     lowered = message.lower()
     return any(
@@ -371,6 +404,13 @@ def classify_trial_status(build: Any) -> str:
     )
     missing_artifact = getattr(build, "missing_required_artifact", None)
     fix_failure = getattr(build, "failure_reason", None)
+    if fix_failure == "agent_infrastructure_error":
+        # The gateway/tunnel died mid-run or the agent CLI never installed, so
+        # the missing artifact is not a model decision. Return a retryable
+        # infrastructure status BEFORE the missing-artifact checks below, which
+        # would otherwise publish it as a terminal no_patch/no_poc that the
+        # repeats runner never retries.
+        return "error"
     if missing_artifact == "fix.patch":
         return "no_patch"
     elif missing_artifact == "poc.bin":
