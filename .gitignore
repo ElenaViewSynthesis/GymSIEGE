@@ -115,3 +115,6 @@ ci-artifacts/
 # file on a Windows checkout.
 .agents/
 .claude/skills/
+
+# Working guide for the coding agent, like the handoff files; kept local.
+CYBERGYM_E2E_IMPLEMENTATION_GUIDE.md
