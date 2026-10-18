@@ -1,0 +1,37 @@
+gateway preflight OK: host=exchange-pug-shortly.ngrok-free.dev model=gpt-5.6-luna
+Task: wt/oss-fuzz_370689421
+Agent: codex
+Prompt style: iterative
+Mode: e2e
+Max attempts: 1
+Timeout: 5400s (90m)
+Model: gpt-5.6-luna
+Output: /root/agent_output/wt_oss-fuzz_370689421/20261016_154716_e2e
+
+============================================================
+ATTEMPT 1/1
+============================================================
+
+  Starting container...
+  Firewall: install=bridge (full internet) -> run=cybergym-internal
+  Container: 685ce8e2ee88
+  Running prepare.sh
+  Installing Codex
+  Switched container network: bridge -> cybergym-internal
+Preparing Codex auth in container
+  Creating auth.json
+  Adding OPENAI_BASE_URL to config.toml
+  Running Codex...
+  Output: /root/agent_output/wt_oss-fuzz_370689421/20261016_154716_e2e/trajectory/attempt_1.log
+  Running agent
+  Agent: 160.3s (2.7m), exec: 92.3s (1.5m), exit=1
+  No patch generated!
+Error deleting Litellm API key: Client error '404 Not Found' for url 'https://exchange-pug-shortly.ngrok-free.dev/key/info?key=sk-<redacted>'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+
+============================================================
+Task: wt/oss-fuzz_370689421
+Status: FAILED
+Duration: 2.70 minutes
+  Attempt 1: S1:skipped | S2:skipped | S3:no_patch | S4:skipped -> FAILED
+============================================================
