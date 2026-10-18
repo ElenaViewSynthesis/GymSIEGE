@@ -118,3 +118,7 @@ ci-artifacts/
 
 # Working guide for the coding agent, like the handoff files; kept local.
 CYBERGYM_E2E_IMPLEMENTATION_GUIDE.md
+
+# Saved copy of third-party documentation (Codex web-search config); reference
+# material, not project documentation -- local-only.
+local-web-search-cfg.md
