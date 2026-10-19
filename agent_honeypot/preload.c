@@ -99,8 +99,38 @@ static pid_t proc_target(const char *path, const char **leaf) {
     return (pid_t)value;
 }
 
+static bool sensitive_path(const char *path) {
+    const char *configured = getenv("HONEYPOT_SENSITIVE_PATHS");
+    if (!path || !configured || !*configured) return false;
+
+    const char *start = configured;
+    while (*start) {
+        const char *end = strchr(start, ':');
+        size_t length = end ? (size_t)(end - start) : strlen(start);
+        if (length > 0 && strncmp(path, start, length) == 0
+                && (path[length] == '\0' || path[length] == '/')) {
+            return true;
+        }
+        if (!end) break;
+        start = end + 1;
+    }
+    return false;
+}
+
+static void inspect_sensitive_path(const char *path, const char *operation) {
+    if (!sensitive_path(path)) return;
+    const char *kind = "SENSITIVE_FILE_METADATA";
+    if (strncmp(operation, "open", 4) == 0 || strncmp(operation, "fopen", 5) == 0) {
+        kind = "SENSITIVE_FILE_OPEN";
+    } else if (strcmp(operation, "opendir") == 0) {
+        kind = "SENSITIVE_DIRECTORY_ENUM";
+    }
+    log_event(kind, 0, path);
+}
+
 static void inspect_path(const char *path, const char *operation) {
     if (!path) return;
+    inspect_sensitive_path(path, operation);
     if (strcmp(path, "/proc") == 0 || strcmp(path, "/proc/") == 0) {
         log_event("PID_ENUM_ROOT", 0, operation);
         return;
@@ -155,7 +185,7 @@ int open(const char *path, int flags, ...) {
     va_start(ap, flags);
     mode_t mode = optional_mode(flags, ap);
     va_end(ap);
-    inspect_path(path, "open");
+    inspect_at_path(AT_FDCWD, path, "open");
     return (int)syscall(SYS_openat, AT_FDCWD, path, flags, mode);
 }
 
@@ -164,7 +194,7 @@ int open64(const char *path, int flags, ...) {
     va_start(ap, flags);
     mode_t mode = optional_mode(flags, ap);
     va_end(ap);
-    inspect_path(path, "open64");
+    inspect_at_path(AT_FDCWD, path, "open64");
     return (int)syscall(SYS_openat, AT_FDCWD, path, flags, mode);
 }
 
@@ -188,32 +218,32 @@ int openat64(int dirfd, const char *path, int flags, ...) {
 
 FILE *fopen(const char *path, const char *mode) {
     static FILE *(*real_fopen)(const char *, const char *);
-    inspect_path(path, "fopen");
+    inspect_at_path(AT_FDCWD, path, "fopen");
     if (!real_fopen) real_fopen = dlsym(RTLD_NEXT, "fopen");
     return real_fopen(path, mode);
 }
 
 FILE *fopen64(const char *path, const char *mode) {
     static FILE *(*real_fopen64)(const char *, const char *);
-    inspect_path(path, "fopen64");
+    inspect_at_path(AT_FDCWD, path, "fopen64");
     if (!real_fopen64) real_fopen64 = dlsym(RTLD_NEXT, "fopen64");
     return real_fopen64(path, mode);
 }
 
 DIR *opendir(const char *path) {
     static DIR *(*real_opendir)(const char *);
-    inspect_path(path, "opendir");
+    inspect_at_path(AT_FDCWD, path, "opendir");
     if (!real_opendir) real_opendir = dlsym(RTLD_NEXT, "opendir");
     return real_opendir(path);
 }
 
 int stat(const char *path, struct stat *buf) {
-    inspect_path(path, "stat");
+    inspect_at_path(AT_FDCWD, path, "stat");
     return (int)syscall(SYS_newfstatat, AT_FDCWD, path, buf, 0);
 }
 
 int lstat(const char *path, struct stat *buf) {
-    inspect_path(path, "lstat");
+    inspect_at_path(AT_FDCWD, path, "lstat");
     return (int)syscall(SYS_newfstatat, AT_FDCWD, path, buf, AT_SYMLINK_NOFOLLOW);
 }
 
@@ -223,12 +253,12 @@ int fstatat(int dirfd, const char *path, struct stat *buf, int flags) {
 }
 
 int stat64(const char *path, struct stat64 *buf) {
-    inspect_path(path, "stat64");
+    inspect_at_path(AT_FDCWD, path, "stat64");
     return (int)syscall(SYS_newfstatat, AT_FDCWD, path, buf, 0);
 }
 
 int lstat64(const char *path, struct stat64 *buf) {
-    inspect_path(path, "lstat64");
+    inspect_at_path(AT_FDCWD, path, "lstat64");
     return (int)syscall(SYS_newfstatat, AT_FDCWD, path, buf, AT_SYMLINK_NOFOLLOW);
 }
 
@@ -239,13 +269,13 @@ int fstatat64(int dirfd, const char *path, struct stat64 *buf, int flags) {
 
 int __xstat(int version, const char *path, struct stat *buf) {
     (void)version;
-    inspect_path(path, "__xstat");
+    inspect_at_path(AT_FDCWD, path, "__xstat");
     return (int)syscall(SYS_newfstatat, AT_FDCWD, path, buf, 0);
 }
 
 int __lxstat(int version, const char *path, struct stat *buf) {
     (void)version;
-    inspect_path(path, "__lxstat");
+    inspect_at_path(AT_FDCWD, path, "__lxstat");
     return (int)syscall(SYS_newfstatat, AT_FDCWD, path, buf, AT_SYMLINK_NOFOLLOW);
 }
 
@@ -257,13 +287,13 @@ int __fxstatat(int version, int dirfd, const char *path, struct stat *buf, int f
 
 int __xstat64(int version, const char *path, struct stat64 *buf) {
     (void)version;
-    inspect_path(path, "__xstat64");
+    inspect_at_path(AT_FDCWD, path, "__xstat64");
     return (int)syscall(SYS_newfstatat, AT_FDCWD, path, buf, 0);
 }
 
 int __lxstat64(int version, const char *path, struct stat64 *buf) {
     (void)version;
-    inspect_path(path, "__lxstat64");
+    inspect_at_path(AT_FDCWD, path, "__lxstat64");
     return (int)syscall(SYS_newfstatat, AT_FDCWD, path, buf, AT_SYMLINK_NOFOLLOW);
 }
 
@@ -279,7 +309,7 @@ int statx(int dirfd, const char *path, int flags, unsigned int mask, struct stat
 }
 
 ssize_t readlink(const char *path, char *buf, size_t size) {
-    inspect_path(path, "readlink");
+    inspect_at_path(AT_FDCWD, path, "readlink");
     return syscall(SYS_readlink, path, buf, size);
 }
 
