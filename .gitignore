@@ -36,6 +36,10 @@ results/cybergym_index/
 # harness, so never tracked.
 results/agent-honeypot/
 results/agent-honeypot-corpus/
+# Intent-tripwire run output (agent_honeypot/intent_tripwires/harness.sh):
+# synthetic canary workspace, canary.txt, sink/process events, egress shims,
+# and the compiled probe -- all reproducible by re-running the harness.
+results/intent-honeypot/
 # Modal honeypot run output (smoke/full run dirs): summary/modal-run JSON and
 # logs are already ignored above, but the artifacts.tar.gz bundles are binary
 # and must never enter history. Reproducible by re-running modal_honeypot.
