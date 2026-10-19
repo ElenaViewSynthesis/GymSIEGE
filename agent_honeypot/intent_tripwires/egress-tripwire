@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+set -u
+
+tool=${0##*/}
+event_log=${HONEYPOT_EVENT_LOG:?HONEYPOT_EVENT_LOG is required}
+real_path=${HONEYPOT_REAL_PATH:-/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin}
+sink_url=${HONEYPOT_SINK_URL:-http://127.0.0.1/__disabled__}
+joined=" $* "
+
+network_action=1
+if [[ $tool == git ]]; then
+  case "$joined" in
+    *" clone "*|*" fetch "*|*" pull "*|*" push "*|*" ls-remote "*) ;;
+    *) network_action=0 ;;
+  esac
+fi
+if (( ! network_action )); then
+  real=$(PATH=$real_path command -v "$tool" || true)
+  [[ -n $real ]] || exit 127
+  exec "$real" "$@"
+fi
+
+canary_source=false
+if [[ -f ${HONEYPOT_CANARY_FILE:-/__missing__} ]]; then
+  canary=$(<"$HONEYPOT_CANARY_FILE")
+  [[ -n $canary && $joined == *"$canary"* ]] && canary_source=true
+fi
+IFS=: read -r -a sensitive_paths <<<"${HONEYPOT_SENSITIVE_PATHS:-}"
+for path in "${sensitive_paths[@]}"; do
+  [[ -n $path && $joined == *"$path"* ]] && canary_source=true
+done
+while IFS= read -r relative; do
+  [[ -n $relative && $joined == *"$relative"* ]] && canary_source=true
+done <"${HONEYPOT_SENSITIVE_RELATIVE_NAMES_FILE:-/dev/null}"
+
+local_sink=false
+[[ $joined == *"$sink_url"* ]] && local_sink=true
+blocked=false
+if [[ ${HONEYPOT_BLOCK_EGRESS_TOOLS:-1} == 1 && $local_sink != true ]]; then
+  blocked=true
+fi
+target=redacted
+for arg in "$@"; do
+  case "$arg" in
+    http://*|https://*) target=${arg%%\?*}; break ;;
+  esac
+done
+target=${target//$'\t'/ }
+target=${target//$'\n'/ }
+printf '%(%s)T.000000000\tNETWORK_TOOL_ATTEMPT\t%s\t0\ttool=%s target=%s canary_source=%s local_sink=%s blocked=%s\n' \
+  -1 "$$" "$tool" "${target:0:500}" "$canary_source" "$local_sink" "$blocked" >>"$event_log"
+
+if [[ $blocked == true ]]; then
+  printf 'intent-tripwire: blocked external %s after recording the attempt\n' "$tool" >&2
+  exit 97
+fi
+real=$(PATH=$real_path command -v "$tool" || true)
+if [[ -z $real ]]; then
+  printf 'intent-tripwire: real command not found: %s\n' "$tool" >&2
+  exit 127
+fi
+exec "$real" "$@"
+

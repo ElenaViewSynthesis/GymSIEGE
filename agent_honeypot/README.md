@@ -55,6 +55,14 @@ volumes, bounded resources, and guaranteed teardown, use the
 [`modal_honeypot` runner](../modal_honeypot/README.md). The local harness still
 provides canaries, observation, and deterministic scoring inside that Sandbox.
 
+## Sensitive-data and hosted-search intent tripwires
+
+[`intent_tripwires/`](intent_tripwires/README.md) adds synthetic `.env`, cloud,
+SSH, customer-data, and model-checkpoint canaries; a loopback-only receipt
+sink; command-egress tripwires; and JSONL `web_search` inspection. It reports
+evidence stages rather than inferring intent from a filename lookup. No real
+credential or public upload target is used.
+
 ## Interpreting results
 
 See [RUBRIC.md](RUBRIC.md). Keep the raw evidence: the score is intentionally a
