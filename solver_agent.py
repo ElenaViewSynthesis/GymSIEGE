@@ -41,12 +41,15 @@ from urllib.parse import urlparse
 from pydantic import BaseModel
 
 from common import (
-    AGENT_INFRASTRUCTURE_ERROR_REGEX,
     AGENT_TIMEOUT_S,
     CYBERGYM_REMOTE_DIR,
+    INSTALL_MARKER_REGEX,
     Mode,
     Task,
+    decide_missing_artifact_infra,
+    find_install_marker,
     get_logger,
+    scan_trajectory_for_gateway_kill,
 )
 
 log = get_logger("solver_agent")
@@ -626,19 +629,23 @@ finally:
                 poc_path = None
                 log.info("[%s] agent produced no poc.bin; skipping isolated oracle", task.path)
 
+        # Spend is needed by the missing-artifact infrastructure rule below, so
+        # compute it here rather than after the oracle block.
+        usage = summary.get("litellm_api_key_usage")
+        solver_cost = _extract_cost_usd(usage)
+
         if missing_required_artifact:
-            infra_marker = await self._detect_agent_infrastructure_error(
-                trajectory_log_paths, log_path
+            infra_reason, infra_detail = await self._detect_agent_infrastructure_error(
+                trajectory_log_paths, log_path, solver_cost=solver_cost,
             )
-            if infra_marker:
-                failure_reason = "agent_infrastructure_error"
+            if infra_reason:
+                failure_reason = infra_reason
                 failure_detail = (
-                    f"agent delivered no {missing_required_artifact}; "
-                    f"infrastructure marker: {infra_marker}"
+                    f"agent delivered no {missing_required_artifact}; {infra_detail}"
                 )
                 log.warning(
                     "[%s] missing %s attributed to infrastructure (retryable): %s",
-                    task.path, missing_required_artifact, infra_marker,
+                    task.path, missing_required_artifact, infra_detail,
                 )
 
         if poc_path and patch_path and summary and not missing_required_artifact:
@@ -664,8 +671,6 @@ finally:
                 detonation_error = str(exc)
                 log.error("[%s] isolated oracle reconfirmation failed: %s", task.path, exc)
 
-        usage = summary.get("litellm_api_key_usage")
-        solver_cost = _extract_cost_usd(usage)
         if not summary:
             tail_r = await self.sandbox.process.exec(
                 f"tail -c 8000 {shlex.quote(log_path)} 2>/dev/null || true"
@@ -713,30 +718,59 @@ finally:
         )
 
     async def _detect_agent_infrastructure_error(
-        self, trajectory_log_paths: list[str], log_path: str
-    ) -> Optional[str]:
-        """Return the first gateway/tunnel/install failure marker in the logs.
+        self, trajectory_log_paths: list[str], log_path: str, *,
+        solver_cost: Optional[float],
+    ) -> tuple[Optional[str], Optional[str]]:
+        """Decide whether infrastructure, not the model, left the artifact missing.
 
-        Scans the agent trajectory logs and run_agent.log on the sandbox with a
-        remote ``grep -hoE`` so only the marker text -- never the surrounding
-        transcript -- is read back. Returns None when the agent simply produced
-        no artifact on its own, which stays a terminal model outcome.
+        Reads markers only where infrastructure writes them: gateway/tunnel
+        markers from Codex top-level ``turn.failed`` / ``turn.completed`` /
+        ``error`` events (a server-side ``grep`` drops every ``item.*`` command
+        line, so target output can never match), and install/preflight markers
+        from run_agent.log. The decision rules live in
+        ``common.decide_missing_artifact_infra``. Returns
+        ``(failure_reason, failure_detail)`` or ``(None, None)``.
         """
-        files = [p for p in (*trajectory_log_paths, log_path) if p]
-        if not files:
-            return None
-        quoted = " ".join(shlex.quote(f) for f in files)
-        cmd = (
-            f"grep -hoE {shlex.quote(AGENT_INFRASTRUCTURE_ERROR_REGEX)} {quoted} "
-            "2>/dev/null | head -n1"
+        gateway_marker: Optional[str] = None
+        for traj in trajectory_log_paths:
+            if not traj:
+                continue
+            # Only top-level terminal/error events come back -- item.* command
+            # output (and its network-shaped text) is filtered out on the box.
+            cmd = (
+                "grep -E '^\\{\"type\":\"(error|turn\\.failed|turn\\.completed)\"' "
+                f"{shlex.quote(traj)} 2>/dev/null"
+            )
+            try:
+                r = await self.sandbox.process.exec(cmd)
+            except Exception as exc:  # a scan failure must not mask the result
+                log.warning("trajectory event scan failed for %s: %s", traj, exc)
+                continue
+            lines = (getattr(r, "result", "") or "").splitlines()
+            killed, marker = scan_trajectory_for_gateway_kill(lines)
+            if killed:
+                gateway_marker = marker
+                break
+
+        install_marker: Optional[str] = None
+        if not gateway_marker and log_path:
+            cmd = (
+                f"grep -hoE {shlex.quote(INSTALL_MARKER_REGEX)} "
+                f"{shlex.quote(log_path)} 2>/dev/null | head -n1"
+            )
+            try:
+                r = await self.sandbox.process.exec(cmd)
+            except Exception as exc:
+                log.warning("install-marker scan failed: %s", exc)
+            else:
+                install_marker = find_install_marker(getattr(r, "result", "") or "")
+
+        return decide_missing_artifact_infra(
+            gateway_marker=gateway_marker,
+            install_marker=install_marker,
+            solver_cost=solver_cost,
+            has_trajectory=bool(trajectory_log_paths),
         )
-        try:
-            r = await self.sandbox.process.exec(cmd)
-        except Exception as exc:  # a scan failure must not mask the real result
-            log.warning("infrastructure-marker scan failed: %s", exc)
-            return None
-        marker = (getattr(r, "result", "") or "").strip()
-        return marker or None
 
     async def _reconfirm_isolated(
         self, task: Task, mode: Mode, poc_path: str, patch_path: str

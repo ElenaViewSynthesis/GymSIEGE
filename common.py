@@ -309,36 +309,127 @@ class TrialResult:
         return dataclasses.asdict(self)
 
 
-# Markers that prove the agent never got a fair run: the LLM gateway/tunnel
-# went away mid-run, or the agent CLI could not even be installed. When one of
-# these is present and the agent delivered no artifact, the empty deliverable is
-# infrastructure, not a model decision -- it must retry, never publish as a
-# terminal no_patch/no_poc. ERE, kept narrow so a genuine capability miss (agent
-# ran, spent tokens, chose a wrong fix) never matches. Extracted remotely with
-# grep -oE so only the marker, not the surrounding transcript, is read back.
-AGENT_INFRASTRUCTURE_ERROR_REGEX = (
+# A missing artifact is the agent's own terminal outcome UNLESS infrastructure
+# ended its session, and the two are told apart by WHERE the marker appears and
+# WHETHER the session was actually cut short. Retrying a genuine no_patch
+# re-rolls a valid agent outcome, which the frozen-manifest discipline forbids,
+# so a false positive here is worse than a missed one -- the rules below demand
+# positive evidence, never the mere presence of network-shaped text.
+#
+# Gateway/tunnel markers are read ONLY from Codex's own top-level `turn.failed`
+# and `error` events (and the trailing `--- stderr ---` section), never from
+# `item.*` command output, where `Could not resolve host`, `502 Bad Gateway`,
+# etc. are routine output from the target under test. Within a gateway event
+# these generic phrases describe the agent's own connection to the model API, so
+# they are allowed there alongside the unambiguous ngrok markers.
+GATEWAY_MARKER_REGEX = (
     "ERR_NGROK_[0-9]+"
-    "|endpoint .* is offline"
-    "|Failed to install Codex"
-    "|Failed to clone nvm"
-    "|gateway preflight failed"
+    "|is offline"
     "|[Cc]onnection reset by peer"
     "|[Cc]ould not resolve host"
     "|502 Bad Gateway"
     "|503 Service"
 )
 
-_AGENT_INFRASTRUCTURE_ERROR_RE = re.compile(AGENT_INFRASTRUCTURE_ERROR_REGEX)
+# Install/preflight markers are written by the CyberGym wrapper (run_agent.log),
+# not by the agent, so they are matched there only.
+INSTALL_MARKER_REGEX = (
+    "Failed to install Codex"
+    "|Failed to clone nvm"
+    "|gateway preflight failed"
+)
+
+_GATEWAY_MARKER_RE = re.compile(GATEWAY_MARKER_REGEX)
+_INSTALL_MARKER_RE = re.compile(INSTALL_MARKER_REGEX)
+
+AGENT_INFRASTRUCTURE_ERROR_REASON = "agent_infrastructure_error"
 
 
-def looks_agent_infrastructure_error(message: str) -> bool:
-    """True when ``message`` carries a gateway/tunnel/install failure marker.
+def _event_message(obj: dict[str, Any]) -> str:
+    """Pull the human text out of a Codex top-level event object."""
+    err = obj.get("error")
+    if isinstance(err, dict) and isinstance(err.get("message"), str):
+        return err["message"]
+    msg = obj.get("message")
+    return msg if isinstance(msg, str) else ""
 
-    Mirror of ``AGENT_INFRASTRUCTURE_ERROR_REGEX`` for unit tests and callers
-    that already hold the text; solver_agent.py scans the remote logs with the
-    regex directly so it never pulls the transcript into process memory.
+
+def scan_trajectory_for_gateway_kill(
+    event_lines: "list[str]",
+) -> "tuple[bool, Optional[str]]":
+    """Decide whether the gateway/tunnel killed the agent's session.
+
+    ``event_lines`` must already be filtered to Codex top-level events (JSONL
+    for ``turn.failed`` / ``turn.completed`` / ``error``); ``item.*`` command
+    output must never be passed in. Returns ``(killed, marker)``: killed is True
+    only when a ``turn.failed`` event carries a gateway marker and NO
+    ``turn.completed`` event follows it (a recovered blip is a bare ``error``
+    event, or a ``turn.failed`` with a later ``turn.completed``, and does not
+    count).
     """
-    return bool(_AGENT_INFRASTRUCTURE_ERROR_RE.search(message or ""))
+    last_completed_idx = -1
+    marked_failed: list[tuple[int, str]] = []
+    for idx, line in enumerate(event_lines):
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            obj = json.loads(line)
+        except (ValueError, TypeError):
+            continue
+        if not isinstance(obj, dict):
+            continue
+        etype = obj.get("type")
+        if etype == "turn.completed":
+            last_completed_idx = idx
+        elif etype == "turn.failed":
+            match = _GATEWAY_MARKER_RE.search(_event_message(obj))
+            if match:
+                marked_failed.append((idx, match.group(0)))
+    for idx, marker in marked_failed:
+        if idx > last_completed_idx:
+            return True, marker
+    return False, None
+
+
+def find_install_marker(run_agent_log_text: str) -> "Optional[str]":
+    """First install/preflight failure marker in run_agent.log text, or None."""
+    match = _INSTALL_MARKER_RE.search(run_agent_log_text or "")
+    return match.group(0) if match else None
+
+
+def decide_missing_artifact_infra(
+    *,
+    gateway_marker: "Optional[str]",
+    install_marker: "Optional[str]",
+    solver_cost: "Optional[float]",
+    has_trajectory: bool,
+) -> "tuple[Optional[str], Optional[str]]":
+    """Classify a missing artifact as infrastructure, or leave it the agent's.
+
+    Returns ``(failure_reason, failure_detail)``. Two paths qualify, each needing
+    positive evidence the session was cut short:
+
+    * a gateway-marked ``turn.failed`` with no later ``turn.completed`` (the
+      model tunnel dropped the live session); or
+    * an install/preflight marker in run_agent.log with zero model spend (the
+      agent never started). ``None`` spend is treated as unknown -- it counts as
+      zero only when no trajectory was produced at all, which is itself proof
+      the agent never ran.
+    """
+    if gateway_marker:
+        return (
+            AGENT_INFRASTRUCTURE_ERROR_REASON,
+            f"session ended by gateway/tunnel failure: {gateway_marker}",
+        )
+    if install_marker:
+        spend_is_zero = solver_cost == 0 or (solver_cost is None and not has_trajectory)
+        if spend_is_zero:
+            return (
+                AGENT_INFRASTRUCTURE_ERROR_REASON,
+                f"agent never started ({install_marker}); model spend={solver_cost}",
+            )
+    return None, None
 
 
 def looks_oracle_unavailable(message: str) -> bool:
@@ -404,12 +495,13 @@ def classify_trial_status(build: Any) -> str:
     )
     missing_artifact = getattr(build, "missing_required_artifact", None)
     fix_failure = getattr(build, "failure_reason", None)
-    if fix_failure == "agent_infrastructure_error":
-        # The gateway/tunnel died mid-run or the agent CLI never installed, so
-        # the missing artifact is not a model decision. Return a retryable
-        # infrastructure status BEFORE the missing-artifact checks below, which
-        # would otherwise publish it as a terminal no_patch/no_poc that the
-        # repeats runner never retries.
+    if fix_failure == AGENT_INFRASTRUCTURE_ERROR_REASON:
+        # The gateway/tunnel ended the live session, or the agent CLI never
+        # installed, so the missing artifact is not a model decision. Return a
+        # retryable infrastructure status BEFORE the missing-artifact checks
+        # below, which would otherwise publish it as a terminal no_patch/no_poc
+        # that the repeats runner never retries. solver_agent.py sets this
+        # reason only with positive evidence (see decide_missing_artifact_infra).
         return "error"
     if missing_artifact == "fix.patch":
         return "no_patch"
