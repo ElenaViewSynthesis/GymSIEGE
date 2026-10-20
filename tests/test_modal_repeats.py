@@ -187,3 +187,24 @@ def test_infrastructure_invalid_attempts_are_retryable(tmp_path, status):
     assert actual == status
     assert reason == f"infrastructure_invalid_status: {status}"
     assert retryable is True
+
+
+def test_frozen_inputs_accepts_subcohort_subset_of_snapshot(tmp_path):
+    # A sub-cohort declares a subset of the snapshot's tasks; the snapshot may
+    # bake extra tasks the manifest does not run (install-fix 2-of-22 case).
+    path = _manifest(tmp_path)
+    (tmp_path / "snapshot.json").write_text(
+        json.dumps({"snapshot_image_id": "im-test", "tasks": ["a/one", "b/two", "c/three"]})
+    )
+    manifest = repeats.load_manifest(path)
+    repeats.validate_frozen_inputs(manifest, tmp_path)  # does not raise
+
+
+def test_frozen_inputs_rejects_task_absent_from_snapshot(tmp_path):
+    path = _manifest(tmp_path)
+    (tmp_path / "snapshot.json").write_text(
+        json.dumps({"snapshot_image_id": "im-test", "tasks": ["a/one"]})  # b/two not baked
+    )
+    manifest = repeats.load_manifest(path)
+    with pytest.raises(repeats.ManifestError, match="not present in snapshot"):
+        repeats.validate_frozen_inputs(manifest, tmp_path)

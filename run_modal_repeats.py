@@ -269,10 +269,18 @@ def validate_frozen_inputs(manifest: dict[str, Any], root: Path = ROOT) -> None:
             f"{manifest['snapshot_image_id']!r}, {snapshot_path} has "
             f"{snapshot.get('snapshot_image_id')!r}"
         )
-    snapshot_tasks = snapshot.get("tasks")
-    declared_tasks = _tasks(manifest)
-    if snapshot_tasks != declared_tasks:
-        raise ManifestError("cohort task order/content does not match snapshot manifest")
+    # The manifest's tasks must all be baked into the snapshot, but need not be
+    # the whole snapshot: a sub-cohort (e.g. the 2-task install-fix diagnostic
+    # pooled with the 22-task paper cohort) declares a subset of the snapshot's
+    # tasks. The runner only executes the manifest's ordered_tasks, so an
+    # unordered subset check is the correct guarantee; a declared task absent
+    # from the snapshot is still rejected.
+    snapshot_tasks = set(snapshot.get("tasks") or [])
+    missing = [task for task in _tasks(manifest) if task not in snapshot_tasks]
+    if missing:
+        raise ManifestError(
+            f"cohort tasks not present in snapshot manifest: {', '.join(missing)}"
+        )
 
     if manifest["schema_version"] == 2:
         return
