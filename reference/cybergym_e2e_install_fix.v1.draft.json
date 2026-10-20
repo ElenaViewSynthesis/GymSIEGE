@@ -21,13 +21,18 @@
     "arrow/arvo_41221",
     "opensc/oss-fuzz_448717172"
   ],
-  "trial_numbers": [1],
-  "batch_id": "cybergym-e2e-install-fix-v1-r1",
+  "trial_numbers": [
+    1
+  ],
+  "batch_id": "cybergym-e2e-install-fix-v1-r2",
   "smoke_task": "arrow/arvo_41221",
   "retry_policy": {
     "max_attempts": 3,
     "retry_sleep_s": 20,
-    "retryable_statuses": ["error", "oracle_unavailable"]
+    "retryable_statuses": [
+      "error",
+      "oracle_unavailable"
+    ]
   },
   "output_root": "results/modal_trials_e2e",
   "paper_output_root": "results/paper/cybergym-e2e-install-fix-v1",
