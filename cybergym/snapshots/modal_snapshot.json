@@ -1,8 +1,8 @@
 {
   "provider": "modal",
   "app": "gymsiege-cybergym",
-  "snapshot_image_id": "im-01M5CNYC5ACZF2M0PHXE6WMBFH",
-  "upgraded_from_snapshot_image_id": "im-01M376G3D7WYH73HT614RRXE5C",
+  "snapshot_image_id": "im-01M5DS5M8S2FATYWEKPKN6ZKNZ",
+  "upgraded_from_snapshot_image_id": "im-01M5CNYC5ACZF2M0PHXE6WMBFH",
   "snapshot_ttl": null,
   "vm_runtime_bake": true,
   "task_count": 22,
@@ -30,10 +30,10 @@
     "upx/oss-fuzz_380327173",
     "ghostscript/arvo_45320"
   ],
-  "created_at": 1792501001.4609773,
-  "duration_s": 291.5665311230114,
+  "created_at": 1792537996.8753128,
+  "duration_s": 638.8768824689905,
   "upgrade": {
-    "reason": "Provide the pinned NVM v0.40.2 mirror only to task containers whose prepare step rewrites GitHub URLs to /deps",
+    "reason": "Provide the pinned NVM v0.40.2 mirror to task containers whose prepare step rewrites GitHub URLs to /deps, and rebuild offline validator images with prepare-time tools including wget",
     "nvm_version": "v0.40.2",
     "nvm_tag_object": "44f0e129d8a598a72f4aaf581db9b50c0803f1f9",
     "nvm_commit": "ffec9fec724da725013d5b50e763908113983fc3",
@@ -41,6 +41,10 @@
     "repair_tasks": [
       "arrow/arvo_41221",
       "opensc/oss-fuzz_448717172"
+    ],
+    "validator_recipe_version": "3",
+    "validator_prepare_packages": [
+      "wget"
     ],
     "verified_fresh_restore": true,
     "control_task": "curl/arvo_66012",
@@ -97,9 +101,74 @@
       }
     },
     "previous_upgrade": {
-      "reason": "Add qemu-i386-static for ARCHITECTURE=i386 isolated-oracle arms",
-      "qemu_version": "8.2.2",
-      "verified_fresh_restore": true
+      "reason": "Provide the pinned NVM v0.40.2 mirror only to task containers whose prepare step rewrites GitHub URLs to /deps",
+      "nvm_version": "v0.40.2",
+      "nvm_tag_object": "44f0e129d8a598a72f4aaf581db9b50c0803f1f9",
+      "nvm_commit": "ffec9fec724da725013d5b50e763908113983fc3",
+      "cybergym_revision": "b46456c46838b2b090d7e6ded5bfdf1ff583dba7",
+      "repair_tasks": [
+        "arrow/arvo_41221",
+        "opensc/oss-fuzz_448717172"
+      ],
+      "verified_fresh_restore": true,
+      "control_task": "curl/arvo_66012",
+      "control_before": {
+        "codex": "codex-cli 0.118.0",
+        "github_rewrite": "",
+        "image": "gcr.io/oss-fuzz-base/base-builder@sha256:8eda74a11e800aead5a041ee479a65b33dab3150d6e89e5694e2b6eb27be98fc",
+        "node": "v22.23.3",
+        "npm": "10.9.9",
+        "nvm": "0.40.2",
+        "nvm_mirror": "absent",
+        "task": "curl/arvo_66012"
+      },
+      "control_after": {
+        "codex": "codex-cli 0.118.0",
+        "github_rewrite": "",
+        "image": "gcr.io/oss-fuzz-base/base-builder@sha256:8eda74a11e800aead5a041ee479a65b33dab3150d6e89e5694e2b6eb27be98fc",
+        "node": "v22.23.3",
+        "npm": "10.9.9",
+        "nvm": "0.40.2",
+        "nvm_mirror": "absent",
+        "task": "curl/arvo_66012"
+      },
+      "install_verification": {
+        "arrow/arvo_41221": {
+          "codex": "codex-cli 0.118.0",
+          "github_rewrite": "https://github.com/",
+          "image": "n132/arvo:41221-fix",
+          "node": "v22.23.3",
+          "npm": "10.9.9",
+          "nvm": "0.40.2",
+          "nvm_mirror": "ffec9fec724da725013d5b50e763908113983fc3",
+          "task": "arrow/arvo_41221"
+        },
+        "curl/arvo_66012": {
+          "codex": "codex-cli 0.118.0",
+          "github_rewrite": "",
+          "image": "gcr.io/oss-fuzz-base/base-builder@sha256:8eda74a11e800aead5a041ee479a65b33dab3150d6e89e5694e2b6eb27be98fc",
+          "node": "v22.23.3",
+          "npm": "10.9.9",
+          "nvm": "0.40.2",
+          "nvm_mirror": "absent",
+          "task": "curl/arvo_66012"
+        },
+        "opensc/oss-fuzz_448717172": {
+          "codex": "codex-cli 0.118.0",
+          "github_rewrite": "https://github.com/",
+          "image": "cybergym/e2e:opensc",
+          "node": "v22.23.3",
+          "npm": "10.9.9",
+          "nvm": "0.40.2",
+          "nvm_mirror": "ffec9fec724da725013d5b50e763908113983fc3",
+          "task": "opensc/oss-fuzz_448717172"
+        }
+      },
+      "previous_upgrade": {
+        "reason": "Add qemu-i386-static for ARCHITECTURE=i386 isolated-oracle arms",
+        "qemu_version": "8.2.2",
+        "verified_fresh_restore": true
+      }
     }
   },
   "steps": [
@@ -194,6 +263,51 @@
       "label": "verify_codex_install_after_upgrade",
       "returncode": 0,
       "duration_s": 191.59004370402545
+    },
+    {
+      "label": "docker_ready_upgrade_source",
+      "returncode": 0,
+      "duration_s": 16.47015554102836
+    },
+    {
+      "label": "verify_codex_install_control_before_upgrade",
+      "returncode": 0,
+      "duration_s": 28.412302776996512
+    },
+    {
+      "label": "install_pinned_nvm_mirror",
+      "returncode": 0,
+      "duration_s": 0.5671991729759611
+    },
+    {
+      "label": "rebuild_offline_validator_images",
+      "returncode": 0,
+      "duration_s": 300.5726423509768
+    },
+    {
+      "label": "validate_snapshot_contents_upgrade",
+      "returncode": 0,
+      "duration_s": 10.492207440023776
+    },
+    {
+      "label": "snapshot_filesystem_upgrade",
+      "returncode": 0,
+      "duration_s": 13.869764288014267
+    },
+    {
+      "label": "docker_ready_upgrade_fork",
+      "returncode": 0,
+      "duration_s": 23.049042141996324
+    },
+    {
+      "label": "verify_snapshot_fork_upgrade",
+      "returncode": 0,
+      "duration_s": 15.68344585399609
+    },
+    {
+      "label": "verify_codex_install_after_upgrade",
+      "returncode": 0,
+      "duration_s": 228.693993316032
     }
   ]
 }
