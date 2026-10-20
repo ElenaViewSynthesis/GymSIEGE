@@ -26,5 +26,18 @@ After a new bake (`python3 modal_snapshot_build.py` → writes
 cp results/modal_snapshot.json cybergym/snapshots/modal_snapshot.json
 ```
 
+For a narrow, verified repair to an existing image, use the incremental path:
+
+```bash
+python3 modal_snapshot_build.py \
+  --upgrade-from-manifest cybergym/snapshots/modal_snapshot.json
+```
+
+The upgrade path first records a Codex-install control from the source image,
+applies the pinned NVM mirror repair, validates mirror visibility in every
+distinct pinned task image, snapshots it, and repeats validation plus install
+checks for curl (control), arrow, and OpenSC from an independent fresh restore.
+It writes the before/after versions and mirror commit into the output manifest.
+
 The Modal Image the id points at must still exist in the `gymsiege-cybergym`
 Modal app for a restore to succeed.
