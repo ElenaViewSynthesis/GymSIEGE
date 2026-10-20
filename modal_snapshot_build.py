@@ -142,8 +142,9 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         metavar="PATH",
         help=(
-            "restore PATH's verified snapshot and apply only the pinned NVM "
-            "mirror repair instead of doing a full bake"
+            "restore PATH's verified snapshot, rebuild the offline validator "
+            "images, and apply the pinned NVM mirror repair instead of doing "
+            "a full bake"
         ),
     )
     return parser
@@ -576,7 +577,7 @@ if validator_manifest.get("recipe_version") != {VALIDATOR_IMAGE_RECIPE_VERSION!r
 if validator_manifest.get("uv_version") != {VALIDATOR_UV_VERSION!r}:
     raise RuntimeError("validator uv version mismatch")
 validator_check = (
-    "command -v sudo git curl uv >/dev/null && "
+    "command -v sudo git curl wget uv >/dev/null && "
     "test -x /scripts/.venv/bin/python && "
     "/scripts/.venv/bin/python -c 'import tomli' && "
     "ldconfig -p | grep -q 'libBlocksRuntime.so.0' && "
@@ -684,7 +685,7 @@ def upgrade_snapshot(
     modal: Any,
     tasks: list[str],
 ) -> dict[str, Any]:
-    """Apply and independently verify the narrow NVM mirror repair."""
+    """Apply and independently verify the pinned snapshot repairs."""
     source_manifest = _load_upgrade_source(args, tasks)
     old_snapshot_id = source_manifest["snapshot_image_id"]
     app = modal.App.lookup(args.app, create_if_missing=True)
@@ -717,6 +718,25 @@ def upgrade_snapshot(
                 "install_pinned_nvm_mirror",
                 _nvm_mirror_upgrade_script(),
                 600,
+            )
+        )
+        # Validator containers are the environment used by the independent
+        # network-isolated oracle. Rebuild them from the original task images
+        # so prepare scripts can use their declared tools without relying on
+        # apt indexes or egress during detonation. Recipe v3 adds wget, which
+        # arrow/arvo_41221 installs without running apt-get update first.
+        upgrade_steps.append(
+            _exec(
+                source,
+                "rebuild_offline_validator_images",
+                PULL_IMAGES_PY.format(
+                    repo_dir=REMOTE_REPO_DIR,
+                    tasks=tasks,
+                    validator_manifest=VALIDATOR_IMAGE_MANIFEST,
+                    validator_recipe_version=VALIDATOR_IMAGE_RECIPE_VERSION,
+                    validator_uv_version=VALIDATOR_UV_VERSION,
+                ),
+                7200,
             )
         )
         upgrade_steps.append(
@@ -775,14 +795,17 @@ def upgrade_snapshot(
         previous_upgrade = source_manifest.get("upgrade")
         upgrade_metadata: dict[str, Any] = {
             "reason": (
-                "Provide the pinned NVM v0.40.2 mirror only to task containers "
-                "whose prepare step rewrites GitHub URLs to /deps"
+                "Provide the pinned NVM v0.40.2 mirror to task containers whose "
+                "prepare step rewrites GitHub URLs to /deps, and rebuild offline "
+                "validator images with prepare-time tools including wget"
             ),
             "nvm_version": NVM_VERSION,
             "nvm_tag_object": NVM_TAG_OBJECT,
             "nvm_commit": NVM_COMMIT,
             "cybergym_revision": fresh["cybergym_revision"],
             "repair_tasks": CODEX_INSTALL_MIRROR_TASKS,
+            "validator_recipe_version": VALIDATOR_IMAGE_RECIPE_VERSION,
+            "validator_prepare_packages": ["wget"],
             "verified_fresh_restore": True,
             "control_task": CODEX_INSTALL_CONTROL_TASK,
             "control_before": control_before,

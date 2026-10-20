@@ -1466,3 +1466,36 @@ interesting agent capability — driving a patch into a reproducible crash — s
 up on exactly one of fourteen envs here. Broadening to the other 27 upstream
 `v8.yaml` envs (each needs a snapshot bake first) is what would tell us whether
 378779897 is a one-off or the thin top of a longer tail.
+
+## 29. The install-fix cohort exposed one validator-image defect; OpenSC's honggfuzz invocation is correct
+
+**Status: code-fixed 2026-10-20; fresh snapshot and paid cohort rerun still
+required.** The two-task install-fix cohort proved Codex installation for
+`arrow/arvo_41221` and `opensc/oss-fuzz_448717172`, but its first results needed
+separate reconciliation before entering a paper denominator.
+
+Arrow's isolated-oracle preparation failed at `apt-get install -y -qq wget`
+with `E: Unable to locate package wget`. The network was still open; the derived
+validator image simply had no apt index because its recipe deliberately removes
+`/var/lib/apt/lists`. Validator recipe version 3 now installs `wget` while the
+image is built, verifies it both before snapshot capture and after a fresh
+restore, and rebuilds validator images during the narrow Modal upgrade path.
+The network-isolated detonation remains unchanged. Older snapshots that surface
+`Unable to locate package` are now classified `oracle_unavailable`, not as a
+terminal capability failure.
+
+OpenSC required no invocation fix. The exact pinned `run_poc.sh` invokes
+`/out/fuzz_pkcs15init "$POC_PATH"`; honggfuzz's linked standalone wrapper accepts
+that final file argument. More decisively, the task's known-crashing ground-truth
+`crash.log` prints the same `Accepting input from ...` and `Usage for fuzzing: ...`
+lines immediately before its ASan stack-buffer-underflow. The install-fix
+trial's agent-produced PoC printed those two informational lines, returned zero,
+and produced no sanitizer report. It was therefore delivered correctly but did
+not reproduce the vulnerability. `isolated_stage3=passed` is not a conflicting
+authority: stage 3 checks patched-tree functionality, whereas the agent PoC is
+stage 1. With isolated stage 4 also failed, this is a genuine agent failure, not
+a honggfuzz harness false negative.
+
+No Modal snapshot or model trial was launched for this code change. Publication
+use still requires a new verified recipe-v3 snapshot and a clean rerun of the
+two-task frozen cohort.
