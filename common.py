@@ -324,7 +324,7 @@ class TrialResult:
 # they are allowed there alongside the unambiguous ngrok markers.
 GATEWAY_MARKER_REGEX = (
     "ERR_NGROK_[0-9]+"
-    "|is offline"
+    "|[Ee]ndpoint .* is offline"
     "|[Cc]onnection reset by peer"
     "|[Cc]ould not resolve host"
     "|502 Bad Gateway"
@@ -360,18 +360,31 @@ def scan_trajectory_for_gateway_kill(
     """Decide whether the gateway/tunnel killed the agent's session.
 
     ``event_lines`` must already be filtered to Codex top-level events (JSONL
-    for ``turn.failed`` / ``turn.completed`` / ``error``); ``item.*`` command
-    output must never be passed in. Returns ``(killed, marker)``: killed is True
-    only when a ``turn.failed`` event carries a gateway marker and NO
-    ``turn.completed`` event follows it (a recovered blip is a bare ``error``
-    event, or a ``turn.failed`` with a later ``turn.completed``, and does not
-    count).
+    for ``turn.failed`` / ``turn.completed`` / ``error``) plus, optionally, a
+    trailing ``--- stderr ---`` section or normalized ``stderr`` events;
+    ``item.*`` command output must never be passed in. Returns
+    ``(killed, marker)``: killed is True only when a ``turn.failed`` event is
+    followed by no ``turn.completed`` and either that event or trailing stderr
+    carries a gateway marker. A recovered blip is a bare ``error`` event, or a
+    ``turn.failed`` with a later ``turn.completed``, and does not count.
     """
     last_completed_idx = -1
+    failed_indices: list[int] = []
     marked_failed: list[tuple[int, str]] = []
+    stderr_marker: Optional[str] = None
+    in_stderr = False
     for idx, line in enumerate(event_lines):
         line = line.strip()
         if not line:
+            continue
+        if line == "--- stderr ---":
+            in_stderr = True
+            continue
+        if in_stderr:
+            if stderr_marker is None:
+                match = _GATEWAY_MARKER_RE.search(line)
+                if match:
+                    stderr_marker = match.group(0)
             continue
         try:
             obj = json.loads(line)
@@ -383,12 +396,19 @@ def scan_trajectory_for_gateway_kill(
         if etype == "turn.completed":
             last_completed_idx = idx
         elif etype == "turn.failed":
+            failed_indices.append(idx)
             match = _GATEWAY_MARKER_RE.search(_event_message(obj))
             if match:
                 marked_failed.append((idx, match.group(0)))
+        elif etype == "stderr" and stderr_marker is None:
+            match = _GATEWAY_MARKER_RE.search(_event_message(obj))
+            if match:
+                stderr_marker = match.group(0)
     for idx, marker in marked_failed:
         if idx > last_completed_idx:
             return True, marker
+    if stderr_marker and any(idx > last_completed_idx for idx in failed_indices):
+        return True, stderr_marker
     return False, None
 
 

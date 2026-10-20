@@ -489,7 +489,7 @@ class ExploitGymCommandTests(unittest.TestCase):
                     return type("Result", (), {"exit_code": 0, "result": ""})()
                 if command.startswith("grep -hoE "):  # install-marker scan on run_agent.log
                     return type("Result", (), {"exit_code": 0, "result": infra_marker})()
-                if command.startswith("grep -E "):  # trajectory top-level event scan
+                if command.startswith("python3 -c "):  # bounded trajectory event scan
                     return type("Result", (), {"exit_code": 0, "result": ""})()
                 if command.startswith("test -f "):
                     exists = poc_exists if command.endswith("poc.bin") else patch_exists
@@ -2365,6 +2365,12 @@ class MissingArtifactInfraClassifierTests(unittest.TestCase):
         self.assertIsNone(reason)
         self.assertEqual(self._status(reason), "no_patch")
 
+    def test_turn_failed_followed_by_completion_stays_no_patch(self) -> None:
+        traj = "\n".join([self._ngrok_turn_failed(), self._turn_completed()])
+        reason, _ = self._decide(trajectory=traj, solver_cost=0.09)
+        self.assertIsNone(reason)
+        self.assertEqual(self._status(reason), "no_patch")
+
     def test_4_network_text_in_command_output_stays_no_patch(self) -> None:
         traj = "\n".join([self._command_with_network_text(), self._turn_completed()])
         reason, _ = self._decide(trajectory=traj, solver_cost=0.20)
@@ -2397,6 +2403,44 @@ class MissingArtifactInfraClassifierTests(unittest.TestCase):
         reason, _ = self._decide(trajectory=traj, solver_cost=0.0)
         self.assertEqual(reason, AGENT_INFRASTRUCTURE_ERROR_REASON)
         self.assertEqual(self._status(reason, mode="e2e"), "error")
+
+    def test_gateway_marker_in_trailing_stderr_requires_terminal_failure(self) -> None:
+        failed = "\n".join([
+            json.dumps({"type": "turn.failed", "error": {"message": "request failed"}}),
+            "--- stderr ---",
+            "The endpoint host.ngrok-free.dev is offline. ERR_NGROK_3200",
+        ])
+        reason, _ = self._decide(trajectory=failed, solver_cost=0.0)
+        self.assertEqual(reason, AGENT_INFRASTRUCTURE_ERROR_REASON)
+
+        no_failed_turn = "\n".join([
+            self._ngrok_error(1),
+            "--- stderr ---",
+            "The endpoint host.ngrok-free.dev is offline. ERR_NGROK_3200",
+        ])
+        reason, _ = self._decide(trajectory=no_failed_turn, solver_cost=0.0)
+        self.assertIsNone(reason)
+
+    def test_normalized_stderr_from_remote_scan_is_supported(self) -> None:
+        traj = "\n".join([
+            json.dumps({"type": "turn.failed", "error": {"message": "request failed"}}),
+            json.dumps({
+                "type": "stderr",
+                "message": "The endpoint host.ngrok-free.dev is offline",
+            }),
+        ])
+        reason, _ = self._decide(trajectory=traj, solver_cost=0.0)
+        self.assertEqual(reason, AGENT_INFRASTRUCTURE_ERROR_REASON)
+
+    def test_later_attempt_completion_clears_earlier_failed_attempt(self) -> None:
+        combined_attempts = "\n".join([
+            self._ngrok_turn_failed(),
+            json.dumps({"type": "stderr", "message": "ERR_NGROK_3200"}),
+            self._turn_completed(),
+        ])
+        reason, _ = self._decide(trajectory=combined_attempts, solver_cost=0.31)
+        self.assertIsNone(reason)
+        self.assertEqual(self._status(reason), "no_patch")
 
     def test_none_spend_with_trajectory_and_install_marker_is_unknown(self) -> None:
         # None spend is only treated as zero when no trajectory exists at all.

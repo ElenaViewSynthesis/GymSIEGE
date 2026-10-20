@@ -77,6 +77,56 @@ FIX_PATCH_FAILURE_NEEDLES = (
 )
 FIX_BUILD_FAILURE_NEEDLES = ("compile failed",)
 
+# This program runs inside the sandbox and emits only the final bounded window
+# of Codex's own terminal/error events plus the trailing stderr section. It
+# deliberately never returns item.* events, whose command output belongs to the
+# target under test and may legitimately contain gateway-shaped strings.
+_TRAJECTORY_INFRA_SCAN_SCRIPT = r"""
+import collections
+import json
+import sys
+
+events = collections.deque(maxlen=128)
+stderr_lines = collections.deque(maxlen=128)
+in_stderr = False
+try:
+    stream = open(sys.argv[1], encoding="utf-8", errors="replace")
+except OSError:
+    raise SystemExit(0)
+
+with stream:
+    for raw_line in stream:
+        line = raw_line.rstrip("\r\n")
+        if line == "--- stderr ---":
+            in_stderr = True
+            continue
+        if in_stderr:
+            stderr_lines.append(line[:4096])
+            continue
+        try:
+            event = json.loads(line)
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if not isinstance(event, dict):
+            continue
+        event_type = event.get("type")
+        if event_type not in {"error", "turn.failed", "turn.completed"}:
+            continue
+        if event_type == "turn.failed":
+            error = event.get("error")
+            message = error.get("message", "") if isinstance(error, dict) else ""
+        else:
+            message = event.get("message", "")
+        if not isinstance(message, str):
+            message = ""
+        events.append({"type": event_type, "message": message[:4096]})
+
+for event in events:
+    print(json.dumps(event, separators=(",", ":")))
+for message in stderr_lines:
+    print(json.dumps({"type": "stderr", "message": message}, separators=(",", ":")))
+""".strip()
+
 
 def _classify_fix_validation_failure(evidence: str) -> Optional[str]:
     """Classify explicit agent-owned patch/build failures from validate.py."""
@@ -725,32 +775,41 @@ finally:
 
         Reads markers only where infrastructure writes them: gateway/tunnel
         markers from Codex top-level ``turn.failed`` / ``turn.completed`` /
-        ``error`` events (a server-side ``grep`` drops every ``item.*`` command
-        line, so target output can never match), and install/preflight markers
-        from run_agent.log. The decision rules live in
+        ``error`` events and trailing stderr (a bounded server-side structured
+        scan drops every ``item.*`` command line, so target output can never
+        match), and install/preflight markers from run_agent.log. The decision
+        rules live in
         ``common.decide_missing_artifact_infra``. Returns
         ``(failure_reason, failure_detail)`` or ``(None, None)``.
         """
-        gateway_marker: Optional[str] = None
+        trajectory_evidence: list[str] = []
         for traj in trajectory_log_paths:
             if not traj:
                 continue
-            # Only top-level terminal/error events come back -- item.* command
-            # output (and its network-shaped text) is filtered out on the box.
+            # Only a bounded tail of top-level terminal/error events and the
+            # trailing stderr section comes back. item.* command output (and
+            # its network-shaped text) is filtered out inside the sandbox.
             cmd = (
-                "grep -E '^\\{\"type\":\"(error|turn\\.failed|turn\\.completed)\"' "
-                f"{shlex.quote(traj)} 2>/dev/null"
+                f"python3 -c {shlex.quote(_TRAJECTORY_INFRA_SCAN_SCRIPT)} "
+                f"{shlex.quote(traj)}"
             )
             try:
                 r = await self.sandbox.process.exec(cmd)
             except Exception as exc:  # a scan failure must not mask the result
                 log.warning("trajectory event scan failed for %s: %s", traj, exc)
                 continue
-            lines = (getattr(r, "result", "") or "").splitlines()
-            killed, marker = scan_trajectory_for_gateway_kill(lines)
-            if killed:
-                gateway_marker = marker
-                break
+            trajectory_evidence.extend(
+                (getattr(r, "result", "") or "").splitlines()
+            )
+
+        # Scan all attempt logs as one ordered stream. A completed later
+        # attempt therefore prevents an earlier failed attempt from being
+        # mistaken for the terminal state of the run.
+        killed, gateway_marker = scan_trajectory_for_gateway_kill(
+            trajectory_evidence
+        )
+        if not killed:
+            gateway_marker = None
 
         install_marker: Optional[str] = None
         if not gateway_marker and log_path:
