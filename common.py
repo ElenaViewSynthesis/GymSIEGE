@@ -482,6 +482,13 @@ def looks_oracle_unavailable(message: str) -> bool:
             "failed to fetch",
             "could not connect to",
             "connection timed out",
+            # A prepare script can invoke apt-get install without first
+            # populating the package index. That is a validator-image defect,
+            # not evidence about the agent's patch or PoC. Recipe-v3 validator
+            # images bake the known dependency (wget), while this keeps older
+            # snapshots fail-closed and retryable instead of publishing a
+            # capability failure with no isolated reconfirmation.
+            "unable to locate package",
         )
     )
 

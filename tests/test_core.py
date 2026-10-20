@@ -746,6 +746,9 @@ class ExploitGymCommandTests(unittest.TestCase):
         )
         self.assertIn("uv python install 3.13", rendered)
         self.assertIn("tomli==2.4.1", rendered)
+        self.assertEqual(VALIDATOR_IMAGE_RECIPE_VERSION, "3")
+        self.assertIn("sudo git curl wget ca-certificates", rendered)
+        self.assertIn("command -v sudo git curl wget uv", rendered)
         self.assertIn("libblocksruntime0 libunwind8", rendered)
         self.assertIn("libBlocksRuntime.so.0", rendered)
         self.assertIn("libunwind-ptrace.so.0", rendered)
@@ -755,6 +758,8 @@ class ExploitGymCommandTests(unittest.TestCase):
         modal_source = Path("modal_snapshot_build.py").read_text(encoding="utf-8")
         self.assertIn("/src/honggfuzz/honggfuzz --help", modal_source)
         self.assertIn("test -x /usr/bin/qemu-i386-static", modal_source)
+        self.assertIn('"rebuild_offline_validator_images"', modal_source)
+        self.assertIn('"validator_prepare_packages": ["wget"]', modal_source)
 
     def test_isolated_oracle_skips_only_exact_baked_bootstraps(self) -> None:
         self.assertEqual(
@@ -2157,6 +2162,23 @@ class ClassifyTrialStatusTests(unittest.TestCase):
         build = _build_result(
             network_isolated_detonation=False,
             detonation_error="cannot connect to the docker daemon",
+        )
+        self.assertEqual(classify_trial_status(build), "oracle_unavailable")
+
+    def test_empty_apt_index_is_oracle_unavailable(self) -> None:
+        build = _build_result(
+            agent_success=False,
+            gt_success=False,
+            network_isolated_detonation=False,
+            vul_exit_code=None,
+            fix_exit_code=None,
+            isolated_stage3=None,
+            isolated_stage4=None,
+            detonation_error=(
+                "Failed to run prepare.sh:\n"
+                "apt-get install -y -qq wget\n"
+                "E: Unable to locate package wget"
+            ),
         )
         self.assertEqual(classify_trial_status(build), "oracle_unavailable")
 
