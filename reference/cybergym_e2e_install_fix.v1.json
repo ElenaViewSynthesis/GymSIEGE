@@ -1,0 +1,62 @@
+{
+  "schema_version": 2,
+  "cohort_id": "cybergym-e2e-install-fix-v1",
+  "benchmark": "cybergym-e2e",
+  "mode": "e2e",
+  "provider": "modal",
+  "provisioning": "snapshot",
+  "model_provider": "litellm",
+  "litellm_model_id": "gpt-5.6-luna",
+  "agent": "codex",
+  "source_revision": {
+    "commit": "3487f29c9657490c463f07dbc6098b0e256ce1b8",
+    "dirty": false,
+    "diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "diff_scope": "git diff --binary HEAD -- . (tracked files; this untracked manifest is excluded)"
+  },
+  "snapshot_manifest": "cybergym/snapshots/modal_snapshot.json",
+  "snapshot_manifest_sha256": "78edd13ad3a86d8a05c78b69b0992691e5d61a6f53df7e927d7ba5853e4b79cc",
+  "snapshot_image_id": "im-01M5DS5M8S2FATYWEKPKN6ZKNZ",
+  "ordered_tasks": [
+    "arrow/arvo_41221",
+    "opensc/oss-fuzz_448717172"
+  ],
+  "trial_numbers": [
+    1
+  ],
+  "batch_id": "cybergym-e2e-install-fix-v1-r2",
+  "smoke_task": "arrow/arvo_41221",
+  "retry_policy": {
+    "max_attempts": 3,
+    "retry_sleep_s": 20,
+    "retryable_statuses": [
+      "error",
+      "oracle_unavailable"
+    ]
+  },
+  "output_root": "results/modal_trials_e2e",
+  "paper_output_root": "results/paper/cybergym-e2e-install-fix-v1",
+  "exclusion_rules": {
+    "terminal_statuses": [
+      "success",
+      "failed",
+      "no_patch",
+      "no_poc",
+      "other_vuln",
+      "oracle_mismatch"
+    ],
+    "retry_missing_result": true,
+    "retry_malformed_result": true,
+    "unknown_status_action": "exclude-and-stop-cell",
+    "note": "Terminal model outcomes remain in the capability denominator; only preserved infrastructure-invalid attempts are excluded."
+  },
+  "cost_estimate": {
+    "currency": "USD",
+    "planned_cells": 2,
+    "estimated_cost_per_cell": 0.13,
+    "estimated_total": 0.26,
+    "basis": "Per-cell estimate carried over from cybergym-e2e-paper-v1 (measured curl pilot $0.124, rounded up).",
+    "note": "Planning estimate only, not a provider-side hard cap."
+  },
+  "purpose": "Diagnostic cohort for the two tasks whose Codex install fails in snapshot im-01M376G3D7WYH73HT614RRXE5C: the installer clones nvm from /deps/git/github.com/nvm-sh/nvm.git, which is missing in these task images. Runs only after a snapshot or install fix that changes nothing but the install (same Codex/toolchain versions, model, prompts, oracle and egress policy as cybergym-e2e-paper-v1-r2). Results are reported pooled with cybergym-e2e-paper-v1-r2 as one 22-task cohort, with the different snapshot image disclosed and the 20-task single-batch rate given as a sensitivity check."
+}
