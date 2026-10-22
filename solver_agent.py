@@ -67,6 +67,12 @@ VALIDATOR_DEPENDENCY_CHECK = (
 ISOLATED_ORACLE_PREPARE_TIMEOUT_S = 4000
 ISOLATED_ORACLE_DETONATE_TIMEOUT_S = 16800
 ISOLATED_ORACLE_CLEANUP_TIMEOUT_S = 300
+# run_agent.py stops the agent at --timeout, then still has to build and grade
+# both arms and write summary.json. The outer exec limit must leave room for
+# that, or a budget-exhausting agent on a heavy build (ffmpeg) is SIGKILLed
+# (exit 137) before grading and recorded as an infrastructure error. Widening
+# this does not lengthen the agent's own budget.
+RUN_AGENT_GRADING_GRACE_S = 3600
 I386_ARCHITECTURE_PATTERN = r"(?m)^\s*(?:export\s+)?ARCHITECTURE\s*=\s*['\"]?i386['\"]?\s*$"
 I386_QEMU_HOST_PATH = "/usr/bin/qemu-i386-static"
 I386_QEMU_CONTAINER_PATH = "/usr/local/bin/gymsiege-qemu-i386-static"
@@ -612,7 +618,7 @@ finally:
             f">> {shlex.quote(log_path)} 2>&1"
         )
         log.info("[%s] build/PoC/patch loop starting (mode=%s, agent=%s)", task.path, mode, self.model.agent)
-        r = await self.sandbox.process.exec(cmd, timeout=timeout + 120)
+        r = await self.sandbox.process.exec(cmd, timeout=timeout + RUN_AGENT_GRADING_GRACE_S)
         ok_exec = getattr(r, "exit_code", 1) == 0
 
         # Upstream writes agent_output/<task>/<timestamp_mode>/summary.json.

@@ -2685,6 +2685,23 @@ class ModalTelemetryProbeTests(unittest.IsolatedAsyncioTestCase):
 
 
 class ModalCreateSandboxTests(unittest.IsolatedAsyncioTestCase):
+    async def test_run_agent_exec_leaves_a_real_grading_window(self) -> None:
+        # The agent is stopped at --timeout; run_agent.py must still be able to
+        # build and grade both arms before the outer exec limit kills it.
+        self.assertGreaterEqual(modal_sandbox_runner.RUN_AGENT_GRADING_GRACE_S, 1800)
+        source = Path("solver_agent.py").read_text(encoding="utf-8")
+        self.assertIn("timeout=timeout + RUN_AGENT_GRADING_GRACE_S", source)
+        self.assertNotIn("timeout=timeout + 120", source)
+        # The sandbox must outlive the widened exec plus the isolated oracle.
+        self.assertGreaterEqual(
+            modal_sandbox_runner.TRIAL_SANDBOX_TIMEOUT_S,
+            modal_sandbox_runner.AGENT_TIMEOUT_S
+            + modal_sandbox_runner.RUN_AGENT_GRADING_GRACE_S
+            + modal_sandbox_runner.ISOLATED_ORACLE_PREPARE_TIMEOUT_S
+            + modal_sandbox_runner.ISOLATED_ORACLE_DETONATE_TIMEOUT_S,
+        )
+        self.assertLess(modal_sandbox_runner.TRIAL_SANDBOX_TIMEOUT_S, 86400)
+
     async def test_fork_provisioning_is_rejected(self) -> None:
         # Modal has no live-sandbox fork API (unlike Daytona) -- this must
         # fail loudly rather than silently falling back to some other mode.
