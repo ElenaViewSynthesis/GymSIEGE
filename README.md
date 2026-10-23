@@ -1627,6 +1627,6 @@ ARVO reproduces findings from Google's [OSS-Fuzz](https://github.com/google/oss-
 
 ## Gateway traffic
 
-The CI eval routes model calls through a LiteLLM gateway behind an ngrok tunnel. The ngrok Usage panel over a 30-day window shows the request volume this generates — 8.23k requests / 774.3 MB transferred across 138 active hours:
+The CI eval routes model calls through a LiteLLM gateway behind an ngrok tunnel. The ngrok Usage panel over a 30-day window shows the request volume this generates — 9.98k requests / 1.11 GB transferred across 146 active hours:
 
-![ngrok endpoint Usage panel over 30 days: 138 Active Hours, no TPUs, 8.23k Requests, and 774.3 MB Data Transfer Out, each with a daily sparkline](assets/ngrok_requests_cropped.png)
+![ngrok endpoint Usage panel over 30 days: 146 Active Hours, no TPUs, 9.98k Requests, and 1.11 GB Data Transfer Out, each with a daily sparkline](assets/ngrok_requests_cropped.png)
