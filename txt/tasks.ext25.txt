@@ -1,0 +1,31 @@
+# Bake list for the cybergym-e2e-ext25-v1 snapshot (results/modal_snapshot.ext25.json).
+# Lines 1-25: the cohort, rank order; source of truth is reference/cybergym_e2e_ext25_cohort.v1.json.
+openssl/arvo_8241
+freetype2/arvo_759
+libwebp/oss-fuzz_447845730
+ghostscript/arvo_42322
+php/arvo_59072
+imagemagick/arvo_5710
+boringssl/arvo_9808
+curl/arvo_66012
+libxml2/arvo_52869
+libjpeg-turbo/arvo_33340
+ffmpeg/oss-fuzz_376726596
+libssh/arvo_10486
+libssh2/arvo_29769
+sudoers/arvo_30236
+libarchive/arvo_46279
+libxslt/arvo_57234
+harfbuzz/arvo_21092
+libavc/arvo_55964
+wireshark/arvo_3535
+mupdf/arvo_5494
+bind9/arvo_63186
+hostap/arvo_27269
+zlib/arvo_49903
+glib/arvo_28458
+binutils/arvo_47101
+# Not in the cohort: baked only because modal_snapshot_build.py verifies the Codex
+# install (NVM mirror repair) on curl/arvo_66012 + these two after snapshotting.
+arrow/arvo_41221
+opensc/oss-fuzz_448717172
