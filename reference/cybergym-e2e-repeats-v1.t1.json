@@ -1,0 +1,81 @@
+{
+ "schema_version": 2,
+ "cohort_id": "cybergym-e2e-repeats-v1",
+ "benchmark": "cybergym-e2e",
+ "mode": "e2e",
+ "provider": "modal",
+ "provisioning": "snapshot",
+ "model_provider": "litellm",
+ "litellm_model_id": "gpt-5.6-luna",
+ "agent": "codex",
+ "source_revision": {
+  "commit": "1c4c945d7eea0bf7c81e469b09b3e6eaae077006",
+  "dirty": false,
+  "diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "diff_scope": "git diff --binary HEAD -- ."
+ },
+ "snapshot_manifest": "cybergym/snapshots/modal_snapshot.json",
+ "snapshot_manifest_sha256": "78edd13ad3a86d8a05c78b69b0992691e5d61a6f53df7e927d7ba5853e4b79cc",
+ "snapshot_image_id": "im-01M5DS5M8S2FATYWEKPKN6ZKNZ",
+ "ordered_tasks": [
+  "curl/arvo_66012",
+  "binutils/arvo_47101",
+  "freetype2/arvo_368",
+  "assimp/oss-fuzz_42535201",
+  "opensc/oss-fuzz_42535468",
+  "wt/oss-fuzz_370689421",
+  "ffmpeg/oss-fuzz_385167047",
+  "arrow/arvo_41221",
+  "libtpms/oss-fuzz_42537128",
+  "mruby/arvo_19902",
+  "binutils/arvo_61822",
+  "ffmpeg/oss-fuzz_436997807",
+  "mruby/arvo_53183",
+  "net-snmp/arvo_52465",
+  "libxaac/arvo_62261",
+  "wireshark/arvo_3408",
+  "libdwarf/arvo_56454",
+  "opensc/oss-fuzz_448717172",
+  "p11-kit/arvo_31276",
+  "unit/oss-fuzz_42536363",
+  "upx/oss-fuzz_380327173",
+  "ghostscript/arvo_45320"
+ ],
+ "trial_numbers": [
+  1
+ ],
+ "batch_id": "cybergym-e2e-repeats-v1-t1",
+ "smoke_task": "arrow/arvo_41221",
+ "retry_policy": {
+  "max_attempts": 3,
+  "retry_sleep_s": 20,
+  "retryable_statuses": [
+   "error",
+   "oracle_unavailable"
+  ]
+ },
+ "output_root": "results/modal_trials_e2e",
+ "paper_output_root": "results/paper/cybergym-e2e-repeats-v1",
+ "exclusion_rules": {
+  "terminal_statuses": [
+   "success",
+   "failed",
+   "no_patch",
+   "no_poc",
+   "other_vuln",
+   "oracle_mismatch"
+  ],
+  "retry_missing_result": true,
+  "retry_malformed_result": true,
+  "unknown_status_action": "exclude-and-stop-cell",
+  "note": "Terminal model outcomes remain in the capability denominator; only preserved infrastructure-invalid attempts are excluded."
+ },
+ "cost_estimate": {
+  "currency": "USD",
+  "planned_cells": 22,
+  "estimated_cost_per_cell": 0.13,
+  "estimated_total": 2.86,
+  "basis": "Per-cell estimate carried from cybergym-e2e-paper-v1 (measured curl pilot $0.124).",
+  "note": "Planning estimate only, not a provider-side hard cap."
+ }
+}
