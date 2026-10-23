@@ -323,8 +323,14 @@ async def _probe_telemetry(process: _ModalProcessProxy, task_path: str) -> dict:
     return parsed
 
 
-def _artifact_path(task: Task, mode: Mode, trial: int, filename: str) -> Path:
-    path = ARTIFACTS_DIR / task.safe_name / mode / f"trial-{trial}" / filename
+def _artifact_path(
+    task: Task, mode: Mode, trial: int, filename: str, cohort_id: str | None = None,
+) -> Path:
+    # Cohorts share task names and trial numbers (curl/arvo_66012 trial 1 is in
+    # both the repeats and the ext25 cohort), so a cohort run gets its own root
+    # instead of overwriting another cohort's artifacts.
+    root = ARTIFACTS_DIR / cohort_id if cohort_id else ARTIFACTS_DIR
+    path = root / task.safe_name / mode / f"trial-{trial}" / filename
     path.parent.mkdir(parents=True, exist_ok=True)
     return path
 
@@ -475,20 +481,20 @@ async def run_trial(
         # why the patch is missing in the first place.
         if build.poc_path:
             try:
-                local = _artifact_path(task, mode, trial, "poc.bin")
+                local = _artifact_path(task, mode, trial, "poc.bin", cohort_id)
                 await asyncio.to_thread(sandbox.filesystem.copy_to_local, build.poc_path, str(local))
                 result.poc_local_path = str(local)
             except Exception as exc:
                 log.warning("[%s] poc.bin download failed: %s", task.path, exc)
         if build.patch_path:
             try:
-                local = _artifact_path(task, mode, trial, "fix.patch")
+                local = _artifact_path(task, mode, trial, "fix.patch", cohort_id)
                 await asyncio.to_thread(sandbox.filesystem.copy_to_local, build.patch_path, str(local))
                 result.patch_local_path = str(local)
             except Exception as exc:
                 log.warning("[%s] fix.patch download failed: %s", task.path, exc)
         try:
-            local = _artifact_path(task, mode, trial, "run_agent.log")
+            local = _artifact_path(task, mode, trial, "run_agent.log", cohort_id)
             await asyncio.to_thread(sandbox.filesystem.copy_to_local, build.log_path, str(local))
             result.log_local_path = str(local)
         except Exception as exc:
@@ -497,7 +503,7 @@ async def run_trial(
             local_traj: list[str] = []
             for i, remote_traj in enumerate(build.trajectory_log_paths):
                 try:
-                    local = _artifact_path(task, mode, trial, f"trajectory_attempt_{i + 1}.log")
+                    local = _artifact_path(task, mode, trial, f"trajectory_attempt_{i + 1}.log", cohort_id)
                     await asyncio.to_thread(sandbox.filesystem.copy_to_local, remote_traj, str(local))
                     local_traj.append(str(local))
                 except Exception as exc:

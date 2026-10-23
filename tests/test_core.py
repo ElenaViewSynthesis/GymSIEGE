@@ -2984,3 +2984,16 @@ class OracleGapTests(unittest.TestCase):
         # Single-model input gets no pooled duplicate.
         one = summarise_by_model(rows[:1], self.Z95)
         self.assertEqual([g.model for g in one], ["a"])
+
+
+class ModalArtifactPathTests(unittest.TestCase):
+    def test_cohort_runs_get_their_own_artifact_root(self):
+        with tempfile.TemporaryDirectory() as tmp, \
+                patch.object(modal_sandbox_runner, "ARTIFACTS_DIR", Path(tmp)):
+            task = modal_sandbox_runner.Task.parse("curl/arvo_66012")
+            legacy = modal_sandbox_runner._artifact_path(task, "e2e", 1, "poc.bin")
+            ext = modal_sandbox_runner._artifact_path(task, "e2e", 1, "poc.bin", "cybergym-e2e-ext25-v1")
+            self.assertEqual(legacy, Path(tmp) / "curl_arvo_66012" / "e2e" / "trial-1" / "poc.bin")
+            self.assertEqual(
+                ext, Path(tmp) / "cybergym-e2e-ext25-v1" / "curl_arvo_66012" / "e2e" / "trial-1" / "poc.bin")
+            self.assertTrue(ext.parent.is_dir())
