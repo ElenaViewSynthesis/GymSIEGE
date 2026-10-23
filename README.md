@@ -222,6 +222,38 @@ publications, changed hashes, and an existing paper directory. It writes cohort
 and exclusion provenance beside the inputs; the funnel writes a companion
 metadata JSON with its labels, counts, denominator, modes, and source hashes.
 
+##### Extension cohort: 25 industry-critical tasks (`cybergym-e2e-ext25-v1`)
+
+A second, pre-declared end-to-end cohort of 25 CyberGym tasks chosen for
+real-world stakes rather than benchmark sampling. Tasks are ranked by four
+criteria fixed before any run: the project has a CISA Known Exploited
+Vulnerabilities entry (8 of 25: OpenSSL, FreeType, libwebp, Ghostscript, PHP,
+ImageMagick, sudo, BIND 9), it is widely deployed and parses untrusted input,
+the crash sits in the same component as an exploited CVE (FreeType's
+variable-font code, libwebp's BLASTPASS-era VP8L decoder), and writes and
+use-after-free bugs rank above uninitialized reads and UB reports. The list,
+criteria and per-task rationale are frozen in
+`reference/cybergym_e2e_ext25_cohort.v1.json`; the cohort runs two trials per
+task and is reported separately from the 22-task repeats cohort, never pooled
+with it. It has its own snapshot, because the pinned 22-task image lacks 23 of
+these tasks.
+
+```bash
+# One-time: bake the 25-task image (export the Modal token from .env.local,
+# since .env.defaults otherwise blanks it), then freeze the two manifests.
+set -a; . <(grep -E '^MODAL_TOKEN_(ID|SECRET)=' .env.local); set +a
+PYDANTIC_DISABLE_PLUGINS=1 .venv/bin/python modal_snapshot_build.py   --tasks-file txt/tasks.ext25.txt --output results/modal_snapshot.ext25.json
+bash freeze_e2e_ext25.sh
+
+# Paid: the smoke cell, then the full trial gated on the smoke result's SHA-256.
+bash run_ext25_trial.sh -k 1    # trial 1
+bash run_ext25_trial.sh -k 2    # trial 2, after trial 1 finishes
+```
+
+`artifacts/<task>/e2e/trial-N/` is not scoped by cohort, so the two tasks shared
+with the repeats cohort (`curl/arvo_66012`, `binutils/arvo_47101`) overwrite each
+other's run logs; back those directories up before the extension runs them.
+
 ##### Reproduce it in CI (sharded GitHub Actions)
 
 For a hands-off reproduction, [`cybergym-pinned-modal.yml`](.github/workflows/cybergym-pinned-modal.yml) runs the same pinned set on GitHub Actions. A GitHub-hosted job is capped at 6h while the full serial run is ~9h, so the workflow **shards** the 22 tasks across `N` parallel jobs and runs each shard's slice sequentially — every shard then finishes under the cap. Tasks are assigned **round-robin** (task *i* → shard `i % N`: task 0→shard 0, 1→shard 1, …, 4→shard 0 again), which spreads the slow-compile outliers (ffmpeg, binutils) across different shards instead of clustering them, keeping per-shard wall times balanced. A free `validate` job checks the task corpus on every PR/push; the paid `run` job is manual `workflow_dispatch` only, so nothing spins up a Modal sandbox on push.
@@ -233,7 +265,7 @@ The LiteLLM credentials are injected into each Modal sandbox from the shared `gy
 # and the Modal secret present
 curl -sS -m 10 -o /dev/null -w 'gateway /v1/models -> HTTP %{http_code}\n' \
   -H "Authorization: Bearer $OPENAI_API_KEY" \
-  https://exchange-pug-shortly.ngrok-free.dev/v1/models
+  https://pedigree-chamomile-importer.ngrok-free.dev/v1/models
 modal secret list | grep gymsiege-litellm      # must exist; see refresh command below
 
 # Refresh the shared secret atomically. LITELLM_SECRET_KEY is the scoped
@@ -255,17 +287,17 @@ modal secret create gymsiege-litellm \
 
 # dispatch: 22 pinned tasks across 4 shards
 gh workflow run cybergym-pinned-modal.yml --ref main \
-  -f litellm_base_url=https://exchange-pug-shortly.ngrok-free.dev \
+  -f litellm_base_url=https://pedigree-chamomile-importer.ngrok-free.dev \
   -f shards=4
 
 # variant: more shards = shorter per-shard wall time (round-robin task split, 1-22)
 gh workflow run cybergym-pinned-modal.yml --ref main \
-  -f litellm_base_url=https://exchange-pug-shortly.ngrok-free.dev \
+  -f litellm_base_url=https://pedigree-chamomile-importer.ngrok-free.dev \
   -f shards=8
 
 # variant: pin a shared run id (S3 prefix + Langfuse run id for the whole batch)
 gh workflow run cybergym-pinned-modal.yml --ref main \
-  -f litellm_base_url=https://exchange-pug-shortly.ngrok-free.dev \
+  -f litellm_base_url=https://pedigree-chamomile-importer.ngrok-free.dev \
   -f shards=4 \
   -f run_id="pinned-$(date +%Y%m%d-%H%M%S)"
 
@@ -283,7 +315,7 @@ At `shards=4` the split is 6/6/5/5 tasks; more shards = shorter per-shard wall t
 ```bash
 # 10-task smoke test across 4 shards (~2-3 tasks/shard)
 gh workflow run cybergym-pinned-modal.yml --ref main \
-  -f litellm_base_url=https://exchange-pug-shortly.ngrok-free.dev \
+  -f litellm_base_url=https://pedigree-chamomile-importer.ngrok-free.dev \
   -f shards=4 \
   -f max_tasks=10
 
@@ -301,13 +333,13 @@ gh run view "$RID" --json jobs -q '.jobs[] | "\(.name)\t\(.status)\t\(.conclusio
 ```bash
 # 1. single-task repro first -- cheapest proof the whole path works end-to-end
 gh workflow run cybergym-pinned-modal.yml --ref main \
-  -f litellm_base_url=https://exchange-pug-shortly.ngrok-free.dev \
+  -f litellm_base_url=https://pedigree-chamomile-importer.ngrok-free.dev \
   -f shards=1 -f max_tasks=1
 
 # 2. then the full 22 (max_tasks=0 = all). Cost is identical across shard counts;
 #    only wall time changes: shards=11 -> 2/shard (~50 min), shards=22 -> 1/shard (~25 min).
 gh workflow run cybergym-pinned-modal.yml --ref main \
-  -f litellm_base_url=https://exchange-pug-shortly.ngrok-free.dev \
+  -f litellm_base_url=https://pedigree-chamomile-importer.ngrok-free.dev \
   -f shards=8 -f max_tasks=0
 
 # 3. watch to completion with the dedicated sharded-run watcher: per-shard status,
