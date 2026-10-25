@@ -82,6 +82,9 @@ snapshot_build.metrics.json
 # personal resume/interview notes, not project documentation
 interview-bullets.md
 
+# research-funding cost notes, not project documentation -- local-only
+MercorFunds.md
+
 # ad-hoc agent handoff notes, not project documentation -- local-only
 codex-handoff-*.md
 HANDOFF-*.md
