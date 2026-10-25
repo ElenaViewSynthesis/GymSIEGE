@@ -372,8 +372,14 @@ def table_rows_tex(mode_label: str, groups: list[dict[str, Any]], summary: dict[
         else f" & {_pct(s['mean'])}\\% [{_pct(s['lo'])}, {_pct(s['hi'])}]"
         for s in (summary[f"pass@{k}"] for k in ks)
     )
+    # pass@k covers only tasks with at least k trials, so name any column whose
+    # task count differs from the cohort total instead of implying it covers all.
+    narrower = [f"pass@{k} over {summary[f'pass@{k}']['tasks']}" for k in ks
+                if summary[f"pass@{k}"].get("tasks")
+                and summary[f"pass@{k}"]["tasks"] != total_tasks]
+    note = f" ({'; '.join(narrower)})" if narrower else ""
     lines.append(
-        f"\\multicolumn{{5}}{{@{{}}l}}{{\\textbf{{All {total_tasks} valid tasks, {mode_label}}}}}"
+        f"\\multicolumn{{5}}{{@{{}}l}}{{\\textbf{{All {total_tasks} valid tasks, {mode_label}}}{note}}}"
         f"{totals} \\\\"
     )
     return "\n".join(lines) + "\n"

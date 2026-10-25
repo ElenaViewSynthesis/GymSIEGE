@@ -253,6 +253,19 @@ def test_table_rows_emit_one_pass_column_per_k():
     assert "---" not in lines[-1]
 
 
+def test_table_rows_name_a_pass_at_k_over_fewer_tasks():
+    # A task with one trial counts toward pass@1 but not pass@2, so the totals
+    # label must say pass@2 covers fewer tasks than the cohort total.
+    ks = [1, 2]
+    tasks = agg.by_task(_cohort() + [_trial("e/5", 1, "success")])
+    groups = agg.first_trial_groups(tasks, ks, 100, 0, agg._z_for(0.95))
+    summary = agg.cohort_passk(agg.passk_by_task(tasks, ks), ks, 100, 0)
+    last = agg.table_rows_tex("End-to-end", groups, summary, ks, len(tasks)).splitlines()[-1]
+    assert "All 5 valid tasks, End-to-end" in last
+    assert "(pass@2 over 4)" in last and "pass@1 over" not in last
+    assert len(_cells(last)) == 1 + len(ks)
+
+
 def test_table_rows_mark_an_undefined_pass_at_k():
     # One trial per task: pass@2 and pass@3 have no eligible task, so they are
     # undefined and must render as ---, never as a zero.
