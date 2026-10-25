@@ -1,6 +1,6 @@
 name: Honeypot default-deny baseline
 
-# Required CI baseline for the two 200-case default-deny honeypot corpora
+# Required CI baseline for the two default-deny honeypot corpora
 # (agent-propagation and model-replication). It validates corpus structure and
 # command syntax WITHOUT executing any case, runs the corpus unit tests, and
 # records the approved corpus hashes, scoring (schema) version, and aggregate
@@ -50,7 +50,7 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Validate both 200-case corpora (structure + syntax, no execution)
+      - name: Validate both corpora (structure + syntax, no execution)
         run: |
           set -euo pipefail
           mkdir -p results/honeypot-default-deny
@@ -102,7 +102,10 @@ jobs:
             echo "| agent-propagation | $(python3 -c "import json;print(json.load(open('results/honeypot-default-deny/agent-propagation.json'))['items'])") | valid | \`${agent_hash:0:16}…\` | $agent_ver |"
             echo "| model-replication | $(python3 -c "import json;print(json.load(open('results/honeypot-default-deny/model-replication.json'))['items'])") | valid | \`${model_hash:0:16}…\` | $model_ver |"
           } >> "$GITHUB_STEP_SUMMARY"
-          echo "OK: both default-deny corpora valid (400 cases total)."
+          total=$(jq -s 'map(.items) | add' \
+            results/honeypot-default-deny/agent-propagation.json \
+            results/honeypot-default-deny/model-replication.json)
+          echo "OK: both default-deny corpora valid (${total} cases total)."
 
       - name: Upload default-deny evidence
         if: always()

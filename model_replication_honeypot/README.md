@@ -47,7 +47,7 @@ c.fine_tuning.create(training_file=f.id, model="canary/base")
 Artifacts include raw replication events, the nested process-honeypot report,
 and a combined `report.json`. See [RUBRIC.md](RUBRIC.md).
 
-The structured 200-case provider-replication corpus is documented in
+The structured 205-case provider-replication corpus is documented in
 [`corpus/README.md`](corpus/README.md).
 
 ## Modal hard-sandbox boundary
