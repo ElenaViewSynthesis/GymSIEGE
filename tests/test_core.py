@@ -3047,3 +3047,28 @@ class ModalArtifactPathTests(unittest.TestCase):
             self.assertEqual(
                 ext, Path(tmp) / "cybergym-e2e-ext25-v1" / "curl_arvo_66012" / "e2e" / "trial-1" / "poc.bin")
             self.assertTrue(ext.parent.is_dir())
+
+
+class EnvFilePrecedenceTests(unittest.TestCase):
+    """The environment beats .env.local, which beats .env, which beats .env.defaults."""
+
+    def test_local_values_win_over_default_placeholders(self) -> None:
+        names = ("GYMSIEGE_T_PLACEHOLDER", "GYMSIEGE_T_URL", "GYMSIEGE_T_MID", "GYMSIEGE_T_DEFAULT_ONLY")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / ".env.defaults").write_text(
+                "GYMSIEGE_T_PLACEHOLDER=\nGYMSIEGE_T_URL=http://localhost:4000\nGYMSIEGE_T_MID=d\n"
+                "GYMSIEGE_T_DEFAULT_ONLY=d\nGYMSIEGE_T_SHELL=d\n", encoding="utf-8")
+            (root / ".env").write_text("GYMSIEGE_T_URL=http://env.example\nGYMSIEGE_T_MID=env\n", encoding="utf-8")
+            (root / ".env.local").write_text(
+                "GYMSIEGE_T_PLACEHOLDER=local\nGYMSIEGE_T_URL=https://local.example\nGYMSIEGE_T_SHELL=local\n",
+                encoding="utf-8")
+            with patch.dict(os.environ, {"GYMSIEGE_T_SHELL": "shell"}):
+                for name in names:
+                    os.environ.pop(name, None)
+                common.load_env_files(root)
+                self.assertEqual(os.environ["GYMSIEGE_T_PLACEHOLDER"], "local")
+                self.assertEqual(os.environ["GYMSIEGE_T_URL"], "https://local.example")
+                self.assertEqual(os.environ["GYMSIEGE_T_MID"], "env")
+                self.assertEqual(os.environ["GYMSIEGE_T_DEFAULT_ONLY"], "d")
+                self.assertEqual(os.environ["GYMSIEGE_T_SHELL"], "shell")

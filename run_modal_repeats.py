@@ -553,10 +553,10 @@ def _load_local_env() -> None:
         from dotenv import dotenv_values
     except ImportError as exc:  # pragma: no cover - dependency is in requirements
         raise ManifestError("python-dotenv is required for paid execution") from exc
-    # ``common`` loads .env.defaults first, where credential placeholders are
-    # intentionally empty.  python-dotenv treats those empty strings as set, so
-    # load_dotenv(..., override=False) would never hydrate the real local values.
-    # Fill only missing/empty variables to preserve any non-empty shell override.
+    # ``common`` already lets .env.local win over the empty .env.defaults
+    # placeholders, but an injected environment always wins there, including a
+    # variable the shell exported as empty. Re-read .env.local and fill only
+    # missing/empty variables, so a non-empty shell override is preserved.
     for name, value in dotenv_values(ROOT / ".env.local").items():
         if value is not None and not os.environ.get(name):
             os.environ[name] = value

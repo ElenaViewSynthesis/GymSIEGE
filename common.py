@@ -37,15 +37,24 @@ DATA_DIR = ROOT / "data"
 
 # Every entrypoint imports common, so loading local configuration here is
 # enough to expose it through os.environ without any caller reading or logging
-# secret values. An already-injected environment always wins.
-try:
-    from dotenv import load_dotenv
+# secret values. An already-injected environment always wins, then .env.local,
+# then .env, then the .env.defaults placeholders. With override=False the first
+# file to set a variable keeps it, so the most specific file loads first; loading
+# .env.defaults first let its empty credential placeholders, localhost gateway
+# URL and EU Langfuse host shadow the real .env.local values.
+ENV_FILES = (".env.local", ".env", ".env.defaults")
 
-    load_dotenv(ROOT / ".env.defaults", override=False)
-    load_dotenv(ROOT / ".env", override=False)
-    load_dotenv(ROOT / ".env.local", override=False)
-except ImportError:  # pragma: no cover - python-dotenv is in requirements.txt
-    pass
+
+def load_env_files(root: Path = ROOT) -> None:
+    try:
+        from dotenv import load_dotenv
+    except ImportError:  # pragma: no cover - python-dotenv is in requirements.txt
+        return
+    for name in ENV_FILES:
+        load_dotenv(root / name, override=False)
+
+
+load_env_files()
 
 RESULTS_JSON = RESULTS_DIR / "exploitgym-runs" / "results.json"
 EVENTS_NDJSON = RESULTS_DIR / "events.ndjson"
