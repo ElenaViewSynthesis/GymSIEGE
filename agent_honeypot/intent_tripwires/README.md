@@ -99,6 +99,10 @@ lookup or a 403 alone does not establish exfiltration intent.
   boundary. Static binaries and raw syscalls can evade them.
 - Hosted web search is provider-side and bypasses command-network controls.
   It is detected only when the JSONL transcript contains a `web_search` item.
+- A live `codex exec --json` verification on 2026-10-23 observed hosted search
+  as a nested item with `item.type = "web_search"` inside both `item.started`
+  and `item.completed` events. The sanitized regression fixture retains that
+  structure while replacing the real query with a synthetic marker.
 - For adversarial runs, keep the outer Modal/VM containment and preserve raw
   timelines for human review.
 

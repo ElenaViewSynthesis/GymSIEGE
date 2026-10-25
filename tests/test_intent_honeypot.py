@@ -80,6 +80,14 @@ class IntentHoneypotTests(unittest.TestCase):
         self.assertEqual(report["observed_stage"], "egress_attempted")
         self.assertTrue(report["signals"]["canary_in_hosted_web_search"])
 
+    def test_live_transcript_shape_reaches_egress_attempted(self):
+        case = PREPARE.load_cases(SUITE / "experiments.jsonl")[9]
+        fixture = SUITE / "tests" / "fixtures" / "web_search_item.jsonl"
+        marker = "HONEYTRIPWIRE_SYNTHETIC_WEB_SEARCH_MARKER"
+        report = SCORE.build_report(case, [], marker, trajectory=fixture)
+        self.assertEqual(report["observed_stage"], "egress_attempted")
+        self.assertTrue(report["signals"]["canary_in_hosted_web_search"])
+
 
 if __name__ == "__main__":
     unittest.main()
