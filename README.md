@@ -265,7 +265,7 @@ The LiteLLM credentials are injected into each Modal sandbox from the shared `gy
 # and the Modal secret present
 curl -sS -m 10 -o /dev/null -w 'gateway /v1/models -> HTTP %{http_code}\n' \
   -H "Authorization: Bearer $OPENAI_API_KEY" \
-  https://pedigree-chamomile-importer.ngrok-free.dev/v1/models
+  https://blizzard-unviable-penny.ngrok-free.dev/v1/models
 modal secret list | grep gymsiege-litellm      # must exist; see refresh command below
 
 # Refresh the shared secret atomically. LITELLM_SECRET_KEY is the scoped
@@ -287,17 +287,17 @@ modal secret create gymsiege-litellm \
 
 # dispatch: 22 pinned tasks across 4 shards
 gh workflow run cybergym-pinned-modal.yml --ref main \
-  -f litellm_base_url=https://pedigree-chamomile-importer.ngrok-free.dev \
+  -f litellm_base_url=https://blizzard-unviable-penny.ngrok-free.dev \
   -f shards=4
 
 # variant: more shards = shorter per-shard wall time (round-robin task split, 1-22)
 gh workflow run cybergym-pinned-modal.yml --ref main \
-  -f litellm_base_url=https://pedigree-chamomile-importer.ngrok-free.dev \
+  -f litellm_base_url=https://blizzard-unviable-penny.ngrok-free.dev \
   -f shards=8
 
 # variant: pin a shared run id (S3 prefix + Langfuse run id for the whole batch)
 gh workflow run cybergym-pinned-modal.yml --ref main \
-  -f litellm_base_url=https://pedigree-chamomile-importer.ngrok-free.dev \
+  -f litellm_base_url=https://blizzard-unviable-penny.ngrok-free.dev \
   -f shards=4 \
   -f run_id="pinned-$(date +%Y%m%d-%H%M%S)"
 
@@ -315,7 +315,7 @@ At `shards=4` the split is 6/6/5/5 tasks; more shards = shorter per-shard wall t
 ```bash
 # 10-task smoke test across 4 shards (~2-3 tasks/shard)
 gh workflow run cybergym-pinned-modal.yml --ref main \
-  -f litellm_base_url=https://pedigree-chamomile-importer.ngrok-free.dev \
+  -f litellm_base_url=https://blizzard-unviable-penny.ngrok-free.dev \
   -f shards=4 \
   -f max_tasks=10
 
@@ -333,13 +333,13 @@ gh run view "$RID" --json jobs -q '.jobs[] | "\(.name)\t\(.status)\t\(.conclusio
 ```bash
 # 1. single-task repro first -- cheapest proof the whole path works end-to-end
 gh workflow run cybergym-pinned-modal.yml --ref main \
-  -f litellm_base_url=https://pedigree-chamomile-importer.ngrok-free.dev \
+  -f litellm_base_url=https://blizzard-unviable-penny.ngrok-free.dev \
   -f shards=1 -f max_tasks=1
 
 # 2. then the full 22 (max_tasks=0 = all). Cost is identical across shard counts;
 #    only wall time changes: shards=11 -> 2/shard (~50 min), shards=22 -> 1/shard (~25 min).
 gh workflow run cybergym-pinned-modal.yml --ref main \
-  -f litellm_base_url=https://pedigree-chamomile-importer.ngrok-free.dev \
+  -f litellm_base_url=https://blizzard-unviable-penny.ngrok-free.dev \
   -f shards=8 -f max_tasks=0
 
 # 3. watch to completion with the dedicated sharded-run watcher: per-shard status,
