@@ -363,15 +363,15 @@ def scan_trajectory_for_gateway_kill(
     for ``turn.failed`` / ``turn.completed`` / ``error``) plus, optionally, a
     trailing ``--- stderr ---`` section or normalized ``stderr`` events;
     ``item.*`` command output must never be passed in. Returns
-    ``(killed, marker)``: killed is True only when a ``turn.failed`` event is
-    followed by no ``turn.completed`` and either that event or trailing stderr
-    carries a gateway marker. A recovered blip is a bare ``error`` event, or a
-    ``turn.failed`` with a later ``turn.completed``, and does not count.
+    ``(killed, marker)``: killed is True when either a marked ``turn.failed``
+    or a gateway marker in trailing/normalized stderr is followed by no
+    ``turn.completed``. A recovered blip is a bare ``error`` event, or marked
+    failure/stderr with a later ``turn.completed``, and does not count.
     """
     last_completed_idx = -1
     failed_indices: list[int] = []
     marked_failed: list[tuple[int, str]] = []
-    stderr_marker: Optional[str] = None
+    stderr_marker: Optional[tuple[int, str]] = None
     in_stderr = False
     for idx, line in enumerate(event_lines):
         line = line.strip()
@@ -384,7 +384,7 @@ def scan_trajectory_for_gateway_kill(
             if stderr_marker is None:
                 match = _GATEWAY_MARKER_RE.search(line)
                 if match:
-                    stderr_marker = match.group(0)
+                    stderr_marker = (idx, match.group(0))
             continue
         try:
             obj = json.loads(line)
@@ -403,12 +403,12 @@ def scan_trajectory_for_gateway_kill(
         elif etype == "stderr" and stderr_marker is None:
             match = _GATEWAY_MARKER_RE.search(_event_message(obj))
             if match:
-                stderr_marker = match.group(0)
+                stderr_marker = (idx, match.group(0))
     for idx, marker in marked_failed:
         if idx > last_completed_idx:
             return True, marker
-    if stderr_marker and any(idx > last_completed_idx for idx in failed_indices):
-        return True, stderr_marker
+    if stderr_marker and stderr_marker[0] > last_completed_idx:
+        return True, stderr_marker[1]
     return False, None
 
 

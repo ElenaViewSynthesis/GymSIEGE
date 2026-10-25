@@ -23,7 +23,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from common import TERMINAL_MODEL_STATUSES
+from common import (
+    AGENT_INFRASTRUCTURE_ERROR_REASON,
+    TERMINAL_MODEL_STATUSES,
+    decide_missing_artifact_infra,
+    find_install_marker,
+    scan_trajectory_for_gateway_kill,
+)
 
 
 ROOT = Path(__file__).resolve().parent
@@ -551,6 +557,89 @@ def inspect_attempt(path: Path) -> tuple[Any, str | None, bool]:
     if status in RETRYABLE_STATUSES:
         return status, f"infrastructure_invalid_status: {status}", True
     return status, f"unrecognized_nonterminal_status: {status!r}", False
+
+
+def reconcile_attempt_outcomes(attempts: list[dict[str, Any]]) -> dict[str, Any]:
+    """Reconcile preserved attempts without changing the live publish path.
+
+    The function is intentionally pure: callers pass already-loaded attempt
+    dictionaries. ``trajectory_event_lines`` may contain the bounded structured
+    stream emitted by the sandbox scanner, and ``run_agent_log`` may contain the
+    wrapper log used to audit a suspicious ``no_patch``/``no_poc`` result.
+
+    A genuine success outranks every other outcome regardless of position. If
+    no success exists, the first genuine terminal outcome wins. Infrastructure
+    evidence invalidates an attempt before terminal selection; if every attempt
+    is invalid, the reconciled status is ``infrastructure_invalid``.
+    """
+    audited: list[dict[str, Any]] = []
+    genuine: list[dict[str, Any]] = []
+    for index, attempt in enumerate(attempts, 1):
+        status = attempt.get("status")
+        attempt_number = attempt.get("attempt", index)
+        invalid_reason: str | None = None
+        if status in RETRYABLE_STATUSES or status in {"gateway_kill", "infrastructure_invalid"}:
+            invalid_reason = f"infrastructure status: {status}"
+        elif attempt.get("failure_reason") == AGENT_INFRASTRUCTURE_ERROR_REASON:
+            invalid_reason = AGENT_INFRASTRUCTURE_ERROR_REASON
+
+        raw_lines = attempt.get("trajectory_event_lines", [])
+        if isinstance(raw_lines, str):
+            event_lines = raw_lines.splitlines()
+        elif isinstance(raw_lines, list) and all(isinstance(line, str) for line in raw_lines):
+            event_lines = list(raw_lines)
+        else:
+            event_lines = []
+        gateway_marker: str | None = None
+        if event_lines:
+            killed, marker = scan_trajectory_for_gateway_kill(event_lines)
+            gateway_marker = marker if killed else None
+
+        if invalid_reason is None and status in {"no_patch", "no_poc"}:
+            run_agent_log = attempt.get("run_agent_log", "")
+            if not isinstance(run_agent_log, str):
+                run_agent_log = ""
+            failure_reason, failure_detail = decide_missing_artifact_infra(
+                gateway_marker=gateway_marker,
+                install_marker=find_install_marker(run_agent_log),
+                solver_cost=attempt.get("solver_cost_usd"),
+                has_trajectory=bool(event_lines),
+            )
+            if failure_reason:
+                invalid_reason = failure_detail or failure_reason
+        elif invalid_reason is None and gateway_marker:
+            invalid_reason = f"gateway/tunnel failure: {gateway_marker}"
+
+        audit = {
+            "attempt": attempt_number,
+            "status": status,
+            "infrastructure_invalid": invalid_reason is not None,
+            "audit_reason": invalid_reason,
+        }
+        audited.append(audit)
+        if invalid_reason is None and status in TERMINAL_STATUSES:
+            genuine.append(audit)
+
+    successes = [attempt for attempt in genuine if attempt["status"] == "success"]
+    if successes:
+        winner = successes[0]
+        reason = "successful_terminal_outcome_outranks_other_attempts"
+    elif genuine:
+        winner = genuine[0]
+        reason = "first_genuine_terminal_outcome"
+    else:
+        return {
+            "status": "infrastructure_invalid",
+            "winning_attempt": None,
+            "reason": "all_attempts_infrastructure_invalid",
+            "attempts": audited,
+        }
+    return {
+        "status": winner["status"],
+        "winning_attempt": winner["attempt"],
+        "reason": reason,
+        "attempts": audited,
+    }
 
 
 def run_cell(

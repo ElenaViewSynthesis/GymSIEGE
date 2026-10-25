@@ -23,6 +23,7 @@ import modal_exploitbench_build
 import modal_exploitgym_build
 import modal_exploitgym_runner
 import observability
+from run_modal_repeats import reconcile_attempt_outcomes
 from common import (
     AGENT_INFRASTRUCTURE_ERROR_REASON,
     SNAPSHOT_NAME,
@@ -2426,7 +2427,7 @@ class MissingArtifactInfraClassifierTests(unittest.TestCase):
         self.assertEqual(reason, AGENT_INFRASTRUCTURE_ERROR_REASON)
         self.assertEqual(self._status(reason, mode="e2e"), "error")
 
-    def test_gateway_marker_in_trailing_stderr_requires_terminal_failure(self) -> None:
+    def test_gateway_marker_in_trailing_stderr_is_terminal_failure(self) -> None:
         failed = "\n".join([
             json.dumps({"type": "turn.failed", "error": {"message": "request failed"}}),
             "--- stderr ---",
@@ -2441,7 +2442,7 @@ class MissingArtifactInfraClassifierTests(unittest.TestCase):
             "The endpoint host.ngrok-free.dev is offline. ERR_NGROK_3200",
         ])
         reason, _ = self._decide(trajectory=no_failed_turn, solver_cost=0.0)
-        self.assertIsNone(reason)
+        self.assertEqual(reason, AGENT_INFRASTRUCTURE_ERROR_REASON)
 
     def test_normalized_stderr_from_remote_scan_is_supported(self) -> None:
         traj = "\n".join([
@@ -2453,6 +2454,17 @@ class MissingArtifactInfraClassifierTests(unittest.TestCase):
         ])
         reason, _ = self._decide(trajectory=traj, solver_cost=0.0)
         self.assertEqual(reason, AGENT_INFRASTRUCTURE_ERROR_REASON)
+
+    def test_later_completion_clears_normalized_stderr_marker(self) -> None:
+        traj = "\n".join([
+            json.dumps({
+                "type": "stderr",
+                "message": "The endpoint host.ngrok-free.dev is offline",
+            }),
+            self._turn_completed(),
+        ])
+        reason, _ = self._decide(trajectory=traj, solver_cost=0.1)
+        self.assertIsNone(reason)
 
     def test_later_attempt_completion_clears_earlier_failed_attempt(self) -> None:
         combined_attempts = "\n".join([
@@ -2480,6 +2492,44 @@ class MissingArtifactInfraClassifierTests(unittest.TestCase):
             solver_cost=None,
         )
         self.assertEqual(reason, AGENT_INFRASTRUCTURE_ERROR_REASON)
+
+    def test_attempt_reconciliation_failure_then_success(self) -> None:
+        reconciled = reconcile_attempt_outcomes([
+            {"attempt": 1, "status": "failed"},
+            {"attempt": 2, "status": "success"},
+        ])
+        self.assertEqual(reconciled["status"], "success")
+        self.assertEqual(reconciled["winning_attempt"], 2)
+
+    def test_attempt_reconciliation_success_then_failure(self) -> None:
+        reconciled = reconcile_attempt_outcomes([
+            {"attempt": 1, "status": "success"},
+            {"attempt": 2, "status": "failed"},
+        ])
+        self.assertEqual(reconciled["status"], "success")
+        self.assertEqual(reconciled["winning_attempt"], 1)
+
+    def test_attempt_reconciliation_all_gateway_kills(self) -> None:
+        reconciled = reconcile_attempt_outcomes([
+            {"attempt": 1, "status": "gateway_kill"},
+            {"attempt": 2, "status": "gateway_kill"},
+        ])
+        self.assertEqual(reconciled["status"], "infrastructure_invalid")
+        self.assertIsNone(reconciled["winning_attempt"])
+
+    def test_attempt_reconciliation_audits_no_patch_log(self) -> None:
+        reconciled = reconcile_attempt_outcomes([
+            {
+                "attempt": 1,
+                "status": "no_patch",
+                "run_agent_log": "gateway preflight failed",
+                "solver_cost_usd": 0.0,
+            },
+            {"attempt": 2, "status": "failed"},
+        ])
+        self.assertEqual(reconciled["status"], "failed")
+        self.assertEqual(reconciled["winning_attempt"], 2)
+        self.assertTrue(reconciled["attempts"][0]["infrastructure_invalid"])
 
     def test_fix_failure_reasons_classification_unchanged(self) -> None:
         # Regression guard for commit bcb402d: an unappliable/uncompilable patch
