@@ -267,3 +267,11 @@ def test_table_rows_mark_an_undefined_pass_at_k():
         assert [c.strip() for c in cells[6:]] == ["---", "---"]
     total = [c.strip() for c in _cells(lines[-1])]
     assert "%" in total[1] and total[2:] == ["---", "---"]
+
+
+# ------------------------------------------------------------------ defaults
+def test_defaults_match_two_trials_per_task():
+    args = agg.build_parser().parse_args(["--manifest", "m.json", "--out-dir", "out"])
+    assert agg.TRIALS_PER_TASK == 2
+    assert args.k == [1, 2]
+    assert args.n == 2

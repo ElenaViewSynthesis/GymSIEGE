@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Freeze the 5 single-trial schema-v2 manifests for the end-to-end repeated-trial
-# cohort (cybergym-e2e-repeats-v1), one per trial 1..5, pinned to the current
+# Freeze the 2 single-trial schema-v2 manifests for the end-to-end repeated-trial
+# cohort (cybergym-e2e-repeats-v1), one per trial 1..2, pinned to the current
 # recipe-v3 snapshot and HEAD. Read-only except for writing reference/*.json.
+# The cohort runs two trials per task; trials above 2 are refused.
 #
 #   - One trial per manifest/batch: the harness smoke gate requires exactly one
 #     trial_number, and each batch dir pins its cohort-manifest sha.
@@ -12,8 +13,8 @@
 # Run from anywhere; it cd's to the repo. After freezing: --phase plan (free),
 # then --phase smoke/full (paid) per trial.
 #
-#   bash freeze_e2e_repeats.sh            # trials 1..5
-#   bash freeze_e2e_repeats.sh 2 3 4 5    # only these trials, e.g. to re-freeze
+#   bash freeze_e2e_repeats.sh            # trials 1..2
+#   bash freeze_e2e_repeats.sh 2          # only this trial, e.g. to re-freeze
 #                                         # unrun trials after a commit moved HEAD
 #                                         # without touching a running trial's manifest
 set -euo pipefail
@@ -22,7 +23,11 @@ cd "$(dirname "$0")"
 
 python3 - "$@" <<'PY'
 import json, hashlib, subprocess, pathlib, sys
-TRIALS = [int(a) for a in sys.argv[1:]] or [1, 2, 3, 4, 5]
+MAX_TRIALS = 2
+TRIALS = [int(a) for a in sys.argv[1:]] or list(range(1, MAX_TRIALS + 1))
+bad = [k for k in TRIALS if not 1 <= k <= MAX_TRIALS]
+if bad:
+    raise SystemExit(f"trial(s) {bad} outside 1..{MAX_TRIALS}: the cohort runs {MAX_TRIALS} trials per task")
 SNAP = "cybergym/snapshots/modal_snapshot.json"
 commit = subprocess.run(["git","rev-parse","HEAD"],capture_output=True,text=True,check=True).stdout.strip()
 diff   = subprocess.run(["git","diff","--binary","HEAD","--","."],capture_output=True,check=True).stdout

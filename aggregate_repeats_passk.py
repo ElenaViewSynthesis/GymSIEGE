@@ -40,7 +40,10 @@ Usage (repository root, WSL):
     PYDANTIC_DISABLE_PLUGINS=1 .venv/bin/python aggregate_repeats_passk.py \
         --manifest reference/cybergym-e2e-repeats-v1.t1.json \
         --manifest reference/cybergym-e2e-repeats-v1.t2.json ... \
-        --out-dir results/paper/cybergym-e2e-repeats-v1 --k 1 2 3 --n 5
+        --out-dir results/paper/cybergym-e2e-repeats-v1 --k 1 2 --n 2
+
+The cohort runs two trials per task, so the defaults are pass@1..2 and
+best-of-2; a k or N above a task's trial count is reported as undefined.
 """
 from __future__ import annotations
 
@@ -386,20 +389,28 @@ def write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
         writer.writerows(rows)
 
 
-def main(argv: list[str] | None = None) -> int:
+TRIALS_PER_TASK = 2
+
+
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--manifest", type=Path, action="append", required=True,
                         help="frozen schema-v2 manifest; repeat once per trial batch")
     parser.add_argument("--out-dir", type=Path, required=True)
-    parser.add_argument("--k", type=int, nargs="+", default=[1, 2, 3])
-    parser.add_argument("--n", type=int, default=5, help="N for best-of-N")
+    parser.add_argument("--k", type=int, nargs="+",
+                        default=list(range(1, TRIALS_PER_TASK + 1)))
+    parser.add_argument("--n", type=int, default=TRIALS_PER_TASK, help="N for best-of-N")
     parser.add_argument("--draws", type=int, default=20_000)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--confidence", type=float, default=0.95)
     parser.add_argument("--mode-label", default="End-to-end")
     parser.add_argument("--allow-partial", action="store_true",
                         help="read published cells only; report missing ones (progress check)")
-    args = parser.parse_args(argv)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
 
     manifests = [p if p.is_absolute() else ROOT / p for p in args.manifest]
     try:
