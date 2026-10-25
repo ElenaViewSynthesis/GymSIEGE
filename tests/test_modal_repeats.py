@@ -74,6 +74,15 @@ def _manifest(root: Path) -> Path:
     return path
 
 
+def _network_policy(*, egress="proxy_allowlist", search_mode="disabled", tasks=None):
+    return {
+        "egress": egress,
+        "allowlist": ["gateway.example.test", "api.openai.com"],
+        "search_mode": search_mode,
+        "network_access_tasks": ["a/one"] if tasks is None else tasks,
+    }
+
+
 def test_manifest_and_frozen_inputs_validate(tmp_path):
     path = _manifest(tmp_path)
     manifest = repeats.load_manifest(path)
@@ -81,6 +90,52 @@ def test_manifest_and_frozen_inputs_validate(tmp_path):
     assert repeats.planned_cells(manifest) == [
         ("a/one", 2), ("a/one", 3), ("b/two", 2), ("b/two", 3)
     ]
+
+
+def test_optional_network_policy_validates_and_is_preserved(tmp_path):
+    path = _manifest(tmp_path)
+    raw = json.loads(path.read_text())
+    policy = _network_policy()
+    raw["network_policy"] = policy
+    path.write_text(json.dumps(raw))
+    loaded = repeats.load_manifest(path)
+    assert loaded["network_policy"] == policy
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("egress", "tunnel", "network_policy.egress"),
+        ("search_mode", "automatic", "network_policy.search_mode"),
+    ],
+)
+def test_network_policy_rejects_unknown_enums(tmp_path, field, value, message):
+    path = _manifest(tmp_path)
+    raw = json.loads(path.read_text())
+    raw["network_policy"] = _network_policy()
+    raw["network_policy"][field] = value
+    path.write_text(json.dumps(raw))
+    with pytest.raises(repeats.ManifestError, match=message):
+        repeats.load_manifest(path)
+
+
+def test_network_access_tasks_must_be_manifest_subset(tmp_path):
+    path = _manifest(tmp_path)
+    raw = json.loads(path.read_text())
+    raw["network_policy"] = _network_policy(tasks=["outside/task"])
+    path.write_text(json.dumps(raw))
+    with pytest.raises(repeats.ManifestError, match="outside the manifest"):
+        repeats.load_manifest(path)
+
+
+def test_network_policy_rejects_duplicate_allowlist_entries(tmp_path):
+    path = _manifest(tmp_path)
+    raw = json.loads(path.read_text())
+    raw["network_policy"] = _network_policy()
+    raw["network_policy"]["allowlist"] = ["api.openai.com", "api.openai.com"]
+    path.write_text(json.dumps(raw))
+    with pytest.raises(repeats.ManifestError, match="allowlist"):
+        repeats.load_manifest(path)
 
 
 def test_task_selection_rejects_unknown(tmp_path):
@@ -119,6 +174,59 @@ def test_existing_terminal_result_is_reusable_but_never_overwritten(tmp_path):
     with pytest.raises(FileExistsError):
         repeats._publish_terminal(attempt, destination)
     assert json.loads(destination.read_text())["status"] == "success"
+
+
+def test_network_policy_is_copied_verbatim_into_published_result(tmp_path, monkeypatch):
+    monkeypatch.setattr(repeats, "ROOT", tmp_path)
+    policy = _network_policy()
+    manifest = {
+        "benchmark": "cybergym-e2e",
+        "mode": "e2e",
+        "provider": "modal",
+        "provisioning": "snapshot",
+        "agent": "codex",
+        "model_provider": "litellm",
+        "litellm_model_id": "gpt-5.6-luna",
+        "snapshot_manifest": "snapshot.json",
+        "snapshot_manifest_sha256": "a" * 64,
+        "snapshot_image_id": "im-test",
+        "cohort_id": "test-cohort",
+        "batch_id": "test-batch",
+        "network_policy": policy,
+    }
+    payload = {
+        "task": "a/one",
+        "trial": 2,
+        "status": "failed",
+        **{key: manifest[key] for key in (
+            "benchmark", "mode", "provider", "provisioning", "agent",
+            "model_provider", "litellm_model_id", "snapshot_manifest",
+            "snapshot_manifest_sha256", "snapshot_image_id", "cohort_id", "batch_id",
+        )},
+        "cohort_manifest_sha256": "b" * 64,
+    }
+    attempt = tmp_path / "attempts" / "attempt-01.json"
+    attempt.parent.mkdir()
+    attempt.write_text(json.dumps(payload))
+    batch = tmp_path / "batch"
+    destination = repeats.final_path(batch, "a/one", 2)
+    repeats._publish_validated_terminal(
+        attempt, destination, batch, "a/one", 2, 1, manifest, "b" * 64,
+    )
+    published = json.loads(destination.read_text())
+    assert published["network_policy"] == policy
+    assert json.loads(attempt.read_text()).get("network_policy") is None
+    publication = json.loads(
+        (batch / "_meta" / "publications" / "a_one__trial-2.json").read_text()
+    )
+    assert publication["network_policy"] == policy
+
+
+def test_conflicting_attempt_network_policy_is_rejected():
+    manifest = {"network_policy": _network_policy()}
+    attempt = {"network_policy": _network_policy(egress="open")}
+    with pytest.raises(repeats.ManifestError, match="conflicts"):
+        repeats._result_for_publication(attempt, manifest)
 
 
 def test_nonterminal_final_requires_manual_archive(tmp_path):

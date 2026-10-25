@@ -10,6 +10,7 @@ scope. Schema-v2 E2E manifests also enforce a smoke-first gate.
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import json
 import os
@@ -37,10 +38,55 @@ DEFAULT_MANIFEST = ROOT / "reference" / "cybergym_paper_cohort.v1.json"
 TERMINAL_STATUSES = set(TERMINAL_MODEL_STATUSES)
 RETRYABLE_STATUSES = {"error", "oracle_unavailable"}
 _BATCH_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+NETWORK_EGRESS_VALUES = {"blocked", "proxy_allowlist", "open"}
+NETWORK_SEARCH_VALUES = {"disabled", "live", "cached"}
+NETWORK_POLICY_FIELDS = {"egress", "allowlist", "search_mode", "network_access_tasks"}
 
 
 class ManifestError(ValueError):
     pass
+
+
+def _validate_network_policy(manifest: dict[str, Any], tasks: list[str]) -> None:
+    if "network_policy" not in manifest:
+        return
+    policy = manifest["network_policy"]
+    if not isinstance(policy, dict):
+        raise ManifestError("network_policy must be an object")
+    missing = sorted(NETWORK_POLICY_FIELDS - policy.keys())
+    unknown = sorted(policy.keys() - NETWORK_POLICY_FIELDS)
+    if missing:
+        raise ManifestError(f"network_policy missing fields: {', '.join(missing)}")
+    if unknown:
+        raise ManifestError(f"network_policy has unknown fields: {', '.join(unknown)}")
+    if policy["egress"] not in NETWORK_EGRESS_VALUES:
+        raise ManifestError(f"network_policy.egress must be one of {sorted(NETWORK_EGRESS_VALUES)}")
+    if policy["search_mode"] not in NETWORK_SEARCH_VALUES:
+        raise ManifestError(
+            f"network_policy.search_mode must be one of {sorted(NETWORK_SEARCH_VALUES)}"
+        )
+    allowlist = policy["allowlist"]
+    if (
+        not isinstance(allowlist, list)
+        or any(not isinstance(host, str) or not host for host in allowlist)
+        or len(set(allowlist)) != len(allowlist)
+    ):
+        raise ManifestError("network_policy.allowlist must contain unique non-empty strings")
+    access_tasks = policy["network_access_tasks"]
+    if (
+        not isinstance(access_tasks, list)
+        or any(not isinstance(task, str) or not task for task in access_tasks)
+        or len(set(access_tasks)) != len(access_tasks)
+    ):
+        raise ManifestError(
+            "network_policy.network_access_tasks must contain unique non-empty strings"
+        )
+    outside = sorted(set(access_tasks) - set(tasks))
+    if outside:
+        raise ManifestError(
+            "network_policy.network_access_tasks contains tasks outside the manifest: "
+            + ", ".join(outside)
+        )
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -159,6 +205,7 @@ def load_manifest(path: Path) -> dict[str, Any]:
             raise ManifestError("cost_estimate.planned_cells does not match frozen cells")
         if abs(total - per_cell * planned_count) > 1e-9:
             raise ManifestError("cost_estimate.estimated_total does not match per-cell estimate")
+        _validate_network_policy(manifest, tasks)
         return manifest
 
     required = {
@@ -211,6 +258,7 @@ def load_manifest(path: Path) -> dict[str, Any]:
         raise ManifestError("max_attempts must be a positive integer")
     if not isinstance(manifest["retry_sleep_s"], (int, float)) or manifest["retry_sleep_s"] < 0:
         raise ManifestError("retry_sleep_s must be non-negative")
+    _validate_network_policy(manifest, tasks)
     return manifest
 
 
@@ -347,6 +395,8 @@ def _validate_result_payload(
         "cohort_manifest_sha256": cohort_hash,
         "batch_id": manifest["batch_id"],
     }
+    if "network_policy" in manifest:
+        expected["network_policy"] = manifest["network_policy"]
     for field, value in expected.items():
         if field not in payload:
             raise ManifestError(f"result missing frozen condition field {field!r}")
@@ -401,6 +451,28 @@ def _publish_terminal(attempt_path: Path, destination: Path) -> None:
         shutil.copyfileobj(source, target)
 
 
+def _result_for_publication(
+    payload: dict[str, Any], manifest: dict[str, Any],
+) -> dict[str, Any]:
+    """Return a publication payload with the frozen network policy attached."""
+    published = copy.deepcopy(payload)
+    if "network_policy" not in manifest:
+        return published
+    declared = manifest["network_policy"]
+    existing = published.get("network_policy")
+    if existing is not None and existing != declared:
+        raise ManifestError("attempt network_policy conflicts with the frozen manifest")
+    published["network_policy"] = copy.deepcopy(declared)
+    return published
+
+
+def _publish_payload(payload: dict[str, Any], destination: Path) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with destination.open("x", encoding="utf-8") as target:
+        json.dump(payload, target, indent=2, sort_keys=True)
+        target.write("\n")
+
+
 def _publication_path(batch_dir: Path, task: str, trial: int) -> Path:
     return batch_dir / "_meta" / "publications" / f"{_safe_task(task)}__trial-{trial}.json"
 
@@ -410,8 +482,12 @@ def _publish_validated_terminal(
     attempt_number: int, manifest: dict[str, Any], cohort_hash: str,
 ) -> None:
     payload = _read_json(attempt_path)
-    _validate_result_payload(payload, manifest, task, trial, cohort_hash)
-    _publish_terminal(attempt_path, destination)
+    published = _result_for_publication(payload, manifest)
+    _validate_result_payload(published, manifest, task, trial, cohort_hash)
+    if "network_policy" in manifest:
+        _publish_payload(published, destination)
+    else:
+        _publish_terminal(attempt_path, destination)
     record = {
         "task": task,
         "trial": trial,
@@ -423,6 +499,8 @@ def _publish_validated_terminal(
         "published_result_sha256": sha256_path(destination),
         "cohort_manifest_sha256": cohort_hash,
     }
+    if "network_policy" in manifest:
+        record["network_policy"] = copy.deepcopy(manifest["network_policy"])
     publication = _publication_path(batch_dir, task, trial)
     publication.parent.mkdir(parents=True, exist_ok=True)
     with publication.open("x", encoding="utf-8") as handle:
@@ -720,7 +798,13 @@ def run_cell(
                         manifest, cohort_hash,
                     )
                 else:
-                    _publish_terminal(attempt_path, destination)
+                    if "network_policy" in manifest:
+                        _publish_payload(
+                            _result_for_publication(_read_json(attempt_path), manifest),
+                            destination,
+                        )
+                    else:
+                        _publish_terminal(attempt_path, destination)
             except ManifestError as exc:
                 exclusion_reason = f"condition_mismatch: {exc}"
                 retryable = False
