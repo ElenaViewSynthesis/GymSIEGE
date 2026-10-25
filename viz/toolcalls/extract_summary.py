@@ -25,6 +25,8 @@ COHORTS = {
                    "cybergym-e2e-repeats-v1-t2", 2),
     "ext25-t1":   ([ROOT / "artifacts/_ext25-v1", ROOT / "artifacts"],
                    "cybergym-e2e-ext25-v1-t1", 1),
+    "ext25-t2":   ([ROOT / "artifacts/_ext25-v1", ROOT / "artifacts"],
+                   "cybergym-e2e-ext25-v1-t2", 2),
 }
 
 

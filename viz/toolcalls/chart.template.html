@@ -125,17 +125,18 @@ th { color: var(--faint); font-weight: 500; font-size: 11.5px; letter-spacing: .
   <header>
     <div class="eyebrow">CyberGym end-to-end · gpt-5.6-luna</div>
     <h1>Tool Calls per Task</h1>
-    <p>Every shell command and file edit the agent ran, per task, across two cohorts:
-      the repeats cohort's trial 2 (22 tasks) and the industry-critical extension cohort's
-      trial 1 (25 tasks, a single pass). Bars are coloured by the verified outcome.
+    <p>Every shell command and file edit the agent ran, per task, across three cohort runs:
+      the repeats cohort's trial 2 (22 tasks) and both trials of the industry-critical
+      extension cohort (25 tasks each). Bars are coloured by the verified outcome.
       <strong>Click any task</strong> to expand its command breakdown.</p>
   </header>
 
   <div class="controls">
     <div class="seg" id="cohort" role="group" aria-label="Cohort">
-      <button data-v="both" aria-pressed="true">Both</button>
+      <button data-v="all" aria-pressed="true">All</button>
       <button data-v="repeats-t2" aria-pressed="false">Repeats t2</button>
       <button data-v="ext25-t1" aria-pressed="false">Extension t1</button>
+      <button data-v="ext25-t2" aria-pressed="false">Extension t2</button>
     </div>
     <div class="seg" id="metric" role="group" aria-label="Metric">
       <span class="ctl-label">bar =</span>
@@ -178,18 +179,19 @@ const META = {
 const ORDER = ["success", "other_vuln", "failed"];
 const CATORDER = ["read", "search", "build", "run", "test", "edit", "shell"];
 const COHORTS = {
-  "repeats-t2": { title: "Repeats cohort, trial 2", sub: "22 CyberGym tasks · second trial" },
-  "ext25-t1":   { title: "Extension cohort, trial 1", sub: "25 industry-critical tasks · pass@1" },
+  "repeats-t2": { title: "Repeats cohort, trial 2", sub: "22 CyberGym tasks · second trial", short: "Repeats t2" },
+  "ext25-t1":   { title: "Extension cohort, trial 1", sub: "25 industry-critical tasks · first trial", short: "Ext t1" },
+  "ext25-t2":   { title: "Extension cohort, trial 2", sub: "25 industry-critical tasks · second trial", short: "Ext t2" },
 };
 const METRICS = {
   tc:  { fmt: v => v }, rs: { fmt: v => v },
   cost:{ fmt: v => "$" + v.toFixed(2) }, min: { fmt: v => v.toFixed(0) + "m" },
 };
-let state = { cohort: "both", metric: "tc", view: "chart", off: new Set(), open: new Set() };
+let state = { cohort: "all", metric: "tc", view: "chart", off: new Set(), open: new Set() };
 
 const el = (t, c, txt) => { const e = document.createElement(t); if (c) e.className = c; if (txt != null) e.textContent = txt; return e; };
 const niceMax = raw => { const s=[0.2,0.3,0.5,0.6,0.8,1,1.5,2,3,5,6,8,10,15,20,30,45,50,60,90,120,150,200,280,360]; for(const v of s) if(v>=raw) return v; return Math.ceil(raw); };
-const activeCohorts = () => state.cohort === "both" ? ["repeats-t2","ext25-t1"] : [state.cohort];
+const activeCohorts = () => state.cohort === "all" ? Object.keys(COHORTS) : [state.cohort];
 const rowsFor = c => DATA.filter(r => r.c === c && !state.off.has(r.s));
 const key = r => r.c + "|" + r.t;
 
@@ -214,7 +216,8 @@ function tiles() {
   const succ = rows.filter(r=>r.s==="success").length;
   [["Tasks shown", vis.length + (vis.length!==rows.length?` <small>of ${rows.length}</small>`:"")],
    ["Tool calls", tot.toLocaleString()], ["Median / task", med],
-   ["pass@1", `${succ} <small>/ ${rows.length}</small>`]
+   // pass@1 only within a single trial; across cohorts it is a plain success count
+   [activeCohorts().length === 1 ? "pass@1" : "Successes", `${succ} <small>/ ${rows.length}</small>`]
   ].forEach(([k,v]) => { const t=el("div","tile"); t.innerHTML=`<div class="k">${k}</div><div class="v">${v}</div>`; host.appendChild(t); });
 }
 
@@ -286,7 +289,7 @@ function tableView() {
   const w = el("div","tablewrap"); const t = el("table");
   t.innerHTML = `<thead><tr><th>Cohort</th><th>Task</th><th>Outcome</th><th>Tool calls</th><th>Reasoning</th><th>Cost</th><th>Min</th></tr></thead>`;
   const tb = el("tbody");
-  rows.forEach(r => { const tr=el("tr"); tr.innerHTML=`<td>${r.c==="repeats-t2"?"Repeats t2":"Ext t1"}</td><td>${r.t}</td><td>${META[r.s].gl} ${META[r.s].label}</td><td>${r.tc}</td><td>${r.rs}</td><td>$${r.cost.toFixed(2)}</td><td>${r.min.toFixed(0)}</td>`; tb.appendChild(tr); });
+  rows.forEach(r => { const tr=el("tr"); tr.innerHTML=`<td>${COHORTS[r.c].short}</td><td>${r.t}</td><td>${META[r.s].gl} ${META[r.s].label}</td><td>${r.tc}</td><td>${r.rs}</td><td>$${r.cost.toFixed(2)}</td><td>${r.min.toFixed(0)}</td>`; tb.appendChild(tr); });
   t.appendChild(tb); w.appendChild(t); host.appendChild(w);
 }
 
