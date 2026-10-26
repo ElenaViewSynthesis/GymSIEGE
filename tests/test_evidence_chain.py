@@ -73,6 +73,16 @@ class EvidenceChainUnitTests(unittest.TestCase):
         self.assertEqual(padded["visible_extra"], 1)
         self.assertFalse(padded["valid"])
 
+    def test_verify_without_key_checks_linkage_only(self):
+        with tempfile.TemporaryDirectory() as directory:
+            visible, private, _ = run_mirror(Path(directory), LINES)
+            report = CHAIN.verify(private, visible, None)
+            private.write_text(private.read_text().replace("ps -ef", "ls"))
+            edited = CHAIN.verify(private, visible, None)
+        self.assertTrue(report["valid"])
+        self.assertFalse(report["hmac_checked"])
+        self.assertFalse(edited["chain_valid"])  # the chain hash no longer matches the record
+
     def test_mirror_edit_or_wrong_key_breaks_the_chain(self):
         with tempfile.TemporaryDirectory() as directory:
             visible, private, key = run_mirror(Path(directory), LINES)

@@ -17,8 +17,8 @@ never holds the key, so it cannot forge or repair a chain.
 An edited, truncated, or padded visible log is reported as a mismatch; an
 edited chain breaks the hash linkage. Both make the run unobservable. The
 ``verify`` subcommand re-runs the structural check on a copied chain later
-(hash linkage and the visible comparison; the HMAC needs the key, which was
-never stored).
+(hash linkage and the visible comparison, reported with ``hmac_checked``
+false; the HMAC needs the key, which was never stored).
 """
 
 from __future__ import annotations
@@ -96,8 +96,6 @@ def mirror(read_fd: int, visible: Path, private: Path, key: bytes) -> int:
 def verify(mirror_path: Path, visible_path: Path, key: bytes | None) -> dict[str, Any]:
     errors: list[str] = []
     raws: list[str] = []
-    if key is None:
-        errors.append("no chain key")
     if not mirror_path.is_file():
         errors.append("mirror file missing")
     else:
@@ -119,13 +117,16 @@ def verify(mirror_path: Path, visible_path: Path, key: bytes | None) -> dict[str
                 errors.append(f"line {expected}: sequence {sequence}")
             if recorded_previous != previous:
                 errors.append(f"line {expected}: previous hash mismatch")
+            material = f"{sequence}\t{recorded_previous}\t{raw}".encode()
             if key is not None:
-                expected_record, expected_hash = chained_record(expected, raw, previous, key)
-                expected_signature = expected_record.split("\t", 4)[3]
+                expected_signature = hmac.new(key, material, hashlib.sha256).hexdigest()
                 if not hmac.compare_digest(signature, expected_signature):
                     errors.append(f"line {expected}: HMAC mismatch")
-                if chain_hash != expected_hash:
-                    errors.append(f"line {expected}: chain hash mismatch")
+            # The chain hash covers the material and the recorded signature, so an
+            # edited record is caught even without the key; only the signature's
+            # authenticity needs it.
+            if chain_hash != hashlib.sha256(material + b"\t" + signature.encode()).hexdigest():
+                errors.append(f"line {expected}: chain hash mismatch")
             previous = chain_hash
             raws.append(raw)
     visible: list[str] = []
@@ -143,6 +144,7 @@ def verify(mirror_path: Path, visible_path: Path, key: bytes | None) -> dict[str
         "schema_version": "1.0",
         "valid": chain_valid and matches,
         "chain_valid": chain_valid,
+        "hmac_checked": key is not None,
         "mirror_matches_visible": matches,
         "mirror_events": len(raws),
         "visible_lines": len(visible),
