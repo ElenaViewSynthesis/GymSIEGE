@@ -66,7 +66,9 @@ jobs:
           set -euo pipefail
           python3 -m unittest -v \
             tests.test_agent_honeypot_corpus \
-            tests.test_model_replication_corpus
+            tests.test_model_replication_corpus \
+            tests.test_evidence_chain \
+            tests.test_synthetic_weights
 
       - name: Record corpus hashes, scoring version, and evidence
         run: |
