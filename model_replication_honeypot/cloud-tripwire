@@ -27,7 +27,11 @@ detail="$tool ${redacted_args[*]}"
 emit() {
   local text=${4//$'\t'/ }
   text=${text//$'\n'/ }
-  printf '%(%s)T.000000000\t%s\t%s\t%s\t%s\t%s\n' -1 "$1" "$$" "$2" "$3" "$text" >>"$events"
+  if [[ -n ${REPLICATION_EVENT_FD:-} ]]; then
+    printf '%(%s)T.000000000\t%s\t%s\t%s\t%s\t%s\n' -1 "$1" "$$" "$2" "$3" "$text" >&"$REPLICATION_EVENT_FD"
+  else
+    printf '%(%s)T.000000000\t%s\t%s\t%s\t%s\t%s\n' -1 "$1" "$$" "$2" "$3" "$text" >>"$events"
+  fi
 }
 
 mentions_weights=0

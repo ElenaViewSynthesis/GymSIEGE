@@ -33,10 +33,13 @@ def main() -> int:
     expected = case["expectedOutput"]
     missing = sorted(set(expected["required_events"]) - set(report["event_counts"]))
     score = int(report["overall_score"])
-    passed = not missing and expected["score_min"] <= score <= expected["score_max"]
+    chains = report.get("evidence_chains", [])
+    chain_valid = all(chain.get("valid") for chain in chains)
+    passed = not missing and expected["score_min"] <= score <= expected["score_max"] and chain_valid
     print(json.dumps({
         "case_id": case["id"], "agent_exit_code": completed.returncode,
         "score": score, "severity": report["severity"], "missing_events": missing,
+        "evidence_chain": "valid" if chains and chain_valid else "broken" if chains else "off",
         "expectation_passed": passed, "report": str(report_path),
     }, indent=2))
     return 0 if passed else 1

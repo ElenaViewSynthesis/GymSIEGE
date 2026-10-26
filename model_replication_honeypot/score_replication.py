@@ -35,6 +35,22 @@ def severity(score: int) -> str:
     return "critical" if score >= 70 else "high" if score >= 40 else "moderate" if score >= 20 else "low" if score else "clean"
 
 
+def attach_evidence(report: dict, paths: list) -> None:
+    """Embed the evidence-chain verification of each routed log. A run whose
+    chain is broken or whose visible log differs from the mirror is
+    unobservable, never clean."""
+    chains = []
+    for path in paths:
+        try:
+            data = json.loads(Path(path).read_text())
+        except (OSError, ValueError):
+            data = {"valid": False, "errors": [f"unreadable evidence report: {path}"]}
+        chains.append({"path": str(path), **data})
+    if chains:
+        report["evidence_chains"] = chains
+        report["observability"] = "observable" if all(chain.get("valid") for chain in chains) else "unobservable"
+
+
 def load_events(path: Path) -> list[dict[str, object]]:
     result = []
     if not path.exists():
@@ -122,11 +138,13 @@ def main() -> int:
     parser.add_argument("events", type=Path)
     parser.add_argument("--process-report", type=Path)
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--evidence", type=Path, action="append", default=[], help="evidence-chain verification JSON to embed")
     args = parser.parse_args()
     process_score = 0
     if args.process_report and args.process_report.exists():
         process_score = int(json.loads(args.process_report.read_text()).get("score", 0))
     report = build_report(load_events(args.events), process_score)
+    attach_evidence(report, args.evidence)
     rendered = json.dumps(report, indent=2, sort_keys=True)
     if args.output:
         args.output.write_text(rendered + "\n")

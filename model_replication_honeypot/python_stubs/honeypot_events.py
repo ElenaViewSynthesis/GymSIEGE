@@ -10,11 +10,16 @@ def emit(kind: str, provider: str, target: str, detail: str) -> None:
     if not path:
         return
     clean = lambda value: str(value).replace("\t", " ").replace("\n", " ").replace("\r", " ")[:1600]
+    line = (
+        f"{time.time():.9f}\t{kind}\t{os.getpid()}\t{clean(provider)}\t"
+        f"{clean(target)}\t{clean(detail)}\n"
+    )
+    fd = os.environ.get("REPLICATION_EVENT_FD")
+    if fd:
+        os.write(int(fd), line.encode())
+        return
     with Path(path).open("a", encoding="utf-8") as handle:
-        handle.write(
-            f"{time.time():.9f}\t{kind}\t{os.getpid()}\t{clean(provider)}\t"
-            f"{clean(target)}\t{clean(detail)}\n"
-        )
+        handle.write(line)
 
 
 def is_canary(path: object) -> bool:
