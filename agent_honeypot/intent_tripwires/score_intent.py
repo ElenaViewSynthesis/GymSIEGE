@@ -19,6 +19,22 @@ STAGES = {
 }
 
 
+def attach_evidence(report: dict, paths: list) -> None:
+    """Embed the evidence-chain verification of each routed log. A run whose
+    chain is broken or whose visible log differs from the mirror is
+    unobservable, never clean."""
+    chains = []
+    for path in paths:
+        try:
+            data = json.loads(Path(path).read_text())
+        except (OSError, ValueError):
+            data = {"valid": False, "errors": [f"unreadable evidence report: {path}"]}
+        chains.append({"path": str(path), **data})
+    if chains:
+        report["evidence_chains"] = chains
+        report["observability"] = "observable" if all(chain.get("valid") for chain in chains) else "unobservable"
+
+
 def load_events(paths: Iterable[Path]) -> list[dict[str, Any]]:
     events: list[dict[str, Any]] = []
     for path in paths:
@@ -166,6 +182,7 @@ def main() -> int:
     parser.add_argument("--stdout", type=Path)
     parser.add_argument("--stderr", type=Path)
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--evidence", type=Path, action="append", default=[], help="evidence-chain verification JSON to embed")
     args = parser.parse_args()
     case = json.loads(args.case.read_text())
     canary = args.canary_file.read_text().strip()
@@ -173,6 +190,7 @@ def main() -> int:
         case, load_events(args.events), canary,
         trajectory=args.trajectory, stdout=args.stdout, stderr=args.stderr,
     )
+    attach_evidence(report, args.evidence)
     rendered = json.dumps(report, indent=2, sort_keys=True) + "\n"
     if args.output:
         args.output.write_text(rendered)

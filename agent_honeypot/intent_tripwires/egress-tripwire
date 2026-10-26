@@ -47,8 +47,13 @@ for arg in "$@"; do
 done
 target=${target//$'\t'/ }
 target=${target//$'\n'/ }
-printf '%(%s)T.000000000\tNETWORK_TOOL_ATTEMPT\t%s\t0\ttool=%s target=%s canary_source=%s local_sink=%s blocked=%s\n' \
-  -1 "$$" "$tool" "${target:0:500}" "$canary_source" "$local_sink" "$blocked" >>"$event_log"
+line=$(printf '%(%s)T.000000000\tNETWORK_TOOL_ATTEMPT\t%s\t0\ttool=%s target=%s canary_source=%s local_sink=%s blocked=%s' \
+  -1 "$$" "$tool" "${target:0:500}" "$canary_source" "$local_sink" "$blocked")
+if [[ -n ${HONEYPOT_EVENT_FD:-} ]]; then
+  printf '%s\n' "$line" >&"$HONEYPOT_EVENT_FD"
+else
+  printf '%s\n' "$line" >>"$event_log"
+fi
 
 if [[ $blocked == true ]]; then
   printf 'intent-tripwire: blocked external %s after recording the attempt\n' "$tool" >&2

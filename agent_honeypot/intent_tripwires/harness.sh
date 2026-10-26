@@ -8,16 +8,20 @@ timeout_seconds=60
 output_dir=
 trajectory=
 observe_network=0
+evidence_chain=${HONEYPOT_EVIDENCE_CHAIN:-0}
 
 usage() {
   cat <<'EOF'
 Usage: harness.sh --case-id ITH-NNN [--timeout SECONDS] [--output DIR]
-                  [--trajectory FILE] [--observe-network] -- COMMAND [ARG...]
+                  [--trajectory FILE] [--observe-network] [--evidence-chain]
+                  -- COMMAND [ARG...]
 
 Creates synthetic sensitive files, a loopback receipt sink, file/network
 tripwires, and runs COMMAND in the case workspace. External egress tools and
 non-loopback connect() calls are blocked by default. --observe-network removes
 that user-space block and is only for an externally contained VM/sandbox.
+--evidence-chain routes the sink log and the process log through parent-owned
+keyed mirrors (see agent_honeypot/evidence_chain.py).
 EOF
 }
 
@@ -28,6 +32,7 @@ while (($#)); do
     --output) output_dir=$2; shift 2 ;;
     --trajectory) trajectory=$2; shift 2 ;;
     --observe-network) observe_network=1; shift ;;
+    --evidence-chain) evidence_chain=1; shift ;;
     --) shift; break ;;
     -h|--help) usage; exit 0 ;;
     *) printf 'Unknown option: %s\n' "$1" >&2; usage >&2; exit 64 ;;
@@ -60,8 +65,14 @@ for tool in curl wget git scp sftp rsync nc ncat socat; do
   ln -s "$script_dir/egress-tripwire" "$shim_dir/$tool"
 done
 
-python3 "$script_dir/sink.py" --events "$sink_events" --port-file "$port_file" \
-  --canary-file "$canary_file" &
+# shellcheck source=../evidence_chain.sh
+source "$repo/agent_honeypot/evidence_chain.sh"
+sink_args=(--events "$sink_events" --port-file "$port_file" --canary-file "$canary_file")
+if ((evidence_chain)); then
+  evidence_chain_start "$sink_events" 9 "$output_dir/sink-evidence.json"
+  sink_args+=(--events-fd "$EVIDENCE_FD")
+fi
+python3 "$script_dir/sink.py" "${sink_args[@]}" &
 sink_pid=$!
 cleanup() {
   if kill -0 "$sink_pid" 2>/dev/null; then kill -TERM "$sink_pid" 2>/dev/null || true; fi
@@ -87,6 +98,7 @@ common_env=(
   HONEYPOT_TRAJECTORY="$trajectory"
   HONEYPOT_AGENT_STDOUT="$agent_stdout"
   HONEYPOT_AGENT_STDERR="$agent_stderr"
+  HONEYPOT_EVIDENCE_CHAIN="$evidence_chain"
   NO_PROXY=127.0.0.1,localhost
   no_proxy=127.0.0.1,localhost
 )
@@ -107,6 +119,9 @@ set -e
 cleanup
 wait "$sink_pid" 2>/dev/null || true
 trap - EXIT INT TERM
+if ((evidence_chain)); then
+  evidence_chain_finish
+fi
 
 score_args=(
   --case "$output_dir/case.json"
@@ -118,6 +133,9 @@ score_args=(
   --output "$intent_report"
 )
 [[ -f $trajectory ]] && score_args+=(--trajectory "$trajectory")
+if ((evidence_chain)); then
+  score_args+=(--evidence "$process_output/evidence.json" --evidence "$output_dir/sink-evidence.json")
+fi
 python3 "$script_dir/score_intent.py" "${score_args[@]}" >/dev/null || true
 printf 'Intent-tripwire artifacts: %s\nAgent exit: %s\n' "$output_dir" "$agent_status"
 python3 - "$intent_report" <<'PY'

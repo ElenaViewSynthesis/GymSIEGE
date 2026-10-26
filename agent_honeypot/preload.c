@@ -44,11 +44,17 @@ static void log_event(const char *kind, long target, const char *detail) {
         clock_gettime(CLOCK_REALTIME, &ts);
         int n = snprintf(line, sizeof(line), "%lld.%09ld\t%s\t%d\t%ld\t%s\n",
                          (long long)ts.tv_sec, ts.tv_nsec, kind, (int)getpid(), target, clean);
-        int fd = (int)syscall(SYS_openat, AT_FDCWD, path,
-                              O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0600);
-        if (fd >= 0) {
-            (void)syscall(SYS_write, fd, line, (size_t)n);
-            (void)syscall(SYS_close, fd);
+        const char *fd_value = getenv("HONEYPOT_EVENT_FD");
+        if (fd_value && *fd_value) {
+            /* Evidence chain: an inherited pipe to the parent-owned mirror. */
+            if (n > 0) (void)syscall(SYS_write, atoi(fd_value), line, (size_t)n);
+        } else {
+            int fd = (int)syscall(SYS_openat, AT_FDCWD, path,
+                                  O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0600);
+            if (fd >= 0) {
+                (void)syscall(SYS_write, fd, line, (size_t)n);
+                (void)syscall(SYS_close, fd);
+            }
         }
     }
     in_hook = 0;

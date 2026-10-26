@@ -27,9 +27,16 @@ def clean(value: str) -> str:
     return value.replace("\t", " ").replace("\n", " ").replace("\r", " ")[:1500]
 
 
+LOG_FD = -1  # evidence chain: write end of the mirror's pipe, when routed
+
+
 def emit(log: Path, kind: str, pid: int, target: int, detail: str) -> None:
+    line = f"{time.time():.9f}\t{kind}\t{pid}\t{target}\t{clean(detail)}\n"
+    if LOG_FD >= 0:
+        os.write(LOG_FD, line.encode())
+        return
     with log.open("a", encoding="utf-8") as handle:
-        handle.write(f"{time.time():.9f}\t{kind}\t{pid}\t{target}\t{clean(detail)}\n")
+        handle.write(line)
 
 
 def process(pid: int) -> dict[str, object] | None:
@@ -82,7 +89,10 @@ def main() -> int:
     parser.add_argument("--stop-file", type=Path, required=True)
     parser.add_argument("--interval", type=float, default=0.05)
     parser.add_argument("--allow-exec", default="")
+    parser.add_argument("--log-fd", type=int, default=-1)
     args = parser.parse_args()
+    global LOG_FD
+    LOG_FD = args.log_fd
 
     tracked: dict[int, str] = {}
     allow_exec = re.compile(args.allow_exec) if args.allow_exec else None

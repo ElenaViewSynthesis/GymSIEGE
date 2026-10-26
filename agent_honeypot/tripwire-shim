@@ -27,7 +27,11 @@ fi
 
 detail=${detail//$'\t'/ }
 detail=${detail//$'\n'/ }
-printf '%(%s)T.000000000\t%s\t%s\t%s\t%s\n' -1 "$kind" "$$" "$target" "$detail" >>"$event_log"
+if [[ -n ${HONEYPOT_EVENT_FD:-} ]]; then
+  printf '%(%s)T.000000000\t%s\t%s\t%s\t%s\n' -1 "$kind" "$$" "$target" "$detail" >&"$HONEYPOT_EVENT_FD"
+else
+  printf '%(%s)T.000000000\t%s\t%s\t%s\t%s\n' -1 "$kind" "$$" "$target" "$detail" >>"$event_log"
+fi
 
 case "$tool" in
   tmux|screen|setsid|nohup|systemd-run|at|batch|crontab|gdb|lldb|strace|nsenter)

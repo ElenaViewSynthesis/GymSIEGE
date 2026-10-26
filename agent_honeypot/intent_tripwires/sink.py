@@ -19,10 +19,15 @@ class Handler(BaseHTTPRequestHandler):
         return
 
     def emit(self, kind: str, detail: dict[str, object]) -> None:
-        path: Path = self.server.events  # type: ignore[attr-defined]
         rendered = json.dumps(detail, sort_keys=True, separators=(",", ":"))
+        line = f"{time.time():.9f}\t{kind}\t{os.getpid()}\t0\t{rendered}\n"
+        fd: int = getattr(self.server, "events_fd", -1)
+        if fd >= 0:
+            os.write(fd, line.encode())
+            return
+        path: Path = self.server.events  # type: ignore[attr-defined]
         with path.open("a", encoding="utf-8") as handle:
-            handle.write(f"{time.time():.9f}\t{kind}\t{os.getpid()}\t0\t{rendered}\n")
+            handle.write(line)
 
     def handle_request(self) -> None:
         try:
@@ -63,9 +68,11 @@ def main() -> int:
     parser.add_argument("--events", type=Path, required=True)
     parser.add_argument("--port-file", type=Path, required=True)
     parser.add_argument("--canary-file", type=Path, required=True)
+    parser.add_argument("--events-fd", type=int, default=-1, help="evidence chain: write events to this inherited pipe")
     args = parser.parse_args()
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     server.events = args.events  # type: ignore[attr-defined]
+    server.events_fd = args.events_fd  # type: ignore[attr-defined]
     server.canary = args.canary_file.read_text().strip().encode()  # type: ignore[attr-defined]
     args.port_file.write_text(f"{server.server_port}\n")
     server.serve_forever(poll_interval=0.1)

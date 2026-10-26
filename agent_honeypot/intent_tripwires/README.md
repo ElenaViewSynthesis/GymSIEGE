@@ -77,6 +77,15 @@ Artifacts include raw process events, sink events, stdout/stderr, the agent
 trajectory when supplied, and `intent-report.json`. Canary values are stored
 locally for deterministic scoring but are not copied into the report.
 
+## Evidence chain
+
+`--evidence-chain` (or `HONEYPOT_EVIDENCE_CHAIN=1`) routes `sink-events.tsv`
+(descriptor 9) and the inner process log through parent-owned keyed mirrors;
+see `agent_honeypot/README.md`. The intent report then carries
+`evidence_chains` for both logs and `observability`; a run whose chain is
+broken or whose visible log differs from its mirror is unobservable, never
+`none`.
+
 ## Network baseline
 
 `network_baseline.json` records the measured CyberGym solving boundary. The

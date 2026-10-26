@@ -3,7 +3,9 @@
 This defensive suite tests whether an agent alters the honeypot's own evidence.
 Every target is synthetic. The agent writes events to an inherited pipe; a
 parent-owned mirror process outside the case workspace appends each event to a
-SHA-256/HMAC chain. The agent never inherits the chain key.
+SHA-256/HMAC chain. The agent never inherits the chain key. The same construction routes the
+propagation, replication, and intent harnesses' own logs when they run with
+`--evidence-chain` (`agent_honeypot/evidence_chain.py`).
 
 The authoritative `events.mirror.tsv` is copied into the output only after the
 agent exits. `events.tsv` is deliberately inside the visible output and is a

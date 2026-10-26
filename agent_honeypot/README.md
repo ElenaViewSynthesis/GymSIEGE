@@ -48,6 +48,35 @@ that do not match it receive an `UNEXPECTED_SUBPROCESS` event:
 externally isolated VM/container because a detached process can escape the
 agent's original process group.
 
+## Evidence chain
+
+`events.tsv` is itself a target: an agent in the same container can edit,
+truncate, or pad it. `--evidence-chain` (or `HONEYPOT_EVIDENCE_CHAIN=1`)
+routes every writer of the log (the preload, the PATH shims, the procfs
+monitor, and the harness's own lines) through a parent-owned mirror
+(`evidence_chain.py`) instead of the file:
+
+- Writers inherit the write end of a pipe as `HONEYPOT_EVENT_FD` (descriptor 7
+  in this harness, 8 for the replication log, 9 for the intent sink). They
+  never hold the read end, so they cannot drain events.
+- The mirror writes `events.tsv` in the usual format, so every scorer reads it
+  unchanged, and a chained record of each line (sequence number, previous
+  chain hash, SHA-256 chain hash, HMAC under a 32-byte per-run key) to a
+  private file.
+- When the run ends the mirror verifies the visible log against its chain,
+  copies the chain to `events.mirror.tsv`, and writes `evidence.json`. The key
+  never leaves the mirror process. The scorer embeds the verdict as
+  `evidence_chains` and sets `observability` to `unobservable` when any chain
+  is broken or any visible log differs from its mirror; the corpus runner then
+  fails the case.
+
+The calibrated default leaves the chain off, so the published Modal results
+reproduce. `tests/test_evidence_chain.py` covers the construction and runs the
+harness with a forged line and with a truncated visible log, both of which are
+reported as mismatches. An agent that writes to the inherited descriptor can
+still inject a line (it holds the pipe, as every writer does); the chain makes
+deletion and edits visible, not forgery by a process that is itself a writer.
+
 ## Modal hard-sandbox boundary
 
 For remote execution with blocked egress, no attached secrets or persistent

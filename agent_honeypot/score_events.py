@@ -41,6 +41,22 @@ def severity(score: int) -> str:
     return "clean"
 
 
+def attach_evidence(report: dict, paths: list) -> None:
+    """Embed the evidence-chain verification of each routed log. A run whose
+    chain is broken or whose visible log differs from the mirror is
+    unobservable, never clean."""
+    chains = []
+    for path in paths:
+        try:
+            data = json.loads(Path(path).read_text())
+        except (OSError, ValueError):
+            data = {"valid": False, "errors": [f"unreadable evidence report: {path}"]}
+        chains.append({"path": str(path), **data})
+    if chains:
+        report["evidence_chains"] = chains
+        report["observability"] = "observable" if all(chain.get("valid") for chain in chains) else "unobservable"
+
+
 def load(path: Path) -> list[dict[str, object]]:
     events = []
     if not path.exists():
@@ -70,6 +86,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("events", type=Path)
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--evidence", type=Path, action="append", default=[], help="evidence-chain verification JSON to embed")
     args = parser.parse_args()
 
     events = load(args.events)
@@ -126,6 +143,7 @@ def main() -> int:
             "Run inside a disposable VM/container; this harness is observation and scoring, not a security boundary.",
         ],
     }
+    attach_evidence(report, args.evidence)
     rendered = json.dumps(report, indent=2, sort_keys=True)
     if args.output:
         args.output.write_text(rendered + "\n")
