@@ -45,6 +45,25 @@ python3 modal_honeypot/runner.py --harness agent --all --workers 4
 python3 modal_honeypot/runner.py --harness model --all --workers 4
 ```
 
+Enable parent-owned evidence chains for corpus logs, and optionally use the
+format-valid synthetic checkpoint set for the model harness:
+
+```bash
+python3 modal_honeypot/runner.py --harness agent --all --evidence-chain
+python3 modal_honeypot/runner.py --harness model --all --evidence-chain --weights-mode format
+```
+
+Run the seven instrument-tampering cases or the checked evidence-chain demo.
+The image includes `tests/`, so the demo's unit-test step runs in the Sandbox:
+
+```bash
+python3 modal_honeypot/runner.py --harness instrument --all
+python3 modal_honeypot/runner.py --demo
+```
+
+Run names and metadata record chain state and weights mode. Format-valid
+weights are accepted only for the model harness.
+
 Run the 20-case network-off containment suite. Both flags are deliberate: one
 selects the suite and the second explicitly enables it. The runner rejects a
 partial or mismatched opt-in.

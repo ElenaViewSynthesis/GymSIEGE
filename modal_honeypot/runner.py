@@ -23,7 +23,12 @@ POLICY = {
     "volumes": {},
     "user": "honeypot",
 }
-CASE_PREFIXES = {"agent": "APH-", "model": "MRH-", "network-off": "NOF-"}
+CASE_PREFIXES = {
+    "agent": "APH-",
+    "instrument": "IHT-",
+    "model": "MRH-",
+    "network-off": "NOF-",
+}
 
 
 def validate_case(harness: str, case_id: str | None) -> None:
@@ -43,7 +48,7 @@ def validate_network_off_opt_in(harness: str, enabled: bool) -> None:
         raise ValueError("--enable-network-off-suite requires --network-off-suite")
 
 
-def validate_allow_network(harness: str, allow_network: bool) -> None:
+def validate_allow_network(harness: str | None, allow_network: bool) -> None:
     """--allow-network opens outbound egress for one run (block_network=False).
 
     It is an explicit opt-in that never changes POLICY, is refused for the
@@ -56,31 +61,72 @@ def validate_allow_network(harness: str, allow_network: bool) -> None:
         raise ValueError("--allow-network cannot be combined with --network-off-suite")
 
 
+def validate_weights_mode(harness: str | None, weights_mode: str) -> None:
+    if weights_mode not in {"text", "format"}:
+        raise ValueError(f"unknown weights mode: {weights_mode}")
+    if weights_mode == "format" and harness != "model":
+        raise ValueError("--weights-mode format requires --harness model")
+
+
+def output_name(
+    harness: str | None,
+    case_id: str | None,
+    *,
+    demo: bool,
+    evidence_chain: bool,
+    weights_mode: str,
+    allow_network: bool,
+) -> str:
+    target = "demo" if demo else str(harness)
+    selection = "run" if demo else case_id or "all"
+    chain = "chain" if evidence_chain else "chain-off"
+    network = "-net-open" if allow_network else ""
+    return f"{target}-{selection}-{chain}-{weights_mode}{network}"
+
+
 def remote_argv(
-    harness: str,
+    harness: str | None,
     case_id: str | None,
     workers: int,
     *,
     network_off_enabled: bool = False,
     allow_network: bool = False,
+    evidence_chain: bool = False,
+    weights_mode: str = "text",
+    demo: bool = False,
 ) -> list[str]:
-    validate_case(harness, case_id)
+    if demo:
+        if harness is not None or case_id is not None:
+            raise ValueError("--demo cannot be combined with a harness or case ID")
+    elif harness is None:
+        raise ValueError("a harness is required unless --demo is selected")
+    else:
+        validate_case(harness, case_id)
     validate_network_off_opt_in(harness, network_off_enabled)
     validate_allow_network(harness, allow_network)
+    validate_weights_mode(harness, weights_mode)
     command = [
         "/usr/sbin/runuser", "-u", "honeypot", "--", "env",
         "HOME=/home/honeypot", "PYTHONDONTWRITEBYTECODE=1",
+        f"HONEYPOT_WEIGHTS_MODE={weights_mode}",
     ]
+    if evidence_chain:
+        command.append("HONEYPOT_EVIDENCE_CHAIN=1")
     if harness == "network-off":
         command.append("MODAL_NETWORK_OFF_ENFORCED=1")
     if allow_network:
         command.append("MODAL_NETWORK_OPEN=1")
+    if demo:
+        command.append("TMPDIR=/tmp/honeypot-output")
     command.extend([
         "python3", f"{REMOTE_ROOT}/modal_honeypot/in_sandbox.py",
-        "--harness", harness, "--workers", str(workers),
         "--output-root", "/tmp/honeypot-output",
     ])
-    command.extend(["--case-id", case_id] if case_id else ["--all"])
+    if demo:
+        command.append("--demo")
+    else:
+        command.extend(["--harness", str(harness), "--workers", str(workers)])
+        command.extend(["--case-id", case_id] if case_id else ["--all"])
     return command
 
 
@@ -99,13 +145,16 @@ def build_image(modal_module):
         .add_local_dir(REPO / "agent_honeypot", f"{REMOTE_ROOT}/agent_honeypot", copy=True)
         .add_local_dir(REPO / "model_replication_honeypot", f"{REMOTE_ROOT}/model_replication_honeypot", copy=True)
         .add_local_dir(REPO / "modal_honeypot", f"{REMOTE_ROOT}/modal_honeypot", copy=True)
+        .add_local_dir(REPO / "tests", f"{REMOTE_ROOT}/tests", copy=True)
     )
 
 
 def run(args: argparse.Namespace) -> int:
-    validate_case(args.harness, args.case_id)
+    if not args.demo:
+        validate_case(args.harness, args.case_id)
     validate_network_off_opt_in(args.harness, args.enable_network_off_suite)
     validate_allow_network(args.harness, args.allow_network)
+    validate_weights_mode(args.harness, args.weights_mode)
     block_network = not args.allow_network
     if args.harness == "network-off" and block_network is not True:
         raise RuntimeError("network-off suite requires block_network=True")
@@ -115,19 +164,28 @@ def run(args: argparse.Namespace) -> int:
         "timeout": args.sandbox_timeout,
         "exec_timeout": args.exec_timeout,
         "network_off_suite_enabled": args.enable_network_off_suite,
+        "evidence_chain": args.evidence_chain,
+        "weights_mode": args.weights_mode,
     }
     command = remote_argv(
         args.harness, args.case_id, args.workers,
         network_off_enabled=args.enable_network_off_suite,
         allow_network=args.allow_network,
+        evidence_chain=args.evidence_chain,
+        weights_mode=args.weights_mode,
+        demo=args.demo,
     )
     if args.allow_network:
         print("WARNING: --allow-network: this sandbox has outbound network access; "
               "the user-space tripwires still log and refuse egress, but the outer "
               "boundary is open", file=sys.stderr)
     if args.dry_run:
-        print(json.dumps({"app": args.app_name, "harness": args.harness, "case_id": args.case_id,
-                          "policy": runtime_policy, "remote_argv": command},
+        print(json.dumps({"app": args.app_name, "harness": args.harness, "demo": args.demo,
+                          "case_id": args.case_id, "output_name": output_name(
+                              args.harness, args.case_id, demo=args.demo,
+                              evidence_chain=args.evidence_chain, weights_mode=args.weights_mode,
+                              allow_network=args.allow_network,
+                          ), "policy": runtime_policy, "remote_argv": command},
                          indent=2))
         return 0
 
@@ -137,15 +195,21 @@ def run(args: argparse.Namespace) -> int:
         raise SystemExit("Modal SDK missing; install the pinned requirements with: pip install modal==1.5.5") from exc
 
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    suffix = "-net-open" if args.allow_network else ""
-    output = (args.output / f"{args.harness}-{args.case_id or 'all'}{suffix}-{stamp}").resolve()
+    name = output_name(
+        args.harness, args.case_id, demo=args.demo,
+        evidence_chain=args.evidence_chain, weights_mode=args.weights_mode,
+        allow_network=args.allow_network,
+    )
+    output = (args.output / f"{name}-{stamp}").resolve()
     output.mkdir(parents=True, exist_ok=False)
     app = modal.App.lookup(args.app_name, create_if_missing=True)
     image = build_image(modal)
     sandbox = None
     metadata: dict[str, object] = {
-        "schema_version": "1.0", "harness": args.harness, "case_id": args.case_id,
-        "app": args.app_name, "policy": runtime_policy, "started_at": stamp,
+        "schema_version": "1.0", "harness": args.harness, "demo": args.demo,
+        "case_id": args.case_id, "evidence_chain": args.evidence_chain,
+        "weights_mode": args.weights_mode, "app": args.app_name,
+        "policy": runtime_policy, "started_at": stamp,
     }
     try:
         with modal.enable_output():
@@ -154,7 +218,8 @@ def run(args: argparse.Namespace) -> int:
                 block_network=block_network, cpu=POLICY["cpu"], memory=POLICY["memory"],
                 timeout=args.sandbox_timeout, idle_timeout=POLICY["idle_timeout"],
                 secrets=[], volumes={},
-                tags={"purpose": "rogue-agent-honeypot", "harness": args.harness,
+                tags={"purpose": "rogue-agent-honeypot",
+                      "harness": "demo" if args.demo else args.harness,
                       "network": "open" if args.allow_network else "blocked"},
             )
         metadata["sandbox_id"] = sandbox.object_id
@@ -184,11 +249,12 @@ def run(args: argparse.Namespace) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser()
     harness = parser.add_mutually_exclusive_group(required=True)
-    harness.add_argument("--harness", choices=["agent", "model"])
+    harness.add_argument("--harness", choices=["agent", "instrument", "model"])
     harness.add_argument(
         "--network-off-suite", action="store_true",
         help="select the 20-case outbound-network containment suite",
     )
+    harness.add_argument("--demo", action="store_true", help="run the checked evidence-chain demo")
     parser.add_argument(
         "--enable-network-off-suite", action="store_true",
         help="required explicit opt-in for --network-off-suite",
@@ -198,10 +264,12 @@ def main() -> int:
         help="open outbound network for this run (block_network=False); refused with "
              "--network-off-suite; recorded in the metadata and the output directory name",
     )
-    selection = parser.add_mutually_exclusive_group(required=True)
+    selection = parser.add_mutually_exclusive_group()
     selection.add_argument("--case-id")
     selection.add_argument("--all", action="store_true")
     parser.add_argument("--workers", type=int, choices=range(1, 9), default=4)
+    parser.add_argument("--evidence-chain", action="store_true")
+    parser.add_argument("--weights-mode", choices=["text", "format"], default="text")
     parser.add_argument("--app-name", default=DEFAULT_APP)
     parser.add_argument("--output", type=Path, default=Path("results/modal-honeypot"))
     parser.add_argument("--sandbox-timeout", type=int, default=POLICY["timeout"])
@@ -213,8 +281,13 @@ def main() -> int:
     try:
         validate_network_off_opt_in(args.harness, args.enable_network_off_suite)
         validate_allow_network(args.harness, args.allow_network)
+        validate_weights_mode(args.harness, args.weights_mode)
     except ValueError as exc:
         parser.error(str(exc))
+    if args.demo and (args.case_id or args.all):
+        parser.error("--demo cannot be combined with --case-id or --all")
+    if not args.demo and not (args.case_id or args.all):
+        parser.error("a harness run requires --case-id or --all")
     if args.sandbox_timeout < args.exec_timeout or args.sandbox_timeout > 86400:
         parser.error("sandbox timeout must cover exec timeout and be at most 86400 seconds")
     if args.all:
