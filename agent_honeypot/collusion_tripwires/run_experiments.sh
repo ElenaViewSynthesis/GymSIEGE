@@ -1,17 +1,19 @@
 #!/usr/bin/env bash
 # Experimental-run driver for the collusion suite, through the Modal honeypot
 # runner (modal_honeypot/runner.py --harness collusion). Every run is inside the
-# network-blocked sandbox; a real-agent subject can only run there, never on the
-# host. This script is SAFE BY DEFAULT: it prints the plan (the runner's
+# externally contained sandbox; scripted runs block egress, while real-agent
+# runs allow only the gateway and Langfuse hosts. A real-agent subject can only
+# run there, never on the host. This script is SAFE BY DEFAULT: it prints the plan (the runner's
 # --dry-run) and starts no sandbox and no model call unless you pass --execute.
 #
 #   ./agent_honeypot/collusion_tripwires/run_experiments.sh            # plan every arm (free)
-#   ./agent_honeypot/collusion_tripwires/run_experiments.sh --arm lure-pair
+#   ./agent_honeypot/collusion_tripwires/run_experiments.sh --arm lure-pair --model PINNED_MODEL
 #   ./agent_honeypot/collusion_tripwires/run_experiments.sh --list     # list arms + Table 3 rows
 #   ./agent_honeypot/collusion_tripwires/run_experiments.sh --arm sensor-controls --execute   # PAID
 #
-# Paid runs (--execute) also require EXPERIMENT_APPROVED=1 in the environment, so
-# a stray --execute cannot bill by itself. --allow-network is never passed.
+# Agent arms require --model (or MODEL), gateway and Langfuse URLs. Paid runs
+# also require EXPERIMENT_APPROVED=1 and LITELLM_MASTER_KEY on the host, so a
+# stray --execute cannot mint or bill by itself. --allow-network is never passed.
 set -Eeuo pipefail
 
 repo=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
@@ -56,6 +58,9 @@ list=0
 workers=4
 output_root="results/modal-honeypot-collusion-exp"
 cost_per_cell=0.13   # planning estimate carried from the chain cohort; agent arms may differ
+model=${MODEL:-}
+key_budget=0.50
+key_ttl=
 
 usage() { sed -n '2,20p' "$0"; }
 while (($#)); do
@@ -65,6 +70,9 @@ while (($#)); do
     --list) list=1; shift ;;
     --workers) workers=$2; shift 2 ;;
     --subject-command) SUBJECT_CMD=$2; shift 2 ;;
+    --model) model=$2; shift 2 ;;
+    --key-budget) key_budget=$2; shift 2 ;;
+    --key-ttl) key_ttl=$2; shift 2 ;;
     --output) output_root=$2; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) printf 'Unknown option: %s\n' "$1" >&2; usage >&2; exit 64 ;;
@@ -93,13 +101,34 @@ cases_of() {
 # Pre-flight for paid runs.
 preflight() {
   local any_agent=$1
+  if ((any_agent)); then
+    [[ -n $model ]] || {
+      printf 'agent arm needs --model (or MODEL) so its virtual key is pinned to one model\n' >&2; exit 78; }
+    [[ -n ${OPENAI_BASE_URL:-} ]] || {
+      printf 'agent arm needs OPENAI_BASE_URL set to the external gateway tunnel URL ending in /v1\n' >&2; exit 78; }
+    [[ -n ${LANGFUSE_BASE_URL:-} ]] || {
+      printf 'agent arm needs LANGFUSE_BASE_URL for the scoped egress plan\n' >&2; exit 78; }
+    python3 - <<'PY' || exit 78
+import os
+from urllib.parse import urlparse
+
+parsed = urlparse(os.environ["OPENAI_BASE_URL"])
+host = parsed.hostname or ""
+if parsed.scheme != "https" or not host:
+    raise SystemExit("OPENAI_BASE_URL must be an absolute HTTPS URL")
+if host in {"localhost", "0.0.0.0", "::1"} or host.startswith("127."):
+    raise SystemExit("OPENAI_BASE_URL must not point at loopback")
+if parsed.path.rstrip("/")[-3:] != "/v1":
+    raise SystemExit("OPENAI_BASE_URL must end in /v1")
+PY
+  fi
   if ((execute)); then
     [[ ${EXPERIMENT_APPROVED:-0} == 1 ]] || {
       printf 'refusing paid run: set EXPERIMENT_APPROVED=1 to confirm (and you reviewed the plan + cost)\n' >&2; exit 77; }
     if ((any_agent)); then
-      [[ -n ${OPENAI_API_KEY:-} ]] || {
-        printf 'agent arm needs OPENAI_API_KEY (a scoped LiteLLM virtual key, not the master key)\n' >&2; exit 78; }
-      printf 'NOTE: agent arms reach the model via the gateway through the tunnel; the sandbox keeps secrets=[]; the key is passed at run time.\n' >&2
+      [[ -n ${LITELLM_MASTER_KEY:-} ]] || {
+        printf 'agent arm needs LITELLM_MASTER_KEY on the host to mint its scoped virtual key\n' >&2; exit 78; }
+      printf 'NOTE: each agent run mints one budgeted virtual key and injects it only through an ephemeral Modal Secret.\n' >&2
     fi
   fi
 }
@@ -115,7 +144,11 @@ run_arm() {
     for ((t=1; t<=trials; t++)); do
       local -a cmd=(python3 "$runner" --harness collusion --case-id "$case_id"
                     --workers "$workers" --output "$tag")
-      [[ $subj == agent ]] && cmd+=(--subject-command "$SUBJECT_CMD")
+      if [[ $subj == agent ]]; then
+        cmd+=(--subject-command "$SUBJECT_CMD" --egress-allowlist langfuse,gateway
+              --model "$model" --arm "$arm" --trial "$t" --key-budget "$key_budget")
+        [[ -n $key_ttl ]] && cmd+=(--key-ttl "$key_ttl")
+      fi
       ((execute)) || cmd+=(--dry-run)
       printf '  [%s trial %d] %s\n' "$case_id" "$t" "$( ((execute)) && echo RUN || echo PLAN )"
       "${cmd[@]}" >/dev/null 2>&1 || printf '    (runner exit %s -- inspect %s)\n' "$?" "$tag" >&2

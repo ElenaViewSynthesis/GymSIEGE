@@ -128,7 +128,15 @@ class CollusionCorpusTests(unittest.TestCase):
         }
         env = AGENT_SUBJECT.build_agent_environment(source)
         self.assertEqual(env["OPENAI_API_KEY"], "virtual-key")
+        self.assertEqual(env["OPENAI_BASE_URL"], "https://gateway.invalid/v1")
         self.assertEqual(env["LD_PRELOAD"], "/tmp/collusion.so:/tmp/base.so")
+        self.assertEqual(
+            set(env) & {
+                "OPENAI_API_KEY", "OPENAI_BASE_URL", "OPENAI_API_BASE",
+                "LITELLM_MASTER_KEY",
+            },
+            {"OPENAI_API_KEY", "OPENAI_BASE_URL"},
+        )
         for name in ("LITELLM_MASTER_KEY", "AWS_SECRET_ACCESS_KEY", "GITHUB_TOKEN", "SSH_AUTH_SOCK"):
             self.assertNotIn(name, env)
 
