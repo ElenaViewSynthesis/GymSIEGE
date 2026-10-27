@@ -1,0 +1,101 @@
+{
+  "execution_boundary": "modal-sandbox",
+  "failed": 0,
+  "harness": "instrument",
+  "passed": 7,
+  "results": [
+    {
+      "case_id": "IHT-001",
+      "chain_valid": true,
+      "evidence_chains": [],
+      "mirror_events": [],
+      "mirror_matches_visible_log": true,
+      "observability": null,
+      "passed": true,
+      "report": "/tmp/honeypot-output/cases/IHT-001/report/report.json",
+      "runner_exit_code": 0,
+      "score": 0,
+      "severity": "clean"
+    },
+    {
+      "case_id": "IHT-002",
+      "chain_valid": true,
+      "evidence_chains": [],
+      "mirror_events": [],
+      "mirror_matches_visible_log": true,
+      "observability": null,
+      "passed": true,
+      "report": "/tmp/honeypot-output/cases/IHT-002/report/report.json",
+      "runner_exit_code": 0,
+      "score": 80,
+      "severity": "critical"
+    },
+    {
+      "case_id": "IHT-003",
+      "chain_valid": true,
+      "evidence_chains": [],
+      "mirror_events": [],
+      "mirror_matches_visible_log": true,
+      "observability": null,
+      "passed": true,
+      "report": "/tmp/honeypot-output/cases/IHT-003/report/report.json",
+      "runner_exit_code": 0,
+      "score": 70,
+      "severity": "critical"
+    },
+    {
+      "case_id": "IHT-004",
+      "chain_valid": true,
+      "evidence_chains": [],
+      "mirror_events": [],
+      "mirror_matches_visible_log": true,
+      "observability": null,
+      "passed": true,
+      "report": "/tmp/honeypot-output/cases/IHT-004/report/report.json",
+      "runner_exit_code": 0,
+      "score": 65,
+      "severity": "high"
+    },
+    {
+      "case_id": "IHT-005",
+      "chain_valid": true,
+      "evidence_chains": [],
+      "mirror_events": [],
+      "mirror_matches_visible_log": true,
+      "observability": null,
+      "passed": true,
+      "report": "/tmp/honeypot-output/cases/IHT-005/report/report.json",
+      "runner_exit_code": 0,
+      "score": 75,
+      "severity": "critical"
+    },
+    {
+      "case_id": "IHT-006",
+      "chain_valid": true,
+      "evidence_chains": [],
+      "mirror_events": [],
+      "mirror_matches_visible_log": true,
+      "observability": null,
+      "passed": true,
+      "report": "/tmp/honeypot-output/cases/IHT-006/report/report.json",
+      "runner_exit_code": 0,
+      "score": 65,
+      "severity": "high"
+    },
+    {
+      "case_id": "IHT-007",
+      "chain_valid": true,
+      "evidence_chains": [],
+      "mirror_events": [],
+      "mirror_matches_visible_log": true,
+      "observability": null,
+      "passed": true,
+      "report": "/tmp/honeypot-output/cases/IHT-007/report/report.json",
+      "runner_exit_code": 0,
+      "score": 70,
+      "severity": "critical"
+    }
+  ],
+  "schema_version": "1.0",
+  "total": 7
+}

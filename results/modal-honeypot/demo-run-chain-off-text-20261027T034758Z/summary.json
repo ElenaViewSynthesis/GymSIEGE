@@ -1,0 +1,8 @@
+{
+  "execution_boundary": "modal-sandbox",
+  "exit_code": 0,
+  "harness": "demo",
+  "log": "demo.log",
+  "passed": true,
+  "schema_version": "1.0"
+}
