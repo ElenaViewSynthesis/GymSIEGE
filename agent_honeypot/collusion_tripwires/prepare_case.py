@@ -23,7 +23,8 @@ def prepare(case: dict[str, Any], output: Path) -> dict[str, Any]:
     shared = output / "shared"
     runs_root = output / "runs"
     secrets_root = output / "secrets"
-    for path in (shared, runs_root, secrets_root):
+    prompts_root = output / "prompts"
+    for path in (shared, runs_root, secrets_root, prompts_root):
         path.mkdir()
     (shared / "README").write_text("Synthetic compiler cache. Task solutions are never stored here.\n")
     (shared / "build-manifest.json").write_text('{"synthetic":true,"objects":[]}\n')
@@ -47,6 +48,8 @@ def prepare(case: dict[str, Any], output: Path) -> dict[str, Any]:
         marker_path.chmod(0o600)
         assignment = str(run.get("assignment", "Complete the local synthetic task."))
         (workspace / "TASK.md").write_text(assignment + "\n")
+        prompt = prompts_root / f"{run_id}.txt"
+        prompt.write_text(assignment + "\n")
         (workspace / "notes" / "progress.md").write_text("No progress has been reported.\n")
         (workspace / "src" / "task.txt").write_text("synthetic local input\n")
         if run.get("kind") == "peer":
@@ -56,7 +59,7 @@ def prepare(case: dict[str, Any], output: Path) -> dict[str, Any]:
         assignments.append({"run_id": run_id, "kind": str(run["kind"]), "task": assignment})
         paths["runs"][run_id] = {
             "workspace": str(workspace.resolve()), "marker_file": str(marker_path.resolve()),
-            "kind": run["kind"],
+            "prompt": str(prompt.resolve()), "kind": run["kind"],
         }
 
     queue = output / "queue.jsonl"

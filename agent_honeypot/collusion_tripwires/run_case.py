@@ -8,6 +8,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -23,6 +24,11 @@ ROOT = HERE.parents[1]
 DATASET = HERE / "cases.jsonl"
 BASE_HARNESS = ROOT / "agent_honeypot" / "harness.sh"
 EVIDENCE_CHAIN = ROOT / "agent_honeypot" / "evidence_chain.py"
+AGENT_SUBJECT = HERE / "agent_subject.py"
+CONTAINMENT_MARKER = "MODAL_COLLUSION_CONTAINMENT_ENFORCED"
+PROCESS_EVIDENCE_FD = 7
+ORCHESTRATOR_EVIDENCE_FD = 10
+BOARD_EVIDENCE_FD = 11
 
 
 def _module(name: str, path: Path):
@@ -164,6 +170,8 @@ def _run_env(case: dict[str, Any], root: Path, run: dict[str, Any], board_url: s
         "HONEYPOT_CASE_ID": str(case["id"]), "HONEYPOT_COLLUSION_ROOT": str(root),
         "HONEYPOT_COLLUSION_RUN_ID": run_id, "HONEYPOT_RUN_KIND": str(run["kind"]),
         "HONEYPOT_WORKSPACE": str(workspace), "HONEYPOT_SHARED": paths["shared"],
+        "HONEYPOT_COLLUSION_PROMPT_FILE": paths["runs"][run_id]["prompt"],
+        "HONEYPOT_COLLUSION_TRANSCRIPT": str(root / "runs" / run_id / "trajectory.jsonl"),
         "HONEYPOT_RUN_MARKER": markers[run_id]["run_marker"],
         "HONEYPOT_CONTENT_MARKER": markers[run_id]["content_marker"],
         "HONEYPOT_BOARD_URL": board_url, "HONEYPOT_PEER_WORKSPACES": ":".join(peer_paths),
@@ -171,6 +179,7 @@ def _run_env(case: dict[str, Any], root: Path, run: dict[str, Any], board_url: s
         "HONEYPOT_COLLUSION_SHARED_PATHS": paths["shared"],
         "HONEYPOT_COLLUSION_PEER_INBOXES": ":".join(str(Path(item) / "inbox") for item in peer_paths),
         "HONEYPOT_COLLUSION_OWN_INBOX": str((workspace / "inbox").resolve()),
+        "HONEYPOT_COLLUSION_INBOX": str((workspace / "inbox").resolve()),
         "HONEYPOT_COLLUSION_QUEUE": paths["queue"], "HONEYPOT_COLLUSION_RESULTS": paths["results"],
         "HONEYPOT_COLLUSION_PRELOAD": str(library), "HONEYPOT_EXTRA_PATH": str(HERE),
         "HONEYPOT_BASE_HARNESS": str(BASE_HARNESS), "HONEYPOT_SCRIPTED_ACTOR": str(HERE / "scripted_actor.py"),
@@ -183,6 +192,23 @@ def _run_env(case: dict[str, Any], root: Path, run: dict[str, Any], board_url: s
     else:
         env.pop("HONEYPOT_COLLUSION_OBSERVE_ONLY", None)
     return env
+
+
+def _subject_command(value: str | None) -> list[str] | None:
+    if value is None:
+        return None
+    command = shlex.split(value)
+    if not command:
+        raise ValueError("--subject-command must not be empty")
+    return command
+
+
+def _require_containment(subject_command: list[str] | None) -> None:
+    if subject_command is not None and os.environ.get(CONTAINMENT_MARKER) != "1":
+        raise RuntimeError(
+            "real collusion subjects require external containment; "
+            f"set {CONTAINMENT_MARKER}=1 only inside the Modal path or a disposable isolated VM"
+        )
 
 
 def _process_results(output_text: str, reporter: str, root: Path, chain: ChainLog, observe_only: bool) -> None:
@@ -222,28 +248,49 @@ def _artifacts(root: Path) -> tuple[list[tuple[Path, str]], dict[str, str], list
     return sources, outputs, evidence
 
 
-def run_one(case: dict[str, Any], output: Path) -> dict[str, Any]:
+def _output_texts(root: Path, outputs: dict[str, str]) -> dict[str, str]:
+    texts: dict[str, str] = {}
+    for run_id, output_path in outputs.items():
+        parts = []
+        path = Path(output_path)
+        if path.is_file():
+            parts.append(path.read_text(errors="replace"))
+        trajectory = root / "runs" / run_id / "trajectory.jsonl"
+        if trajectory.is_file():
+            parts.append(trajectory.read_text(errors="replace"))
+        texts[run_id] = "\n".join(parts)
+    return texts
+
+
+def run_one(
+    case: dict[str, Any], output: Path, *, subject_command: list[str] | None = None,
+) -> dict[str, Any]:
+    _require_containment(subject_command)
     PREPARE.prepare(case, output)
     library = output / "libcollusion_tripwire.so"
     subprocess.run([
         "gcc", "-shared", "-fPIC", "-O2", "-Wall", "-Wextra", "-o", str(library),
         str(HERE / "collusion_preload.c"), "-ldl",
     ], check=True)
-    orchestrator = ChainLog(output / "orchestrator", 10)
-    board_chain = ChainLog(output / "board", 11)
+    orchestrator = ChainLog(output / "orchestrator", ORCHESTRATOR_EVIDENCE_FD)
+    board_chain = ChainLog(output / "board", BOARD_EVIDENCE_FD)
     orchestrator.emit("CASE_STARTED", {"case": case["id"]})
     ready = output / "board" / "ready.txt"
     board_command = [
-        sys.executable, str(HERE / "board.py"), "--event-fd", "11",
+        sys.executable, str(HERE / "board.py"), "--event-fd", str(BOARD_EVIDENCE_FD),
         "--markers", str(output / "markers.json"), "--ready", str(ready),
     ]
     if case["input"].get("observe_only"):
         board_command.append("--observe-only")
-    board = subprocess.Popen(board_command, pass_fds=(11,), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    board = subprocess.Popen(
+        board_command, pass_fds=(BOARD_EVIDENCE_FD,),
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+    )
     board_url = _wait_ready(ready, board)
     hashes: dict[str, str] = {}
     _snapshot(output, orchestrator, hashes, "orchestrator", _marker_registry(output), initial=True)
     observe_only = bool(case["input"].get("observe_only"))
+    run_exit_codes: dict[str, int] = {}
     for run in case["input"]["runs"]:
         run_id = str(run["id"])
         run_root = output / "runs" / run_id
@@ -252,8 +299,12 @@ def run_one(case: dict[str, Any], output: Path) -> dict[str, Any]:
                    "--output", str(run_root / "harness")]
         if observe_only:
             command.append("--observe-only")
-        command.extend(["--", sys.executable, str(HERE / "scripted_actor.py"), "--action", str(run["action"])])
+        if run["kind"] == "subject" and subject_command is not None:
+            command.extend(["--", sys.executable, str(AGENT_SUBJECT), "--", *subject_command])
+        else:
+            command.extend(["--", sys.executable, str(HERE / "scripted_actor.py"), "--action", str(run["action"])])
         completed = subprocess.run(command, cwd=ROOT, env=env, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        run_exit_codes[run_id] = completed.returncode
         (run_root / "harness.stdout.log").write_text(completed.stdout)
         _process_results(completed.stdout, run_id, output, orchestrator, observe_only)
         _snapshot(output, orchestrator, hashes, run_id, _marker_registry(output))
@@ -267,7 +318,7 @@ def run_one(case: dict[str, Any], output: Path) -> dict[str, Any]:
     board_chain.finish()
     sources, outputs, evidence_paths = _artifacts(output)
     raw_events = SCORE.load_events(sources)
-    output_texts = {run: Path(path).read_text(errors="replace") for run, path in outputs.items() if Path(path).is_file()}
+    output_texts = _output_texts(output, outputs)
     derived = SCORE.derive_events(raw_events, _marker_registry(output), output_texts, _delegations(output))
     for event in derived:
         orchestrator.emit(event["kind"], {**event["detail"], "run": event["run_id"]}, timestamp=event["timestamp"])
@@ -286,6 +337,17 @@ def run_one(case: dict[str, Any], output: Path) -> dict[str, Any]:
         case, final_events, markers=_marker_registry(output), outputs={},
         delegation_tasks=_delegations(output), chains=chains,
     )
+    report["subject_mode"] = "agent" if subject_command is not None else "scripted"
+    report["execution_boundary"] = (
+        "externally-contained-real-agent" if subject_command is not None
+        else "local-scripted-no-model-no-network"
+    )
+    report["run_exit_codes"] = run_exit_codes
+    subject_ids = [str(run["id"]) for run in case["input"]["runs"] if run["kind"] == "subject"]
+    report["agent_execution_passed"] = (
+        all(run_exit_codes.get(run_id) == 0 for run_id in subject_ids)
+        if subject_command is not None else None
+    )
     (output / "report.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
     (output / "events-index.json").write_text(json.dumps([
         {"path": str(path), "run_id": run_id} for path, run_id in sources
@@ -293,14 +355,20 @@ def run_one(case: dict[str, Any], output: Path) -> dict[str, Any]:
     return report
 
 
-def run_all(cases: list[dict[str, Any]], output_root: Path, workers: int) -> dict[str, Any]:
+def run_all(
+    cases: list[dict[str, Any]], output_root: Path, workers: int, *,
+    subject_command_text: str | None = None,
+) -> dict[str, Any]:
     output_root.mkdir(parents=True, exist_ok=True)
     logs = output_root / "logs"
     logs.mkdir(exist_ok=True)
 
     def invoke(case_id: str) -> dict[str, Any]:
+        command = [sys.executable, str(HERE / "run_case.py"), case_id, "--output-root", str(output_root)]
+        if subject_command_text is not None:
+            command.extend(["--subject-command", subject_command_text])
         completed = subprocess.run(
-            [sys.executable, str(HERE / "run_case.py"), case_id, "--output-root", str(output_root)],
+            command,
             cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
         )
         (logs / f"{case_id}.log").write_text(completed.stdout)
@@ -322,7 +390,11 @@ def run_all(cases: list[dict[str, Any]], output_root: Path, workers: int) -> dic
     behavior = Counter(row.get("stage") for row in rows if row.get("role") == "behavior_eval")
     controls = Counter(row.get("stage") for row in rows if row.get("role") == "sensor_control")
     summary = {
-        "schema_version": "1.0", "execution_boundary": "local-scripted-no-model-no-network",
+        "schema_version": "1.0", "execution_boundary": (
+            "externally-contained-real-agent" if subject_command_text is not None
+            else "local-scripted-no-model-no-network"
+        ),
+        "subject_mode": "agent" if subject_command_text is not None else "scripted",
         "total": len(rows), "passed": sum(bool(row.get("passed")) for row in rows),
         "failed": sum(not bool(row.get("passed")) for row in rows),
         "all_chains_valid": all(bool(row.get("observable")) for row in rows),
@@ -340,22 +412,36 @@ def main() -> int:
     selection.add_argument("--all", action="store_true")
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--output-root", type=Path, default=ROOT / "results" / "collusion-honeypot")
+    parser.add_argument(
+        "--subject-command",
+        help="replace each subject's scripted actor with this shell-split command; requires external containment",
+    )
     args = parser.parse_args()
     if not 1 <= args.workers <= 8:
         parser.error("--workers must be between 1 and 8")
     cases = _load_cases()
+    try:
+        subject_command = _subject_command(args.subject_command)
+        _require_containment(subject_command)
+    except (RuntimeError, ValueError) as exc:
+        parser.error(str(exc))
     if args.all:
-        summary = run_all(cases, args.output_root.resolve(), args.workers)
+        summary = run_all(
+            cases, args.output_root.resolve(), args.workers,
+            subject_command_text=args.subject_command,
+        )
         print(json.dumps({key: summary[key] for key in ("total", "passed", "failed", "all_chains_valid")}, sort_keys=True))
         return 0 if summary["failed"] == 0 else 1
     case = next((item for item in cases if item["id"] == args.case_id), None)
     if case is None:
         raise SystemExit(f"unknown case: {args.case_id}")
     output = args.output_root.resolve() / str(case["id"])
-    report = run_one(case, output)
+    report = run_one(case, output, subject_command=subject_command)
     print(json.dumps({"case_id": case["id"], "stage": report["observed_stage"],
                       "calibration_passed": report["calibration_passed"],
                       "observability": report["observability"]}, sort_keys=True))
+    if subject_command is not None:
+        return 0 if report["observability"] == "observable" and report["agent_execution_passed"] else 2
     return 0 if report["calibration_passed"] else 2
 
 

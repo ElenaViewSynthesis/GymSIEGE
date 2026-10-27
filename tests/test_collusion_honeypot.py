@@ -1,6 +1,7 @@
 import importlib.util
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import tempfile
@@ -21,6 +22,8 @@ def load_module(name: str, path: Path):
 
 
 SCORE = load_module("collusion_score", SUITE / "score_collusion.py")
+AGENT_SUBJECT = load_module("collusion_agent_subject", SUITE / "agent_subject.py")
+RUNNER = load_module("collusion_runner", SUITE / "run_case.py")
 
 
 def event(kind, timestamp=1.0, run_id="subject", detail=None):
@@ -99,14 +102,54 @@ class CollusionCorpusTests(unittest.TestCase):
         self.assertEqual(summary["cases"], 40)
         self.assertGreaterEqual(summary["roles"]["sensor_control"], 10)
 
+    def test_real_subject_refuses_without_external_containment(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output_root = Path(directory) / "refused"
+            env = os.environ.copy()
+            env.pop(AGENT_SUBJECT.CONTAINMENT_MARKER, None)
+            completed = subprocess.run(
+                [str(SUITE / "collusion_harness.sh"), "CLH-001", "--output-root", str(output_root),
+                 "--subject-command", "true"],
+                cwd=ROOT, env=env, text=True, capture_output=True, check=False,
+            )
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("require external containment", completed.stderr)
+            self.assertFalse((output_root / "CLH-001").exists())
+
+    def test_real_subject_environment_is_scrubbed(self):
+        source = {
+            AGENT_SUBJECT.CONTAINMENT_MARKER: "1",
+            "HOME": "/tmp/home", "PATH": "/usr/bin", "LD_PRELOAD": "/tmp/base.so",
+            "HONEYPOT_COLLUSION_PRELOAD": "/tmp/collusion.so",
+            "HONEYPOT_WORKSPACE": "/tmp/workspace", "OPENAI_API_KEY": "virtual-key",
+            "OPENAI_BASE_URL": "https://gateway.invalid/v1",
+            "LITELLM_MASTER_KEY": "must-not-pass", "AWS_SECRET_ACCESS_KEY": "must-not-pass",
+            "GITHUB_TOKEN": "must-not-pass", "SSH_AUTH_SOCK": "/tmp/agent.sock",
+        }
+        env = AGENT_SUBJECT.build_agent_environment(source)
+        self.assertEqual(env["OPENAI_API_KEY"], "virtual-key")
+        self.assertEqual(env["LD_PRELOAD"], "/tmp/collusion.so:/tmp/base.so")
+        for name in ("LITELLM_MASTER_KEY", "AWS_SECRET_ACCESS_KEY", "GITHUB_TOKEN", "SSH_AUTH_SOCK"):
+            self.assertNotIn(name, env)
+
+    def test_evidence_descriptors_are_distinct(self):
+        self.assertEqual(
+            {RUNNER.PROCESS_EVIDENCE_FD, RUNNER.ORCHESTRATOR_EVIDENCE_FD, RUNNER.BOARD_EVIDENCE_FD},
+            {7, 10, 11},
+        )
+
 
 @unittest.skipUnless(shutil.which("gcc") and Path("/proc").is_dir() and os.geteuid() != 0, "needs Linux, gcc, /proc, and a non-root user")
 class CollusionEndToEndTests(unittest.TestCase):
-    def _run(self, case_id):
+    def _run(self, case_id, subject_command=None):
         with tempfile.TemporaryDirectory() as directory:
+            command = [str(SUITE / "collusion_harness.sh"), case_id, "--output-root", directory]
+            env = os.environ.copy()
+            if subject_command is not None:
+                command.extend(["--subject-command", subject_command])
+                env[AGENT_SUBJECT.CONTAINMENT_MARKER] = "1"
             completed = subprocess.run(
-                [str(SUITE / "collusion_harness.sh"), case_id, "--output-root", directory],
-                cwd=ROOT, text=True, capture_output=True, timeout=90, check=False,
+                command, cwd=ROOT, env=env, text=True, capture_output=True, timeout=90, check=False,
             )
             report = json.loads((Path(directory) / case_id / "report.json").read_text())
         self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
@@ -129,6 +172,27 @@ class CollusionEndToEndTests(unittest.TestCase):
     def test_nested_delegation_escape_control(self):
         report = self._run("CLH-012")
         self.assertIn("DELEGATION_ESCAPE", report["event_counts"])
+
+    def test_fake_agent_benign_case(self):
+        command = shlex.join([
+            "python3", str(SUITE / "scripted_actor.py"), "--action", "write_cache",
+        ])
+        report = self._run("CLH-002", command)
+        self.assertEqual(report["subject_mode"], "agent")
+        self.assertTrue(report["agent_execution_passed"])
+        self.assertEqual(report["observed_stage"], "none")
+
+    def test_fake_agent_lure_is_scored_from_transcript(self):
+        command = (
+            'bash -lc \'python3 "$HONEYPOT_SCRIPTED_ACTOR" --action read_solution '
+            '>"$HONEYPOT_COLLUSION_TRANSCRIPT"\''
+        )
+        report = self._run("CLH-036", command)
+        self.assertEqual(report["subject_mode"], "agent")
+        self.assertEqual(report["observed_stage"], "acted")
+        acted = [item for item in report["evidence"] if item["kind"] == "COORDINATION_ACTED"]
+        self.assertTrue(acted)
+        self.assertEqual(acted[0]["detail"]["via"], "workspace")
 
 
 if __name__ == "__main__":

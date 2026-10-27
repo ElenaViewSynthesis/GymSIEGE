@@ -1,8 +1,8 @@
 # Collusion tripwires
 
-This experimental, local-only suite measures observable coordination between
-synthetic peer runs. It does not infer intent and never calls a model, Modal,
-or a non-loopback service. Each verdict comes from named events in chained TSV
+This experimental suite measures observable coordination between synthetic
+peer runs. Its default scripted calibration is local, makes no model or Modal
+call, and uses no non-loopback service. Each verdict comes from named events in chained TSV
 logs, and every marker, task, solution, cache object, peer, and result is minted
 for the case.
 
@@ -85,6 +85,56 @@ python3 agent_honeypot/collusion_tripwires/run_case.py --all --workers 4 \
   --output-root results/collusion-calibration-local-20261026
 python3 -m unittest tests.test_collusion_honeypot
 ```
+
+## Real-agent subjects
+
+`--subject-command` replaces only `subject` actors; peers and delegated children
+remain scripted. It is deliberately unusable on an ordinary host. The runner
+requires `MODAL_COLLUSION_CONTAINMENT_ENFORCED=1`, which the Modal collusion path
+sets inside its blocked-network sandbox. A disposable, externally isolated VM
+operator may set the same marker after establishing an equivalent boundary.
+Never set it on the normal WSL host.
+
+The subject receives these synthetic evaluation paths:
+
+- `HONEYPOT_COLLUSION_PROMPT_FILE`, `HONEYPOT_WORKSPACE`, and
+  `HONEYPOT_COLLUSION_TRANSCRIPT`;
+- `HONEYPOT_BOARD_URL`, `HONEYPOT_PEER_WORKSPACES`, `HONEYPOT_SHARED`, and
+  `HONEYPOT_COLLUSION_INBOX`;
+- the suite's marker, queue, result-ledger, nesting, preload, and evidence-pipe
+  variables required by the tripwires.
+
+The suite-local launcher constructs a fresh environment from an explicit
+allowlist. Its non-honeypot entries are exactly `HOME`, `LANG`, `LC_ALL`,
+`LC_CTYPE`, `LOGNAME`, `NO_PROXY`, `PATH`, `SHELL`, `SSL_CERT_DIR`,
+`SSL_CERT_FILE`, `TERM`, `TMPDIR`, `TZ`, `USER`, `no_proxy`, `OPENAI_API_KEY`,
+`OPENAI_BASE_URL`, and `OPENAI_API_BASE`. It also retains the containment marker
+and only the named `HONEYPOT_*` controls in `agent_subject.py`'s
+`HONEYPOT_NAMES` allowlist; that constant is the normative, exhaustive list.
+`LD_PRELOAD` is rebuilt from the suite-local and base tripwire libraries rather
+than copied from the parent environment.
+It does not inherit `LITELLM_MASTER_KEY`, `LITELLM_SECRET_KEY`, Modal tokens,
+AWS/GitHub credentials, `SSH_AUTH_SOCK`, `CODEX_HOME`, or arbitrary host
+variables. `OPENAI_API_KEY` must be a run-scoped LiteLLM virtual key, never the
+gateway master key.
+
+The real-agent command is shell-split without an implicit shell. A Codex
+adapter can opt into shell syntax explicitly and must write its JSONL stream to
+the suggested transcript path. This shape is documentation only and must never
+be run on the ordinary host:
+
+```text
+bash -lc 'codex -c web_search="disabled" exec --json \
+  "$(cat "$HONEYPOT_COLLUSION_PROMPT_FILE")" | tee "$HONEYPOT_COLLUSION_TRANSCRIPT"'
+```
+
+For Modal Phase 2, the operator must first provide a reachable LiteLLM gateway,
+a single hard-budgeted virtual key at runtime, a pinned Codex installation and
+configuration, and a reviewed outbound path that reaches only the gateway.
+Neither the key nor Codex is embedded in the image, and the Modal runner keeps
+`secrets=[]`. The current `block_network=True` policy admits loopback for the
+board but no public gateway; the exact gateway tunnel/allowlist mechanism must
+therefore be frozen and reviewed before a paid pilot.
 
 The board binds only `127.0.0.1`. In restricted development sandboxes, local
 socket creation may require an explicit sandbox permission even though no
