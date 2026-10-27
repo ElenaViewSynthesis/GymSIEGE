@@ -51,6 +51,14 @@ class ModalHoneypotTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             MODULE.remote_argv("agent", "APH-176", 4, network_off_enabled=True)
 
+    def test_allow_network_is_explicit_marked_and_refused_for_network_off(self):
+        self.assertTrue(MODULE.POLICY["block_network"])  # the flag never changes the default
+        command = MODULE.remote_argv("agent", "APH-176", 4, allow_network=True)
+        self.assertIn("MODAL_NETWORK_OPEN=1", command)
+        self.assertNotIn("MODAL_NETWORK_OPEN=1", MODULE.remote_argv("agent", "APH-176", 4))
+        with self.assertRaises(ValueError):
+            MODULE.remote_argv("network-off", "NOF-001", 4, network_off_enabled=True, allow_network=True)
+
 
 if __name__ == "__main__":
     unittest.main()

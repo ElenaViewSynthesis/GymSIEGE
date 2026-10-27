@@ -67,6 +67,18 @@ and validation commands. Its positive control —
 host with open egress and expects every one to connect (`20/20 reached`),
 confirming the `blocked` results only appear under real containment.
 
+`--allow-network` opens outbound egress for one run (`block_network=False`). It is an
+explicit opt-in that never changes the default policy, is refused together with the
+network-off suite, passes `MODAL_NETWORK_OPEN=1` into the sandbox, tags the sandbox
+`network=open`, adds `-net-open` to the output directory name, and prints a warning.
+The user-space tripwires inside still log and refuse egress tools and connects; only
+the outer boundary is removed, so use it only for a run that needs it (for example an
+agent that must reach a model API) and read its results with that in mind:
+
+```bash
+python3 modal_honeypot/runner.py --harness agent --case-id APH-176 --allow-network --dry-run
+```
+
 The Modal SDK is pinned in the repository requirements. Authenticate locally
 with Modal before a remote run; do not inject provider credentials into this
 Sandbox.

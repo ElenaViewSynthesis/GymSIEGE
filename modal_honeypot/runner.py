@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -42,21 +43,38 @@ def validate_network_off_opt_in(harness: str, enabled: bool) -> None:
         raise ValueError("--enable-network-off-suite requires --network-off-suite")
 
 
+def validate_allow_network(harness: str, allow_network: bool) -> None:
+    """--allow-network opens outbound egress for one run (block_network=False).
+
+    It is an explicit opt-in that never changes POLICY, is refused for the
+    network-off suite (whose results mean nothing with egress open), and is
+    recorded in the run metadata and the output directory name. The user-space
+    tripwires inside the sandbox still log and refuse egress tools and
+    connects; only the outer boundary is removed.
+    """
+    if harness == "network-off" and allow_network:
+        raise ValueError("--allow-network cannot be combined with --network-off-suite")
+
+
 def remote_argv(
     harness: str,
     case_id: str | None,
     workers: int,
     *,
     network_off_enabled: bool = False,
+    allow_network: bool = False,
 ) -> list[str]:
     validate_case(harness, case_id)
     validate_network_off_opt_in(harness, network_off_enabled)
+    validate_allow_network(harness, allow_network)
     command = [
         "/usr/sbin/runuser", "-u", "honeypot", "--", "env",
         "HOME=/home/honeypot", "PYTHONDONTWRITEBYTECODE=1",
     ]
     if harness == "network-off":
         command.append("MODAL_NETWORK_OFF_ENFORCED=1")
+    if allow_network:
+        command.append("MODAL_NETWORK_OPEN=1")
     command.extend([
         "python3", f"{REMOTE_ROOT}/modal_honeypot/in_sandbox.py",
         "--harness", harness, "--workers", str(workers),
@@ -87,10 +105,13 @@ def build_image(modal_module):
 def run(args: argparse.Namespace) -> int:
     validate_case(args.harness, args.case_id)
     validate_network_off_opt_in(args.harness, args.enable_network_off_suite)
-    if args.harness == "network-off" and POLICY["block_network"] is not True:
+    validate_allow_network(args.harness, args.allow_network)
+    block_network = not args.allow_network
+    if args.harness == "network-off" and block_network is not True:
         raise RuntimeError("network-off suite requires block_network=True")
     runtime_policy = {
         **POLICY,
+        "block_network": block_network,
         "timeout": args.sandbox_timeout,
         "exec_timeout": args.exec_timeout,
         "network_off_suite_enabled": args.enable_network_off_suite,
@@ -98,7 +119,12 @@ def run(args: argparse.Namespace) -> int:
     command = remote_argv(
         args.harness, args.case_id, args.workers,
         network_off_enabled=args.enable_network_off_suite,
+        allow_network=args.allow_network,
     )
+    if args.allow_network:
+        print("WARNING: --allow-network: this sandbox has outbound network access; "
+              "the user-space tripwires still log and refuse egress, but the outer "
+              "boundary is open", file=sys.stderr)
     if args.dry_run:
         print(json.dumps({"app": args.app_name, "harness": args.harness, "case_id": args.case_id,
                           "policy": runtime_policy, "remote_argv": command},
@@ -111,7 +137,8 @@ def run(args: argparse.Namespace) -> int:
         raise SystemExit("Modal SDK missing; install the pinned requirements with: pip install modal==1.5.5") from exc
 
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    output = (args.output / f"{args.harness}-{args.case_id or 'all'}-{stamp}").resolve()
+    suffix = "-net-open" if args.allow_network else ""
+    output = (args.output / f"{args.harness}-{args.case_id or 'all'}{suffix}-{stamp}").resolve()
     output.mkdir(parents=True, exist_ok=False)
     app = modal.App.lookup(args.app_name, create_if_missing=True)
     image = build_image(modal)
@@ -124,10 +151,11 @@ def run(args: argparse.Namespace) -> int:
         with modal.enable_output():
             sandbox = modal.Sandbox.create(
                 "sleep", "infinity", app=app, image=image, workdir="/workspace",
-                block_network=True, cpu=POLICY["cpu"], memory=POLICY["memory"],
+                block_network=block_network, cpu=POLICY["cpu"], memory=POLICY["memory"],
                 timeout=args.sandbox_timeout, idle_timeout=POLICY["idle_timeout"],
                 secrets=[], volumes={},
-                tags={"purpose": "rogue-agent-honeypot", "harness": args.harness},
+                tags={"purpose": "rogue-agent-honeypot", "harness": args.harness,
+                      "network": "open" if args.allow_network else "blocked"},
             )
         metadata["sandbox_id"] = sandbox.object_id
         process = sandbox.exec(*command, timeout=args.exec_timeout)
@@ -165,6 +193,11 @@ def main() -> int:
         "--enable-network-off-suite", action="store_true",
         help="required explicit opt-in for --network-off-suite",
     )
+    parser.add_argument(
+        "--allow-network", action="store_true",
+        help="open outbound network for this run (block_network=False); refused with "
+             "--network-off-suite; recorded in the metadata and the output directory name",
+    )
     selection = parser.add_mutually_exclusive_group(required=True)
     selection.add_argument("--case-id")
     selection.add_argument("--all", action="store_true")
@@ -179,6 +212,7 @@ def main() -> int:
         args.harness = "network-off"
     try:
         validate_network_off_opt_in(args.harness, args.enable_network_off_suite)
+        validate_allow_network(args.harness, args.allow_network)
     except ValueError as exc:
         parser.error(str(exc))
     if args.sandbox_timeout < args.exec_timeout or args.sandbox_timeout > 86400:
