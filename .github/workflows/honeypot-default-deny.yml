@@ -68,7 +68,8 @@ jobs:
             tests.test_agent_honeypot_corpus \
             tests.test_model_replication_corpus \
             tests.test_evidence_chain \
-            tests.test_synthetic_weights
+            tests.test_synthetic_weights \
+            tests.test_collusion_honeypot
 
       - name: Record corpus hashes, scoring version, and evidence
         run: |
