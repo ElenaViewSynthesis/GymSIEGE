@@ -1,6 +1,11 @@
 import importlib.util
+import json
+import subprocess
+import sys
+import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 MODULE_PATH = Path(__file__).parents[1] / "modal_honeypot" / "runner.py"
@@ -8,6 +13,12 @@ SPEC = importlib.util.spec_from_file_location("modal_honeypot_runner", MODULE_PA
 MODULE = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader
 SPEC.loader.exec_module(MODULE)
+
+SANDBOX_MODULE_PATH = Path(__file__).parents[1] / "modal_honeypot" / "in_sandbox.py"
+SANDBOX_SPEC = importlib.util.spec_from_file_location("modal_honeypot_in_sandbox", SANDBOX_MODULE_PATH)
+SANDBOX = importlib.util.module_from_spec(SANDBOX_SPEC)
+assert SANDBOX_SPEC.loader
+SANDBOX_SPEC.loader.exec_module(SANDBOX)
 
 
 class ModalHoneypotTests(unittest.TestCase):
@@ -29,6 +40,14 @@ class ModalHoneypotTests(unittest.TestCase):
             MODULE.remote_argv("model", "APH-176", 4)
         with self.assertRaises(ValueError):
             MODULE.remote_argv("agent", "MRH-181", 4)
+
+    def test_instrument_prefix_is_scoped(self):
+        command = MODULE.remote_argv("instrument", "IHT-002", 4)
+        self.assertIn("instrument", command)
+        with self.assertRaises(ValueError):
+            MODULE.remote_argv("agent", "IHT-002", 4)
+        with self.assertRaises(ValueError):
+            MODULE.remote_argv("instrument", "APH-176", 4)
 
     def test_network_off_requires_explicit_opt_in(self):
         with self.assertRaises(ValueError):
@@ -58,6 +77,86 @@ class ModalHoneypotTests(unittest.TestCase):
         self.assertNotIn("MODAL_NETWORK_OPEN=1", MODULE.remote_argv("agent", "APH-176", 4))
         with self.assertRaises(ValueError):
             MODULE.remote_argv("network-off", "NOF-001", 4, network_off_enabled=True, allow_network=True)
+
+    def test_chain_and_format_flags_become_environment_assignments(self):
+        command = MODULE.remote_argv(
+            "model", "MRH-181", 4, evidence_chain=True, weights_mode="format",
+        )
+        self.assertIn("HONEYPOT_EVIDENCE_CHAIN=1", command)
+        self.assertIn("HONEYPOT_WEIGHTS_MODE=format", command)
+        default = MODULE.remote_argv("model", "MRH-181", 4)
+        self.assertNotIn("HONEYPOT_EVIDENCE_CHAIN=1", default)
+        self.assertIn("HONEYPOT_WEIGHTS_MODE=text", default)
+
+    def test_format_weights_are_model_only(self):
+        for harness, case_id in (("agent", "APH-176"), ("instrument", "IHT-002")):
+            with self.subTest(harness=harness), self.assertRaises(ValueError):
+                MODULE.remote_argv(harness, case_id, 4, weights_mode="format")
+
+    def test_demo_command_uses_sandbox_output_for_tmp(self):
+        command = MODULE.remote_argv(None, None, 4, demo=True)
+        self.assertIn("TMPDIR=/tmp/honeypot-output", command)
+        self.assertIn("--demo", command)
+        self.assertNotIn("--harness", command)
+
+    def test_dry_run_records_chain_weights_and_output_name(self):
+        completed = subprocess.run(
+            [sys.executable, str(MODULE_PATH), "--harness", "model", "--all",
+             "--evidence-chain", "--weights-mode", "format", "--dry-run"],
+            text=True, capture_output=True, check=False,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        plan = json.loads(completed.stdout)
+        self.assertTrue(plan["policy"]["evidence_chain"])
+        self.assertEqual(plan["policy"]["weights_mode"], "format")
+        self.assertEqual(plan["output_name"], "model-all-chain-format")
+
+    def test_instrument_uses_its_cli_and_nested_report(self):
+        def complete(command, **_kwargs):
+            output = Path(command[command.index("--output") + 1])
+            report = output / "report" / "report.json"
+            report.parent.mkdir(parents=True)
+            report.write_text(json.dumps({
+                "score": 80,
+                "severity": "critical",
+                "expectation_passed": True,
+                "chain_valid": True,
+                "mirror_matches_visible_log": True,
+            }))
+            return subprocess.CompletedProcess(command, 0, "instrument output")
+
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(
+            SANDBOX.subprocess, "run", side_effect=complete,
+        ) as run:
+            result = SANDBOX.run_case("instrument", "IHT-002", Path(directory))
+        command = run.call_args.args[0]
+        self.assertEqual(command[-4:], ["--case-id", "IHT-002", "--output", command[-1]])
+        self.assertTrue(result["passed"])
+        self.assertIsNone(result["observability"])
+        self.assertTrue(result["chain_valid"])
+        self.assertTrue(str(result["report"]).endswith("IHT-002/report/report.json"))
+
+    def test_unobservable_report_fails_even_with_zero_exit(self):
+        def complete(command, **_kwargs):
+            output_root = Path(command[command.index("--output-root") + 1])
+            report = output_root / "APH-176" / "report.json"
+            report.parent.mkdir(parents=True)
+            report.write_text(json.dumps({
+                "score": 0,
+                "severity": "clean",
+                "observability": "unobservable",
+                "evidence_chains": [{"valid": False, "mirror_events": 12}],
+            }))
+            return subprocess.CompletedProcess(command, 0, "agent output")
+
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(
+            SANDBOX.subprocess, "run", side_effect=complete,
+        ):
+            result = SANDBOX.run_case("agent", "APH-176", Path(directory))
+        self.assertFalse(result["passed"])
+        self.assertEqual(result["observability"], "unobservable")
+        self.assertEqual(result["evidence_chains"], [False])
+        self.assertEqual(result["mirror_events"], [12])
 
 
 if __name__ == "__main__":
