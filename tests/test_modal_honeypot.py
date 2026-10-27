@@ -306,6 +306,53 @@ class ModalHoneypotTests(unittest.TestCase):
         self.assertEqual(refused.returncode, 2)
         self.assertIn("--allow-network cannot be combined with --harness collusion", refused.stderr)
 
+    def test_egress_allowlist_gateway_token_precedence_and_loopback_refusal(self):
+        with mock.patch.dict(os.environ, {"OPENAI_BASE_URL": "https://tunnel.example.ngrok.app/v1",
+                                          "LITELLM_BASE_URL": "http://localhost:4000"}, clear=True):
+            self.assertEqual(MODULE.resolve_egress_allowlist("gateway"), ["tunnel.example.ngrok.app"])
+        with mock.patch.dict(os.environ, {"OPENAI_API_BASE": "https://Alt.Example.org/v1"}, clear=True):
+            self.assertEqual(MODULE.resolve_egress_allowlist("gateway"), ["alt.example.org"])
+        with mock.patch.dict(os.environ, {"LITELLM_BASE_URL": "https://gw.example.org"}, clear=True):
+            self.assertEqual(MODULE.resolve_egress_allowlist("gateway"), ["gw.example.org"])
+        for loopback in ("http://localhost:4000/v1", "http://127.0.0.1:4000", "http://0.0.0.0:4000"):
+            with mock.patch.dict(os.environ, {"OPENAI_BASE_URL": loopback}, clear=True):
+                with self.assertRaises(ValueError):
+                    MODULE.resolve_egress_allowlist("gateway")
+        with mock.patch.dict(os.environ, {}, clear=True):
+            with self.assertRaises(ValueError):
+                MODULE.resolve_egress_allowlist("gateway")
+        with mock.patch.dict(os.environ, {"LANGFUSE_BASE_URL": "https://cloud.langfuse.com",
+                                          "OPENAI_BASE_URL": "https://tunnel.example.ngrok.app/v1"},
+                             clear=True):
+            self.assertEqual(MODULE.resolve_egress_allowlist("langfuse,gateway"),
+                             ["cloud.langfuse.com", "tunnel.example.ngrok.app"])
+
+    def test_real_agent_egress_recipe_and_reachability_warnings(self):
+        env = {**os.environ, "LANGFUSE_BASE_URL": "https://cloud.langfuse.com",
+               "OPENAI_BASE_URL": "https://tunnel.example.ngrok.app/v1"}
+        base = [sys.executable, str(MODULE_PATH), "--harness", "collusion", "--case-id", "CLH-036",
+                "--subject-command", "echo hi", "--dry-run"]
+        # the recipe: both hosts, no reachability warning
+        done = subprocess.run(base + ["--egress-allowlist", "langfuse,gateway"],
+                              capture_output=True, text=True, env=env, check=True)
+        plan = json.loads(done.stdout)
+        self.assertFalse(plan["policy"]["block_network"])
+        self.assertEqual(plan["policy"]["egress_allowlist"],
+                         ["cloud.langfuse.com", "tunnel.example.ngrok.app"])
+        self.assertEqual(plan["policy"]["secrets"], [])
+        self.assertIn("MODAL_NETWORK_ALLOWLIST=cloud.langfuse.com,tunnel.example.ngrok.app",
+                      plan["remote_argv"])
+        self.assertNotIn("cannot reach the model gateway", done.stderr)
+        self.assertNotIn("not in --egress-allowlist", done.stderr)
+        # Langfuse only with a real agent: warned, not refused
+        done = subprocess.run(base + ["--egress-allowlist", "langfuse"],
+                              capture_output=True, text=True, env=env, check=True)
+        self.assertIn("not in --egress-allowlist", done.stderr)
+        # default blocked with a real agent: warned, not refused
+        done = subprocess.run(base, capture_output=True, text=True, env=env, check=True)
+        self.assertTrue(json.loads(done.stdout)["policy"]["block_network"])
+        self.assertIn("cannot reach the model gateway", done.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

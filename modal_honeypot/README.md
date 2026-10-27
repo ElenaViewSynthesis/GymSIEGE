@@ -141,8 +141,22 @@ for the network-off suite and never combined with `--allow-network`.
 `secrets=[]` is unchanged: the allowlist opens a path, it does not place a key
 in the sandbox.
 
-Two consequences to keep in view. A real-agent subject reaches the model only
-through the gateway, so a Langfuse-only list fits scripted runs; add the
-gateway host for a real agent. And every byte to an allowlisted host is a
-channel out of the sandbox: for the lure arm it is declared as an observed
-channel, never treated as part of the containment.
+A second token, `gateway`, resolves to the model gateway's host from the
+first set of `OPENAI_BASE_URL`, `OPENAI_API_BASE`, `LITELLM_BASE_URL`; a
+loopback host is refused, because the sandbox cannot reach the operator's
+localhost, so the variable must carry the tunnel URL. A real-agent subject
+reaches the model only through the gateway, so a Langfuse-only list fits
+scripted runs and a real agent takes both:
+
+```bash
+# real agent: Langfuse for live traces at the gateway, the gateway for the model
+export OPENAI_BASE_URL=...        # the gateway's tunnel URL, from .env.local
+python3 modal_honeypot/runner.py --harness collusion --case-id CLH-037 \
+  --subject-command "$SUBJECT_CMD" --egress-allowlist langfuse,gateway --dry-run
+```
+
+A real-agent run whose policy cannot reach the gateway (egress blocked, or an
+allowlist without the `gateway` token) prints a warning and is not refused:
+it is still contained, it just cannot call the model. Every byte to an
+allowlisted host is a channel out of the sandbox: for the lure arm it is
+declared as an observed channel, never treated as part of the containment.

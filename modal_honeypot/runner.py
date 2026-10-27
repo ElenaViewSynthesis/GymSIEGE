@@ -65,12 +65,46 @@ def validate_allow_network(harness: str | None, allow_network: bool) -> None:
         raise ValueError(f"--allow-network cannot be combined with {target}")
 
 
+GATEWAY_URL_NAMES = ("OPENAI_BASE_URL", "OPENAI_API_BASE", "LITELLM_BASE_URL")
+LOOPBACK_HOSTS = {"localhost", "0.0.0.0", "::1"}
+
+
+def gateway_host() -> str:
+    """Hostname of the model gateway as the sandbox must reach it.
+
+    Read on the host from the first set of OPENAI_BASE_URL, OPENAI_API_BASE,
+    LITELLM_BASE_URL (the first two are what the scrubbed agent environment
+    passes through). A loopback host is refused: the sandbox cannot reach the
+    operator's localhost, so the variable must point at the tunnel URL.
+    """
+    for name in GATEWAY_URL_NAMES:
+        base = os.environ.get(name, "")
+        if not base:
+            continue
+        host = urlparse(base).hostname
+        if not host:
+            raise ValueError(f"--egress-allowlist gateway: {name} is not a URL")
+        if host in LOOPBACK_HOSTS or host.startswith("127."):
+            raise ValueError(
+                f"--egress-allowlist gateway: {name} points at {host}, which the sandbox "
+                "cannot reach; set it to the tunnel URL of the gateway"
+            )
+        return host.lower()
+    raise ValueError(
+        "--egress-allowlist gateway needs OPENAI_BASE_URL, OPENAI_API_BASE, or "
+        "LITELLM_BASE_URL in the environment"
+    )
+
+
 def resolve_egress_allowlist(spec: str | None) -> list[str] | None:
     """Parse --egress-allowlist into hostnames.
 
-    The token ``langfuse`` resolves to the host of LANGFUSE_BASE_URL, read on the
-    host at plan time (a hostname, never a key). Entries are bare hostnames;
-    URLs and ``*`` are refused so the list can never widen to open egress.
+    The token ``langfuse`` resolves to the host of LANGFUSE_BASE_URL and the
+    token ``gateway`` to the model gateway's host (see gateway_host), both read
+    on the host at plan time (hostnames, never keys). Entries are bare
+    hostnames; URLs and ``*`` are refused so the list can never widen to open
+    egress. A real agent needs ``langfuse,gateway``: Langfuse alone leaves it
+    unable to reach the model.
     """
     if spec is None:
         return None
@@ -85,6 +119,8 @@ def resolve_egress_allowlist(spec: str | None) -> list[str] | None:
             if not host:
                 raise ValueError("--egress-allowlist langfuse needs LANGFUSE_BASE_URL in the environment")
             item = host
+        elif item == "gateway":
+            item = gateway_host()
         if item == "*" or "/" in item or ":" in item:
             raise ValueError(f"--egress-allowlist entries are bare hostnames, not URLs or '*': {item}")
         hosts.append(item.lower())
@@ -265,6 +301,21 @@ def run(args: argparse.Namespace) -> int:
               + " and no other host; the user-space tripwires still log and refuse "
               "egress, and every byte to those hosts is an observed channel",
               file=sys.stderr)
+    if args.subject_command is not None:
+        # A real agent reaches the model only through the gateway; say so when the
+        # egress policy cannot carry it, but do not refuse: the run is still contained.
+        try:
+            reachable_gateway = gateway_host()
+        except ValueError:
+            reachable_gateway = None
+        if block_network:
+            print("WARNING: --subject-command with egress blocked: the real agent cannot "
+                  "reach the model gateway; use --egress-allowlist langfuse,gateway",
+                  file=sys.stderr)
+        elif egress_allowlist and reachable_gateway not in egress_allowlist:
+            print("WARNING: --subject-command: the model gateway host is not in "
+                  "--egress-allowlist; add the 'gateway' token or the agent cannot "
+                  "reach the model", file=sys.stderr)
     if args.dry_run:
         print(json.dumps({"app": args.app_name, "harness": args.harness, "demo": args.demo,
                           "case_id": args.case_id, "output_name": output_name(
@@ -363,7 +414,9 @@ def main() -> int:
         "--egress-allowlist",
         help="comma-separated hostnames the sandbox may reach and nothing else "
              "(block_network=False with outbound_domain_allowlist); the token 'langfuse' "
-             "resolves to the host of LANGFUSE_BASE_URL; permitted for --harness collusion, "
+             "resolves to the host of LANGFUSE_BASE_URL and 'gateway' to the model gateway's "
+             "host from OPENAI_BASE_URL/OPENAI_API_BASE/LITELLM_BASE_URL (loopback refused); "
+             "a real agent needs langfuse,gateway; permitted for --harness collusion, "
              "refused with --allow-network and with --network-off-suite",
     )
     selection = parser.add_mutually_exclusive_group()
