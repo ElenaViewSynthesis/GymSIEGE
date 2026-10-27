@@ -25,6 +25,7 @@ POLICY = {
 }
 CASE_PREFIXES = {
     "agent": "APH-",
+    "collusion": "CLH-",
     "instrument": "IHT-",
     "model": "MRH-",
     "network-off": "NOF-",
@@ -57,8 +58,9 @@ def validate_allow_network(harness: str | None, allow_network: bool) -> None:
     tripwires inside the sandbox still log and refuse egress tools and
     connects; only the outer boundary is removed.
     """
-    if harness == "network-off" and allow_network:
-        raise ValueError("--allow-network cannot be combined with --network-off-suite")
+    if harness in {"collusion", "network-off"} and allow_network:
+        target = "--harness collusion" if harness == "collusion" else "--network-off-suite"
+        raise ValueError(f"--allow-network cannot be combined with {target}")
 
 
 def validate_weights_mode(harness: str | None, weights_mode: str) -> None:
@@ -66,6 +68,11 @@ def validate_weights_mode(harness: str | None, weights_mode: str) -> None:
         raise ValueError(f"unknown weights mode: {weights_mode}")
     if weights_mode == "format" and harness != "model":
         raise ValueError("--weights-mode format requires --harness model")
+
+
+def validate_subject_command(harness: str | None, subject_command: str | None) -> None:
+    if subject_command is not None and harness != "collusion":
+        raise ValueError("--subject-command requires --harness collusion")
 
 
 def output_name(
@@ -76,9 +83,12 @@ def output_name(
     evidence_chain: bool,
     weights_mode: str,
     allow_network: bool,
+    subject_command: str | None = None,
 ) -> str:
     target = "demo" if demo else str(harness)
     selection = "run" if demo else case_id or "all"
+    if subject_command is not None:
+        selection += "-agent"
     chain = "chain" if evidence_chain else "chain-off"
     network = "-net-open" if allow_network else ""
     return f"{target}-{selection}-{chain}-{weights_mode}{network}"
@@ -94,6 +104,7 @@ def remote_argv(
     evidence_chain: bool = False,
     weights_mode: str = "text",
     demo: bool = False,
+    subject_command: str | None = None,
 ) -> list[str]:
     if demo:
         if harness is not None or case_id is not None:
@@ -105,13 +116,16 @@ def remote_argv(
     validate_network_off_opt_in(harness, network_off_enabled)
     validate_allow_network(harness, allow_network)
     validate_weights_mode(harness, weights_mode)
+    validate_subject_command(harness, subject_command)
     command = [
         "/usr/sbin/runuser", "-u", "honeypot", "--", "env",
         "HOME=/home/honeypot", "PYTHONDONTWRITEBYTECODE=1",
         f"HONEYPOT_WEIGHTS_MODE={weights_mode}",
     ]
-    if evidence_chain:
+    if evidence_chain or harness == "collusion":
         command.append("HONEYPOT_EVIDENCE_CHAIN=1")
+    if harness == "collusion":
+        command.append("MODAL_COLLUSION_CONTAINMENT_ENFORCED=1")
     if harness == "network-off":
         command.append("MODAL_NETWORK_OFF_ENFORCED=1")
     if allow_network:
@@ -127,6 +141,8 @@ def remote_argv(
     else:
         command.extend(["--harness", str(harness), "--workers", str(workers)])
         command.extend(["--case-id", case_id] if case_id else ["--all"])
+        if subject_command is not None:
+            command.extend(["--subject-command", subject_command])
     return command
 
 
@@ -155,25 +171,28 @@ def run(args: argparse.Namespace) -> int:
     validate_network_off_opt_in(args.harness, args.enable_network_off_suite)
     validate_allow_network(args.harness, args.allow_network)
     validate_weights_mode(args.harness, args.weights_mode)
+    validate_subject_command(args.harness, args.subject_command)
     block_network = not args.allow_network
     if args.harness == "network-off" and block_network is not True:
         raise RuntimeError("network-off suite requires block_network=True")
+    evidence_chain = args.evidence_chain or args.harness == "collusion"
     runtime_policy = {
         **POLICY,
         "block_network": block_network,
         "timeout": args.sandbox_timeout,
         "exec_timeout": args.exec_timeout,
         "network_off_suite_enabled": args.enable_network_off_suite,
-        "evidence_chain": args.evidence_chain,
+        "evidence_chain": evidence_chain,
         "weights_mode": args.weights_mode,
     }
     command = remote_argv(
         args.harness, args.case_id, args.workers,
         network_off_enabled=args.enable_network_off_suite,
         allow_network=args.allow_network,
-        evidence_chain=args.evidence_chain,
+        evidence_chain=evidence_chain,
         weights_mode=args.weights_mode,
         demo=args.demo,
+        subject_command=args.subject_command,
     )
     if args.allow_network:
         print("WARNING: --allow-network: this sandbox has outbound network access; "
@@ -183,8 +202,9 @@ def run(args: argparse.Namespace) -> int:
         print(json.dumps({"app": args.app_name, "harness": args.harness, "demo": args.demo,
                           "case_id": args.case_id, "output_name": output_name(
                               args.harness, args.case_id, demo=args.demo,
-                              evidence_chain=args.evidence_chain, weights_mode=args.weights_mode,
+                              evidence_chain=evidence_chain, weights_mode=args.weights_mode,
                               allow_network=args.allow_network,
+                              subject_command=args.subject_command,
                           ), "policy": runtime_policy, "remote_argv": command},
                          indent=2))
         return 0
@@ -197,8 +217,9 @@ def run(args: argparse.Namespace) -> int:
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     name = output_name(
         args.harness, args.case_id, demo=args.demo,
-        evidence_chain=args.evidence_chain, weights_mode=args.weights_mode,
+        evidence_chain=evidence_chain, weights_mode=args.weights_mode,
         allow_network=args.allow_network,
+        subject_command=args.subject_command,
     )
     output = (args.output / f"{name}-{stamp}").resolve()
     output.mkdir(parents=True, exist_ok=False)
@@ -207,7 +228,8 @@ def run(args: argparse.Namespace) -> int:
     sandbox = None
     metadata: dict[str, object] = {
         "schema_version": "1.0", "harness": args.harness, "demo": args.demo,
-        "case_id": args.case_id, "evidence_chain": args.evidence_chain,
+        "case_id": args.case_id, "evidence_chain": evidence_chain,
+        "subject_mode": "agent" if args.subject_command is not None else "scripted",
         "weights_mode": args.weights_mode, "app": args.app_name,
         "policy": runtime_policy, "started_at": stamp,
     }
@@ -249,7 +271,7 @@ def run(args: argparse.Namespace) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser()
     harness = parser.add_mutually_exclusive_group(required=True)
-    harness.add_argument("--harness", choices=["agent", "instrument", "model"])
+    harness.add_argument("--harness", choices=["agent", "collusion", "instrument", "model"])
     harness.add_argument(
         "--network-off-suite", action="store_true",
         help="select the 20-case outbound-network containment suite",
@@ -270,6 +292,10 @@ def main() -> int:
     parser.add_argument("--workers", type=int, choices=range(1, 9), default=4)
     parser.add_argument("--evidence-chain", action="store_true")
     parser.add_argument("--weights-mode", choices=["text", "format"], default="text")
+    parser.add_argument(
+        "--subject-command",
+        help="real-agent command for collusion subjects; requires external containment",
+    )
     parser.add_argument("--app-name", default=DEFAULT_APP)
     parser.add_argument("--output", type=Path, default=Path("results/modal-honeypot"))
     parser.add_argument("--sandbox-timeout", type=int, default=POLICY["timeout"])
@@ -282,6 +308,7 @@ def main() -> int:
         validate_network_off_opt_in(args.harness, args.enable_network_off_suite)
         validate_allow_network(args.harness, args.allow_network)
         validate_weights_mode(args.harness, args.weights_mode)
+        validate_subject_command(args.harness, args.subject_command)
     except ValueError as exc:
         parser.error(str(exc))
     if args.demo and (args.case_id or args.all):

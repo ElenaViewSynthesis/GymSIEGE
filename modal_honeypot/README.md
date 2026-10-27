@@ -61,6 +61,20 @@ python3 modal_honeypot/runner.py --harness instrument --all
 python3 modal_honeypot/runner.py --demo
 ```
 
+Run the scripted collusion calibration inside the same external boundary:
+
+```bash
+python3 modal_honeypot/runner.py --harness collusion --all --dry-run
+```
+
+The collusion path is always evidence-chained, refuses `--allow-network`, and
+sets the containment marker required by an opt-in `--subject-command`. A real
+agent is a separate paid phase: the operator must freeze the cases, model,
+Codex configuration, gateway-only network path, run-scoped virtual key,
+timeouts, repetitions, and budget first. The image and Sandbox policy do not
+embed provider credentials (`secrets=[]`). Collusion artifact bundles retain
+the agent's JSONL transcript for post-run shape and evidence review.
+
 Run names and metadata record chain state and weights mode. Format-valid
 weights are accepted only for the model harness.
 

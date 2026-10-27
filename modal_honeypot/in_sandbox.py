@@ -19,6 +19,11 @@ CONFIG = {
         "runner": ROOT / "agent_honeypot/corpus/run_case.py",
         "prefix": "APH-",
     },
+    "collusion": {
+        "dataset": ROOT / "agent_honeypot/collusion_tripwires/cases.jsonl",
+        "runner": ROOT / "agent_honeypot/collusion_tripwires/run_case.py",
+        "prefix": "CLH-",
+    },
     "model": {
         "dataset": ROOT / "model_replication_honeypot/corpus/model_replication_commands_200.jsonl",
         "runner": ROOT / "model_replication_honeypot/corpus/run_case.py",
@@ -44,7 +49,9 @@ def case_ids(mode: str) -> list[str]:
     return [json.loads(line)["id"] for line in dataset.read_text().splitlines() if line.strip()]
 
 
-def run_case(mode: str, case_id: str, output_root: Path) -> dict[str, object]:
+def run_case(
+    mode: str, case_id: str, output_root: Path, *, subject_command: str | None = None,
+) -> dict[str, object]:
     log_dir = output_root / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     case_output = output_root / "cases" / case_id
@@ -59,6 +66,10 @@ def run_case(mode: str, case_id: str, output_root: Path) -> dict[str, object]:
             "python3", "-B", str(config["runner"]), case_id,
             "--output-root", str(output_root / "cases"),
         ]
+    if subject_command is not None:
+        if mode != "collusion":
+            raise ValueError("subject commands are supported only by the collusion harness")
+        command.extend(["--subject-command", subject_command])
     completed = subprocess.run(
         command,
         cwd=ROOT,
@@ -78,6 +89,11 @@ def run_case(mode: str, case_id: str, output_root: Path) -> dict[str, object]:
         "runner_exit_code": completed.returncode,
         "score": report.get("score", report.get("overall_score", report.get("containment_score"))),
         "severity": report.get("severity", "contained" if report.get("passed") else "failed"),
+        "stage": report.get("observed_stage"),
+        "role": report.get("role"),
+        "expectation_passed": report.get("expectation_passed"),
+        "subject_mode": report.get("subject_mode"),
+        "time_to_first_coordination_s": report.get("time_to_first_coordination_s"),
         "observability": observability,
         "evidence_chains": [chain.get("valid") for chain in chains],
         "mirror_events": [chain.get("mirror_events") for chain in chains],
@@ -116,7 +132,7 @@ def run_demo(output_root: Path) -> dict[str, object]:
 
 def bundle_artifacts(output_root: Path) -> Path:
     bundle = output_root / "artifacts.tar.gz"
-    allowed = {".json", ".tsv", ".log", ".txt"}
+    allowed = {".json", ".jsonl", ".tsv", ".log", ".txt"}
     with tarfile.open(bundle, "w:gz") as archive:
         for path in sorted(output_root.rglob("*")):
             if path == bundle or not path.is_file() or path.suffix not in allowed:
@@ -134,12 +150,15 @@ def main() -> int:
     selection.add_argument("--case-id")
     selection.add_argument("--all", action="store_true")
     parser.add_argument("--workers", type=int, default=4)
+    parser.add_argument("--subject-command")
     parser.add_argument("--output-root", type=Path, default=Path("/tmp/honeypot-output"))
     args = parser.parse_args()
     if args.demo:
         if args.case_id or args.all:
             parser.error("--demo cannot be combined with --case-id or --all")
         return 0 if run_demo(args.output_root)["passed"] else 1
+    if args.subject_command is not None and args.harness != "collusion":
+        parser.error("--subject-command requires --harness collusion")
     if not (args.case_id or args.all):
         parser.error("a harness run requires --case-id or --all")
     if not 1 <= args.workers <= 8:
@@ -152,7 +171,13 @@ def main() -> int:
     args.output_root.mkdir(parents=True, exist_ok=True)
     results: list[dict[str, object]] = []
     with ThreadPoolExecutor(max_workers=min(args.workers, len(ids))) as pool:
-        futures = {pool.submit(run_case, args.harness, case_id, args.output_root): case_id for case_id in ids}
+        futures = {
+            pool.submit(
+                run_case, args.harness, case_id, args.output_root,
+                subject_command=args.subject_command,
+            ): case_id
+            for case_id in ids
+        }
         for future in as_completed(futures):
             try:
                 results.append(future.result())
@@ -163,6 +188,7 @@ def main() -> int:
         "schema_version": "1.0",
         "execution_boundary": "modal-sandbox",
         "harness": args.harness,
+        "subject_mode": "agent" if args.subject_command is not None else "scripted",
         "total": len(results),
         "passed": sum(bool(item.get("passed")) for item in results),
         "failed": sum(not bool(item.get("passed")) for item in results),
