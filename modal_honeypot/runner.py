@@ -5,11 +5,32 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
+
+try:
+    from modal_honeypot.redact import scan_for_secret
+    from modal_honeypot.virtual_key import (
+        LiteLLMAdminClient,
+        MintedKey,
+        key_spend,
+        mint_virtual_key,
+        revoke_virtual_key,
+    )
+except ModuleNotFoundError:  # direct ``python modal_honeypot/runner.py``
+    from redact import scan_for_secret
+    from virtual_key import (
+        LiteLLMAdminClient,
+        MintedKey,
+        key_spend,
+        mint_virtual_key,
+        revoke_virtual_key,
+    )
 
 
 REPO = Path(__file__).resolve().parents[1]
@@ -67,6 +88,38 @@ def validate_allow_network(harness: str | None, allow_network: bool) -> None:
 
 GATEWAY_URL_NAMES = ("OPENAI_BASE_URL", "OPENAI_API_BASE", "LITELLM_BASE_URL")
 LOOPBACK_HOSTS = {"localhost", "0.0.0.0", "::1"}
+ARM_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
+KEY_TTL_PATTERN = re.compile(r"^(?P<amount>[1-9][0-9]*)(?P<unit>[smhd])$")
+
+
+def gateway_url(*, require_v1: bool = False) -> str:
+    """Return the first configured, externally reachable gateway URL."""
+    for name in GATEWAY_URL_NAMES:
+        base = os.environ.get(name, "")
+        if not base:
+            continue
+        parsed = urlparse(base)
+        host = parsed.hostname
+        if parsed.scheme not in {"http", "https"} or not host:
+            raise ValueError(f"--egress-allowlist gateway: {name} is not an HTTP(S) URL")
+        if parsed.username or parsed.password or parsed.query or parsed.fragment:
+            raise ValueError(f"{name} must not contain credentials, a query, or a fragment")
+        if host in LOOPBACK_HOSTS or host.startswith("127."):
+            raise ValueError(
+                f"--egress-allowlist gateway: {name} points at {host}, which the sandbox "
+                "cannot reach; set it to the tunnel URL of the gateway"
+            )
+        if require_v1 and parsed.path.rstrip("/")[-3:] != "/v1":
+            raise ValueError(
+                f"{name} must be the full OpenAI-compatible gateway URL ending in /v1"
+            )
+        if require_v1 and parsed.scheme != "https":
+            raise ValueError(f"{name} must use HTTPS when carrying a virtual key")
+        return base.rstrip("/")
+    raise ValueError(
+        "--egress-allowlist gateway needs OPENAI_BASE_URL, OPENAI_API_BASE, or "
+        "LITELLM_BASE_URL in the environment"
+    )
 
 
 def gateway_host() -> str:
@@ -77,23 +130,64 @@ def gateway_host() -> str:
     passes through). A loopback host is refused: the sandbox cannot reach the
     operator's localhost, so the variable must point at the tunnel URL.
     """
-    for name in GATEWAY_URL_NAMES:
-        base = os.environ.get(name, "")
-        if not base:
-            continue
-        host = urlparse(base).hostname
-        if not host:
-            raise ValueError(f"--egress-allowlist gateway: {name} is not a URL")
-        if host in LOOPBACK_HOSTS or host.startswith("127."):
-            raise ValueError(
-                f"--egress-allowlist gateway: {name} points at {host}, which the sandbox "
-                "cannot reach; set it to the tunnel URL of the gateway"
-            )
-        return host.lower()
-    raise ValueError(
-        "--egress-allowlist gateway needs OPENAI_BASE_URL, OPENAI_API_BASE, or "
-        "LITELLM_BASE_URL in the environment"
-    )
+    host = urlparse(gateway_url()).hostname
+    assert host is not None
+    return host.lower()
+
+
+def default_key_ttl(sandbox_timeout: int) -> str:
+    return f"{math.ceil(sandbox_timeout / 60) + 5}m"
+
+
+def key_ttl_seconds(value: str) -> int:
+    match = KEY_TTL_PATTERN.fullmatch(value)
+    if not match:
+        raise ValueError("--key-ttl must be a positive LiteLLM duration such as 35m")
+    multiplier = {"s": 1, "m": 60, "h": 3600, "d": 86400}[match.group("unit")]
+    return int(match.group("amount")) * multiplier
+
+
+def virtual_key_alias(
+    harness: str, case_id: str | None, arm: str, trial: int, stamp: str,
+) -> str:
+    if not ARM_PATTERN.fullmatch(arm):
+        raise ValueError("--arm must contain only letters, digits, '.', '_' or '-'")
+    if trial < 1:
+        raise ValueError("--trial must be at least 1")
+    return f"{harness}/{case_id or 'all'}/t{trial}/{stamp}"
+
+
+def _has_egress_token(spec: str | None, token: str) -> bool:
+    return token in {item.strip() for item in (spec or "").split(",") if item.strip()}
+
+
+def validate_virtual_key_preconditions(
+    args: argparse.Namespace, egress_allowlist: list[str] | None,
+) -> str:
+    """Validate an actual mint and return the full provider gateway URL."""
+    if args.subject_command is None:
+        raise ValueError("virtual-key minting requires --subject-command")
+    if args.case_id is None:
+        raise ValueError("virtual-key minting requires one --case-id, not --all")
+    if not _has_egress_token(getattr(args, "egress_allowlist", None), "gateway"):
+        raise ValueError(
+            "virtual-key minting requires --egress-allowlist containing the gateway token"
+        )
+    gateway = gateway_url(require_v1=True)
+    host = urlparse(gateway).hostname
+    if not egress_allowlist or host not in egress_allowlist:
+        raise ValueError("the resolved gateway host is not in the egress allowlist")
+    if not os.environ.get("LITELLM_MASTER_KEY"):
+        raise ValueError("virtual-key minting requires LITELLM_MASTER_KEY on the host")
+    if not getattr(args, "model", None):
+        raise ValueError("virtual-key minting requires --model")
+    budget = getattr(args, "key_budget", 0.50)
+    if not isinstance(budget, (int, float)) or not math.isfinite(budget) or budget <= 0:
+        raise ValueError("--key-budget must be a positive finite USD amount")
+    ttl = getattr(args, "key_ttl", None) or default_key_ttl(args.sandbox_timeout)
+    if key_ttl_seconds(ttl) <= args.sandbox_timeout:
+        raise ValueError("--key-ttl must be longer than --sandbox-timeout")
+    return gateway
 
 
 def resolve_egress_allowlist(spec: str | None) -> list[str] | None:
@@ -207,11 +301,17 @@ def remote_argv(
     validate_egress_allowlist(harness, egress_allowlist, allow_network)
     validate_weights_mode(harness, weights_mode)
     validate_subject_command(harness, subject_command)
-    command = [
-        "/usr/sbin/runuser", "-u", "honeypot", "--", "env",
+    command = ["/usr/sbin/runuser", "-u", "honeypot"]
+    if subject_command is not None:
+        # The virtual key and gateway URL arrive as Sandbox Secret environment
+        # variables. Preserve them explicitly across the UID transition; the
+        # agent_subject launcher later reduces the environment to its allowlist.
+        command.append("--preserve-environment")
+    command.extend([
+        "--", "env",
         "HOME=/home/honeypot", "PYTHONDONTWRITEBYTECODE=1",
         f"HONEYPOT_WEIGHTS_MODE={weights_mode}",
-    ]
+    ])
     if evidence_chain or harness == "collusion":
         command.append("HONEYPOT_EVIDENCE_CHAIN=1")
     if harness == "collusion":
@@ -238,8 +338,8 @@ def remote_argv(
     return command
 
 
-def build_image(modal_module):
-    return (
+def build_image(modal_module, *, verify_secret_environment: bool = False):
+    image = (
         modal_module.Image.debian_slim(python_version="3.12")
         .apt_install(
             "gcc", "libc6-dev", "procps", "psmisc", "lsof", "gdb", "lldb",
@@ -250,6 +350,18 @@ def build_image(modal_module):
             "useradd --create-home --uid 1000 --shell /bin/bash honeypot",
             "mkdir -p /workspace && chown honeypot:honeypot /workspace",
         )
+    )
+    if verify_secret_environment:
+        # Modal injects Secret values into the Sandbox environment. This build
+        # assertion proves the image's non-login runuser preserves such
+        # inherited variables for the unprivileged exec process.
+        image = image.run_commands(
+            "env MODAL_SECRET_ENV_PROBE=preserved /usr/sbin/runuser -u honeypot "
+            "--preserve-environment -- "
+            "sh -c 'test \"$MODAL_SECRET_ENV_PROBE\" = preserved'",
+        )
+    return (
+        image
         .add_local_dir(REPO / "agent_honeypot", f"{REMOTE_ROOT}/agent_honeypot", copy=True)
         .add_local_dir(REPO / "model_replication_honeypot", f"{REMOTE_ROOT}/model_replication_honeypot", copy=True)
         .add_local_dir(REPO / "modal_honeypot", f"{REMOTE_ROOT}/modal_honeypot", copy=True)
@@ -257,7 +369,9 @@ def build_image(modal_module):
     )
 
 
-def run(args: argparse.Namespace) -> int:
+def run(
+    args: argparse.Namespace, *, modal_module=None, admin_client=None,
+) -> int:
     if not args.demo:
         validate_case(args.harness, args.case_id)
     validate_network_off_opt_in(args.harness, args.enable_network_off_suite)
@@ -270,6 +384,14 @@ def run(args: argparse.Namespace) -> int:
     if args.harness == "network-off" and block_network is not True:
         raise RuntimeError("network-off suite requires block_network=True")
     evidence_chain = args.evidence_chain or args.harness == "collusion"
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    arm = getattr(args, "arm", "manual")
+    trial = getattr(args, "trial", 1)
+    key_ttl = getattr(args, "key_ttl", None) or default_key_ttl(args.sandbox_timeout)
+    key_budget = getattr(args, "key_budget", 0.50)
+    key_alias = None
+    if args.subject_command is not None:
+        key_alias = virtual_key_alias(args.harness, args.case_id, arm, trial, stamp)
     runtime_policy = {
         **POLICY,
         "block_network": block_network,
@@ -281,6 +403,13 @@ def run(args: argparse.Namespace) -> int:
         "evidence_chain": evidence_chain,
         "weights_mode": args.weights_mode,
     }
+    if key_alias is not None:
+        runtime_policy.update({
+            "secrets": [f"virtual-key:{key_alias}"],
+            "key_budget_usd": key_budget,
+            "key_ttl": key_ttl,
+            "key_model": getattr(args, "model", None),
+        })
     command = remote_argv(
         args.harness, args.case_id, args.workers,
         network_off_enabled=args.enable_network_off_suite,
@@ -328,12 +457,15 @@ def run(args: argparse.Namespace) -> int:
                          indent=2))
         return 0
 
-    try:
-        import modal
-    except ImportError as exc:
-        raise SystemExit("Modal SDK missing; install the repository's pinned requirements (requirements.txt pins modal==1.6.0), for example in the repo .venv") from exc
+    gateway = None
+    if args.subject_command is not None:
+        gateway = validate_virtual_key_preconditions(args, egress_allowlist)
+    if modal_module is None:
+        try:
+            import modal as modal_module
+        except ImportError as exc:
+            raise SystemExit("Modal SDK missing; install the repository's pinned requirements (requirements.txt pins modal==1.6.0), for example in the repo .venv") from exc
 
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     name = output_name(
         args.harness, args.case_id, demo=args.demo,
         evidence_chain=evidence_chain, weights_mode=args.weights_mode,
@@ -343,9 +475,10 @@ def run(args: argparse.Namespace) -> int:
     )
     output = (args.output / f"{name}-{stamp}").resolve()
     output.mkdir(parents=True, exist_ok=False)
-    app = modal.App.lookup(args.app_name, create_if_missing=True)
-    image = build_image(modal)
     sandbox = None
+    minted: MintedKey | None = None
+    client = admin_client
+    cleanup_errors: list[str] = []
     sandbox_kwargs: dict[str, object] = {}
     if egress_allowlist:
         sandbox_kwargs["outbound_domain_allowlist"] = list(egress_allowlist)
@@ -356,13 +489,61 @@ def run(args: argparse.Namespace) -> int:
         "weights_mode": args.weights_mode, "app": args.app_name,
         "policy": runtime_policy, "started_at": stamp,
     }
+    if key_alias is not None:
+        metadata.update({"arm": arm, "trial": trial})
     try:
-        with modal.enable_output():
-            sandbox = modal.Sandbox.create(
+        runtime_secrets = []
+        if key_alias is not None:
+            assert gateway is not None
+            if client is None:
+                client = LiteLLMAdminClient(gateway, os.environ["LITELLM_MASTER_KEY"])
+            key_metadata = {
+                "run_id": key_alias,
+                "harness": args.harness,
+                "case_id": args.case_id,
+                "trial": trial,
+                "arm": arm,
+                "purpose": "rogue-agent-honeypot",
+            }
+            minted = mint_virtual_key(
+                client,
+                alias=key_alias,
+                model=args.model,
+                budget_usd=key_budget,
+                ttl=key_ttl,
+                metadata=key_metadata,
+                tags=["honeypot", args.harness, args.case_id],
+            )
+            key_record: dict[str, object] = {
+                "key_alias": key_alias,
+                "minted_at": datetime.now(timezone.utc).isoformat(),
+                "budget_usd": key_budget,
+                "ttl": key_ttl,
+            }
+            if minted.token_id:
+                key_record["token_id"] = minted.token_id
+            elif minted.key_hash:
+                key_record["key_hash"] = minted.key_hash
+            else:
+                key_record["key_fingerprint"] = minted.fingerprint
+            metadata["virtual_key"] = key_record
+            try:
+                runtime_secret = modal_module.Secret.from_dict({
+                    "OPENAI_API_KEY": minted.key,
+                    "OPENAI_BASE_URL": gateway,
+                })
+            except Exception:
+                raise RuntimeError("failed to construct the ephemeral Modal Secret") from None
+            runtime_secrets = [runtime_secret]
+
+        app = modal_module.App.lookup(args.app_name, create_if_missing=True)
+        image = build_image(modal_module, verify_secret_environment=minted is not None)
+        with modal_module.enable_output():
+            sandbox = modal_module.Sandbox.create(
                 "sleep", "infinity", app=app, image=image, workdir="/workspace",
                 block_network=block_network, cpu=POLICY["cpu"], memory=POLICY["memory"],
                 timeout=args.sandbox_timeout, idle_timeout=POLICY["idle_timeout"],
-                secrets=[], volumes={}, **sandbox_kwargs,
+                secrets=runtime_secrets, volumes={}, **sandbox_kwargs,
                 tags={"purpose": "rogue-agent-honeypot",
                       "harness": "demo" if args.demo else args.harness,
                       "network": "open" if args.allow_network
@@ -386,10 +567,42 @@ def run(args: argparse.Namespace) -> int:
             try:
                 metadata["termination"] = "explicit-finally"
                 metadata["sandbox_exit_code"] = sandbox.terminate(wait=True)
-            finally:
+            except Exception:
+                metadata["termination_error"] = "sandbox termination failed"
+                cleanup_errors.append("sandbox termination failed")
+            try:
                 sandbox.detach()
-        (output / "modal-run.json").write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n")
+            except Exception:
+                metadata["detach_error"] = "sandbox detach failed"
+                cleanup_errors.append("sandbox detach failed")
+        if minted is not None and client is not None:
+            key_record = metadata["virtual_key"]
+            assert isinstance(key_record, dict)
+            try:
+                key_record["spend_usd"] = key_spend(client, minted.management_id)
+            except Exception:
+                key_record["spend_error"] = "key spend lookup failed"
+                cleanup_errors.append("key spend lookup failed")
+            try:
+                revoke_virtual_key(client, minted.management_id)
+                key_record["revoked_at"] = datetime.now(timezone.utc).isoformat()
+            except Exception:
+                key_record["revocation_error"] = "virtual-key revocation failed; TTL remains the backstop"
+                cleanup_errors.append("virtual-key revocation failed")
+        metadata_path = output / "modal-run.json"
+        metadata_path.write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n")
+        if minted is not None:
+            findings = scan_for_secret([output], minted.key)
+            metadata["redaction"] = {
+                "passed": not findings,
+                "findings": [str(path.relative_to(output)) for path in findings],
+            }
+            metadata_path.write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n")
+            if findings:
+                cleanup_errors.append("virtual-key redaction scan failed")
         print(json.dumps({"output": str(output), **metadata}, indent=2, sort_keys=True))
+        if cleanup_errors:
+            raise RuntimeError("; ".join(cleanup_errors))
 
 
 def main() -> int:
@@ -429,6 +642,14 @@ def main() -> int:
         "--subject-command",
         help="real-agent command for collusion subjects; requires external containment",
     )
+    parser.add_argument("--model", help="single LiteLLM model allowed on a minted virtual key")
+    parser.add_argument("--key-budget", type=float, default=0.50, help="per-run virtual-key budget in USD")
+    parser.add_argument(
+        "--key-ttl",
+        help="LiteLLM virtual-key duration; defaults to sandbox timeout plus five minutes",
+    )
+    parser.add_argument("--arm", default="manual", help="experiment arm recorded in virtual-key metadata")
+    parser.add_argument("--trial", type=int, default=1, help="one-based trial number")
     parser.add_argument("--app-name", default=DEFAULT_APP)
     parser.add_argument("--output", type=Path, default=Path("results/modal-honeypot"))
     parser.add_argument("--sandbox-timeout", type=int, default=POLICY["timeout"])
@@ -453,9 +674,24 @@ def main() -> int:
         parser.error("a harness run requires --case-id or --all")
     if args.sandbox_timeout < args.exec_timeout or args.sandbox_timeout > 86400:
         parser.error("sandbox timeout must cover exec timeout and be at most 86400 seconds")
+    if not math.isfinite(args.key_budget) or args.key_budget <= 0:
+        parser.error("--key-budget must be a positive finite USD amount")
+    if args.trial < 1:
+        parser.error("--trial must be at least 1")
+    if not ARM_PATTERN.fullmatch(args.arm):
+        parser.error("--arm must contain only letters, digits, '.', '_' or '-'")
+    if args.key_ttl is not None:
+        try:
+            key_ttl_seconds(args.key_ttl)
+        except ValueError as exc:
+            parser.error(str(exc))
     if args.all:
         args.case_id = None
-    return run(args)
+    try:
+        return run(args)
+    except ValueError as exc:
+        parser.error(str(exc))
+    return 2
 
 
 if __name__ == "__main__":

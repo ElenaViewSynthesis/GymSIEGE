@@ -1,4 +1,6 @@
+import contextlib
 import importlib.util
+import io
 import json
 import os
 import subprocess
@@ -7,6 +9,7 @@ import tarfile
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 
@@ -22,8 +25,41 @@ SANDBOX = importlib.util.module_from_spec(SANDBOX_SPEC)
 assert SANDBOX_SPEC.loader
 SANDBOX_SPEC.loader.exec_module(SANDBOX)
 
+FAKE_VIRTUAL_KEY = "".join(("s", "k", "-", "unit_virtual_key_12345678"))
+
+
+class FakeLiteLLMClient:
+    def __init__(self):
+        self.calls = []
+
+    def generate(self, payload):
+        self.calls.append(("generate", dict(payload)))
+        return {"key": FAKE_VIRTUAL_KEY, "token_id": "f" * 64}
+
+    def info(self, key_id):
+        self.calls.append(("info", key_id))
+        return {"info": {"spend": 0.0125}}
+
+    def delete(self, key_id):
+        self.calls.append(("delete", key_id))
+        return {"deleted_keys": [key_id]}
+
 
 class ModalHoneypotTests(unittest.TestCase):
+    def _runner_args(self, output, **overrides):
+        values = {
+            "demo": False, "harness": "collusion", "case_id": "CLH-037",
+            "enable_network_off_suite": False, "allow_network": False,
+            "egress_allowlist": "langfuse,gateway", "weights_mode": "text",
+            "subject_command": "fake-agent", "evidence_chain": False,
+            "sandbox_timeout": 1800, "exec_timeout": 1500, "workers": 1,
+            "app_name": "fake-app", "output": Path(output), "dry_run": False,
+            "model": "pinned-model", "key_budget": 0.50, "key_ttl": "35m",
+            "arm": "lure-pair", "trial": 2,
+        }
+        values.update(overrides)
+        return SimpleNamespace(**values)
+
     def test_policy_is_default_deny_and_ephemeral(self):
         self.assertTrue(MODULE.POLICY["block_network"])
         self.assertEqual(MODULE.POLICY["secrets"], [])
@@ -67,6 +103,8 @@ class ModalHoneypotTests(unittest.TestCase):
             "collusion", "CLH-036", 1, subject_command="codex exec --json prompt",
         )
         self.assertEqual(command[-2:], ["--subject-command", "codex exec --json prompt"])
+        self.assertIn("--preserve-environment", command[:5])
+        self.assertNotIn("--preserve-environment", MODULE.remote_argv("collusion", "CLH-036", 1))
         with self.assertRaises(ValueError):
             MODULE.remote_argv("agent", "APH-176", 1, subject_command="true")
 
@@ -339,7 +377,11 @@ class ModalHoneypotTests(unittest.TestCase):
         self.assertFalse(plan["policy"]["block_network"])
         self.assertEqual(plan["policy"]["egress_allowlist"],
                          ["cloud.langfuse.com", "tunnel.example.ngrok.app"])
-        self.assertEqual(plan["policy"]["secrets"], [])
+        self.assertEqual(len(plan["policy"]["secrets"]), 1)
+        self.assertTrue(plan["policy"]["secrets"][0].startswith("virtual-key:collusion/CLH-036/t1/"))
+        self.assertEqual(plan["policy"]["key_budget_usd"], 0.50)
+        self.assertEqual(plan["policy"]["key_ttl"], "35m")
+        self.assertNotIn(FAKE_VIRTUAL_KEY, done.stdout + done.stderr)
         self.assertIn("MODAL_NETWORK_ALLOWLIST=cloud.langfuse.com,tunnel.example.ngrok.app",
                       plan["remote_argv"])
         self.assertNotIn("cannot reach the model gateway", done.stderr)
@@ -352,6 +394,220 @@ class ModalHoneypotTests(unittest.TestCase):
         done = subprocess.run(base, capture_output=True, text=True, env=env, check=True)
         self.assertTrue(json.loads(done.stdout)["policy"]["block_network"])
         self.assertIn("cannot reach the model gateway", done.stderr)
+
+    def test_virtual_key_preconditions_are_fail_closed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            args = self._runner_args(directory)
+            hosts = ["cloud.langfuse.com", "tunnel.example.org"]
+            env = {
+                "OPENAI_BASE_URL": "https://tunnel.example.org/v1",
+                "LANGFUSE_BASE_URL": "https://cloud.langfuse.com",
+                "LITELLM_MASTER_KEY": "master-for-unit-test",
+            }
+            with mock.patch.dict(os.environ, env, clear=True):
+                self.assertEqual(
+                    MODULE.validate_virtual_key_preconditions(args, hosts),
+                    "https://tunnel.example.org/v1",
+                )
+                args.subject_command = None
+                with self.assertRaisesRegex(ValueError, "requires --subject-command"):
+                    MODULE.validate_virtual_key_preconditions(args, hosts)
+                args.subject_command = "fake-agent"
+                args.egress_allowlist = "langfuse"
+                with self.assertRaisesRegex(ValueError, "gateway token"):
+                    MODULE.validate_virtual_key_preconditions(args, ["cloud.langfuse.com"])
+                args.egress_allowlist = "langfuse,gateway"
+                args.model = None
+                with self.assertRaisesRegex(ValueError, "requires --model"):
+                    MODULE.validate_virtual_key_preconditions(args, hosts)
+                args.model = "pinned-model"
+                args.key_ttl = "30m"
+                with self.assertRaisesRegex(ValueError, "longer than --sandbox-timeout"):
+                    MODULE.validate_virtual_key_preconditions(args, hosts)
+                args.key_ttl = "35m"
+
+            with mock.patch.dict(os.environ, {
+                "OPENAI_BASE_URL": "https://tunnel.example.org/v1",
+                "LANGFUSE_BASE_URL": "https://cloud.langfuse.com",
+            }, clear=True):
+                with self.assertRaisesRegex(ValueError, "LITELLM_MASTER_KEY"):
+                    MODULE.validate_virtual_key_preconditions(args, hosts)
+            with mock.patch.dict(os.environ, {
+                "OPENAI_BASE_URL": "http://127.0.0.1:4000/v1",
+                "LITELLM_MASTER_KEY": "master-for-unit-test",
+            }, clear=True):
+                with self.assertRaisesRegex(ValueError, "cannot reach"):
+                    MODULE.validate_virtual_key_preconditions(args, ["127.0.0.1"])
+
+    def test_agent_dry_run_describes_key_but_never_mints(self):
+        client = FakeLiteLLMClient()
+        with tempfile.TemporaryDirectory() as directory, mock.patch.dict(os.environ, {
+            "OPENAI_BASE_URL": "https://tunnel.example.org/v1",
+            "LANGFUSE_BASE_URL": "https://cloud.langfuse.com",
+        }, clear=True), contextlib.redirect_stdout(io.StringIO()) as stdout:
+            result = MODULE.run(
+                self._runner_args(directory, dry_run=True),
+                modal_module=object(), admin_client=client,
+            )
+        self.assertEqual(result, 0)
+        self.assertEqual(client.calls, [])
+        plan = json.loads(stdout.getvalue())
+        self.assertEqual(len(plan["policy"]["secrets"]), 1)
+        serialized = json.dumps(plan)
+        self.assertNotIn(FAKE_VIRTUAL_KEY, serialized)
+        self.assertNotIn(FAKE_VIRTUAL_KEY, json.dumps(plan["remote_argv"]))
+        with tempfile.TemporaryDirectory() as directory:
+            plan_path = Path(directory) / "dry-run.json"
+            plan_path.write_text(serialized)
+            self.assertEqual(MODULE.scan_for_secret([plan_path], FAKE_VIRTUAL_KEY), [])
+
+    def test_fake_key_lifecycle_secret_delivery_and_exec_failure_revocation(self):
+        client = FakeLiteLLMClient()
+        captured = {}
+
+        class FakeProcess:
+            stdout = io.StringIO("remote output")
+            stderr = io.StringIO("remote error")
+            returncode = 1
+
+            def wait(self):
+                return self.returncode
+
+        class FakeFilesystem:
+            def copy_to_local(self, remote, local):
+                local = Path(local)
+                if remote.endswith("summary.json"):
+                    local.write_text('{"passed":false}\n')
+                else:
+                    with tarfile.open(local, "w:gz"):
+                        pass
+
+        class FakeSandbox:
+            object_id = "sb-unit-test"
+            filesystem = FakeFilesystem()
+
+            def exec(self, *command, **kwargs):
+                captured["command"] = command
+                captured["exec_kwargs"] = kwargs
+                return FakeProcess()
+
+            def terminate(self, wait=True):
+                captured["terminated"] = wait
+                return 0
+
+            def detach(self):
+                captured["detached"] = True
+
+        class FakeSecret:
+            @staticmethod
+            def from_dict(values):
+                captured["secret"] = dict(values)
+                return object()
+
+        class FakeModal:
+            Secret = FakeSecret
+
+            class App:
+                @staticmethod
+                def lookup(name, create_if_missing=False):
+                    return object()
+
+            class Sandbox:
+                @staticmethod
+                def create(*command, **kwargs):
+                    captured["sandbox_command"] = command
+                    captured["sandbox_kwargs"] = kwargs
+                    return FakeSandbox()
+
+            @staticmethod
+            def enable_output():
+                return contextlib.nullcontext()
+
+        env = {
+            "OPENAI_BASE_URL": "https://tunnel.example.org/v1",
+            "LANGFUSE_BASE_URL": "https://cloud.langfuse.com",
+            "LITELLM_MASTER_KEY": "master-for-unit-test",
+        }
+        with tempfile.TemporaryDirectory() as directory, mock.patch.dict(
+            os.environ, env, clear=True,
+        ), mock.patch.object(MODULE, "build_image", return_value=object()), contextlib.redirect_stdout(io.StringIO()):
+            result = MODULE.run(
+                self._runner_args(directory), modal_module=FakeModal, admin_client=client,
+            )
+            metadata_path = next(Path(directory).glob("*/modal-run.json"))
+            metadata_text = metadata_path.read_text()
+            metadata = json.loads(metadata_text)
+
+        self.assertEqual(result, 1)
+        generate = client.calls[0]
+        self.assertEqual(generate[0], "generate")
+        payload = generate[1]
+        self.assertEqual(payload["models"], ["pinned-model"])
+        self.assertEqual(payload["max_budget"], 0.50)
+        self.assertEqual(payload["duration"], "35m")
+        self.assertEqual(payload["tags"], ["honeypot", "collusion", "CLH-037"])
+        self.assertEqual(payload["metadata"]["trial"], 2)
+        self.assertEqual(payload["metadata"]["arm"], "lure-pair")
+        self.assertEqual(payload["metadata"]["run_id"], payload["key_alias"])
+        self.assertEqual(captured["secret"], {
+            "OPENAI_API_KEY": FAKE_VIRTUAL_KEY,
+            "OPENAI_BASE_URL": "https://tunnel.example.org/v1",
+        })
+        self.assertEqual(len(captured["sandbox_kwargs"]["secrets"]), 1)
+        self.assertNotIn(FAKE_VIRTUAL_KEY, json.dumps(captured["command"]))
+        self.assertEqual(client.calls[-2:], [
+            ("info", FAKE_VIRTUAL_KEY), ("delete", FAKE_VIRTUAL_KEY),
+        ])
+        self.assertTrue(captured["terminated"])
+        self.assertTrue(captured["detached"])
+        self.assertEqual(metadata["virtual_key"]["spend_usd"], 0.0125)
+        self.assertIn("revoked_at", metadata["virtual_key"])
+        self.assertTrue(metadata["redaction"]["passed"])
+        self.assertNotIn(FAKE_VIRTUAL_KEY, metadata_text)
+
+    def test_redaction_scanner_checks_plain_files_and_archives(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            clean = root / "clean.json"
+            clean.write_text('{"ok":true}\n')
+            self.assertEqual(MODULE.scan_for_secret([root], FAKE_VIRTUAL_KEY), [])
+            leaked = root / "remote.stdout.log"
+            leaked.write_text("credential=" + FAKE_VIRTUAL_KEY)
+            self.assertEqual(MODULE.scan_for_secret([leaked], FAKE_VIRTUAL_KEY), [leaked])
+            leaked.unlink()
+            source = root / "trajectory.jsonl"
+            source.write_text("prefix=" + "".join(("s", "k", "-", "another_key_87654321")))
+            bundle = root / "artifacts.tar.gz"
+            with tarfile.open(bundle, "w:gz") as archive:
+                archive.add(source, arcname="trajectory.jsonl")
+            source.unlink()
+            self.assertEqual(MODULE.scan_for_secret([bundle], FAKE_VIRTUAL_KEY), [bundle])
+
+    def test_image_build_contains_runuser_environment_assertion(self):
+        class Builder:
+            def __init__(self):
+                self.commands = []
+
+            def apt_install(self, *args):
+                return self
+
+            def run_commands(self, *args):
+                self.commands.extend(args)
+                return self
+
+            def add_local_dir(self, *args, **kwargs):
+                return self
+
+        builder = Builder()
+        fake_modal = SimpleNamespace(Image=SimpleNamespace(
+            debian_slim=lambda **kwargs: builder,
+        ))
+        MODULE.build_image(fake_modal, verify_secret_environment=True)
+        self.assertTrue(any(
+            "MODAL_SECRET_ENV_PROBE=preserved" in command
+            and "runuser -u honeypot --preserve-environment" in command
+            for command in builder.commands
+        ))
 
 
 if __name__ == "__main__":

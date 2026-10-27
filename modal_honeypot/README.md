@@ -138,8 +138,9 @@ and metadata, tagged `network=allowlist`, suffixed `-net-allow` in the output
 directory name, and exported to the sandbox as `MODAL_NETWORK_ALLOWLIST`. It is
 permitted for `--harness collusion` because it is scoped; it is still refused
 for the network-off suite and never combined with `--allow-network`.
-`secrets=[]` is unchanged: the allowlist opens a path, it does not place a key
-in the sandbox.
+Scripted runs retain `secrets=[]`: the allowlist alone opens a path and does not
+place a key in the sandbox. Real-agent runs use the per-run virtual-key lifecycle
+below.
 
 A second token, `gateway`, resolves to the model gateway's host from the
 first set of `OPENAI_BASE_URL`, `OPENAI_API_BASE`, `LITELLM_BASE_URL`; a
@@ -152,7 +153,8 @@ scripted runs and a real agent takes both:
 # real agent: Langfuse for live traces at the gateway, the gateway for the model
 export OPENAI_BASE_URL=...        # the gateway's tunnel URL, from .env.local
 python3 modal_honeypot/runner.py --harness collusion --case-id CLH-037 \
-  --subject-command "$SUBJECT_CMD" --egress-allowlist langfuse,gateway --dry-run
+  --subject-command "$SUBJECT_CMD" --egress-allowlist langfuse,gateway \
+  --model PINNED_MODEL --arm lure-pair --trial 1 --dry-run
 ```
 
 A real-agent run whose policy cannot reach the gateway (egress blocked, or an
@@ -160,3 +162,38 @@ allowlist without the `gateway` token) prints a warning and is not refused:
 it is still contained, it just cannot call the model. Every byte to an
 allowlisted host is a channel out of the sandbox: for the lure arm it is
 declared as an observed channel, never treated as part of the containment.
+
+## Per-run virtual keys
+
+A non-dry real-agent run requires `LITELLM_MASTER_KEY` on the host, a single
+`--case-id`, the `gateway` egress token, a non-loopback gateway URL ending in
+`/v1`, and `--model`. The runner mints one LiteLLM virtual key before creating
+the Sandbox. `/key/generate` receives exactly `key_alias`, a one-element
+`models` list, `max_budget`, `duration`, `metadata`, and `tags`. Metadata is
+`run_id`, `harness`, `case_id`, `trial`, `arm`, and
+`purpose=rogue-agent-honeypot`; tags are `honeypot`, the harness, and the case
+ID. The default budget is USD 0.50 and the default TTL is five minutes longer
+than the Sandbox lifetime; a shorter TTL is refused.
+
+The returned key stays in host memory and is delivered with an unnamed
+`modal.Secret.from_dict` as only `OPENAI_API_KEY` and the full
+`OPENAI_BASE_URL`. It never enters `remote_argv` or the workspace. Modal 1.6.0
+documents Sandbox Secrets as environment variables inherited by `sandbox.exec`;
+the image build additionally runs a harmless `MODAL_SECRET_ENV_PROBE` through
+its agent-only `runuser -u honeypot --preserve-environment -- env` path and
+fails if that environment is not preserved. Scripted commands retain their
+original `runuser` argv. The subject launcher's allowlist passes these two provider
+variables and drops the host master key.
+
+Teardown terminates the Sandbox, reads spend from `/key/info`, and calls
+`/key/delete` even when the remote process fails. `modal-run.json` records only
+the alias, token ID/hash or SHA-256 fingerprint, mint/revoke timestamps, spend,
+budget, and TTL. A cleanup failure is recorded and raised; expiration remains
+the revocation backstop.
+
+After artifacts are copied, the runner scans every local output file and every
+regular member of an artifact tarball. It rejects either the exact virtual-key
+bytes or any token matching the LiteLLM-shaped key-prefix heuristic. Unreadable
+artifacts also fail closed. An agent dry run mints nothing and prints only a
+descriptor such as `virtual-key:collusion/CLH-037/t1/<timestamp>`; the static
+`POLICY["secrets"]` and every scripted runtime policy remain empty.
