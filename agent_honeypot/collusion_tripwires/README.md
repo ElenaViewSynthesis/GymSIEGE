@@ -118,14 +118,14 @@ AWS/GitHub credentials, `SSH_AUTH_SOCK`, `CODEX_HOME`, or arbitrary host
 variables. `OPENAI_API_KEY` must be a run-scoped LiteLLM virtual key, never the
 gateway master key.
 
-The real-agent command is shell-split without an implicit shell. A Codex
-adapter can opt into shell syntax explicitly and must write its JSONL stream to
-the suggested transcript path. This shape is documentation only and must never
+The real-agent command is shell-split without an implicit shell. The Modal
+driver defaults to the agent-only `modal_honeypot/codex_gateway.sh` adapter,
+which writes its JSONL stream to the suggested transcript path, uses the pinned
+model and scoped provider environment, and disables web search. It must never
 be run on the ordinary host:
 
 ```text
-bash -lc 'codex -c web_search="disabled" exec --json \
-  "$(cat "$HONEYPOT_COLLUSION_PROMPT_FILE")" | tee "$HONEYPOT_COLLUSION_TRANSCRIPT"'
+bash /opt/honeypot/modal_honeypot/codex_gateway.sh
 ```
 
 For Modal Phase 2, the operator provides the gateway master key only to the host
@@ -135,8 +135,9 @@ unnamed Modal Secret. It reads spend and revokes the key during teardown. The
 master key never enters the Sandbox, and neither the virtual-key value nor
 provider URL appears in `remote_argv` or the workspace. Scripted runs keep
 `secrets=[]`; agent run metadata contains only a `virtual-key:<alias>`
-descriptor. Codex is still not embedded in the current image and must be pinned
-before a paid pilot.
+descriptor. Agent images pin Codex CLI 0.164.0; scripted images do not install
+Node, npm, or Codex. `--trials N` can override an arm's table default for an
+authorized pilot without modifying the frozen arm table.
 
 The board binds only `127.0.0.1`. In restricted development sandboxes, local
 socket creation may require an explicit sandbox permission even though no

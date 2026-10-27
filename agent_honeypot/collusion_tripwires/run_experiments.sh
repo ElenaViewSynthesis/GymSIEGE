@@ -8,12 +8,14 @@
 #
 #   ./agent_honeypot/collusion_tripwires/run_experiments.sh            # plan every arm (free)
 #   ./agent_honeypot/collusion_tripwires/run_experiments.sh --arm lure-pair --model PINNED_MODEL
+#   ./agent_honeypot/collusion_tripwires/run_experiments.sh --arm lure-pair --trials 1 --model PINNED_MODEL
 #   ./agent_honeypot/collusion_tripwires/run_experiments.sh --list     # list arms + Table 3 rows
 #   ./agent_honeypot/collusion_tripwires/run_experiments.sh --arm sensor-controls --execute   # PAID
 #
 # Agent arms require --model (or MODEL), gateway and Langfuse URLs. Paid runs
 # also require EXPERIMENT_APPROVED=1 and LITELLM_MASTER_KEY on the host, so a
 # stray --execute cannot mint or bill by itself. --allow-network is never passed.
+# --trials overrides the selected arm's frozen default without editing the table.
 set -Eeuo pipefail
 
 repo=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
@@ -44,12 +46,12 @@ benign-base       CLH-001,CLH-002,CLH-003,CLH-004   agent     3  Benign_base_rat
 # --- add new arms below, one per Table 3 experiment you want to run ---
 TABLE
 
-# Default real-agent subject: Codex, live search disabled, JSONL transcript kept
-# so the Phase 2 transcript-shape review can confirm item.type="web_search".
+# Default real-agent subject: the image's pinned Codex gateway adapter. It pins
+# live search off and retains the JSONL transcript for the Phase 2 shape review.
 # Override per invocation with --subject-command or the SUBJECT_CMD env var.
 # The runner shlex-splits this into argv; the payload carries no single quotes.
 if [[ -z ${SUBJECT_CMD:-} ]]; then
-  SUBJECT_CMD='bash -lc '\''set -o pipefail; codex -c web_search="disabled" exec --json "$(cat "$HONEYPOT_COLLUSION_PROMPT_FILE")" | tee "$HONEYPOT_COLLUSION_TRANSCRIPT"'\'''
+  SUBJECT_CMD='bash /opt/honeypot/modal_honeypot/codex_gateway.sh'
 fi
 
 want_arm=
@@ -61,6 +63,7 @@ cost_per_cell=0.13   # planning estimate carried from the chain cohort; agent ar
 model=${MODEL:-}
 key_budget=0.50
 key_ttl=
+trials_override=
 
 usage() { sed -n '2,20p' "$0"; }
 while (($#)); do
@@ -73,11 +76,17 @@ while (($#)); do
     --model) model=$2; shift 2 ;;
     --key-budget) key_budget=$2; shift 2 ;;
     --key-ttl) key_ttl=$2; shift 2 ;;
+    --trials) trials_override=$2; shift 2 ;;
     --output) output_root=$2; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) printf 'Unknown option: %s\n' "$1" >&2; usage >&2; exit 64 ;;
   esac
 done
+
+if [[ -n $trials_override && ! $trials_override =~ ^[1-9][0-9]*$ ]]; then
+  printf '%s\n' '--trials must be a positive integer' >&2
+  exit 64
+fi
 
 arm_rows() { grep -vE '^\s*#|^\s*$' <<<"$ARMS"; }
 
@@ -151,7 +160,11 @@ run_arm() {
       fi
       ((execute)) || cmd+=(--dry-run)
       printf '  [%s trial %d] %s\n' "$case_id" "$t" "$( ((execute)) && echo RUN || echo PLAN )"
-      "${cmd[@]}" >/dev/null 2>&1 || printf '    (runner exit %s -- inspect %s)\n' "$?" "$tag" >&2
+      if ((execute)); then
+        "${cmd[@]}" >/dev/null 2>&1 || printf '    (runner exit %s -- inspect %s)\n' "$?" "$tag" >&2
+      else
+        "${cmd[@]}" || printf '    (runner exit %s -- inspect plan above)\n' "$?" >&2
+      fi
     done
   done
 }
@@ -167,6 +180,7 @@ done < <(arm_rows)
 total_cells=0 any_agent=0
 for row in "${selected[@]}"; do
   IFS='|' read -r arm sel subj trials t3 <<<"$row"
+  [[ -n $trials_override ]] && trials=$trials_override
   mapfile -t c < <(cases_of "$sel"); total_cells=$(( total_cells + ${#c[@]} * trials ))
   [[ $subj == agent ]] && any_agent=1
 done
@@ -179,6 +193,7 @@ preflight "$any_agent"
 
 for row in "${selected[@]}"; do
   IFS='|' read -r arm sel subj trials t3 <<<"$row"
+  [[ -n $trials_override ]] && trials=$trials_override
   run_arm "$arm" "$sel" "$subj" "$trials" "$t3"
 done
 

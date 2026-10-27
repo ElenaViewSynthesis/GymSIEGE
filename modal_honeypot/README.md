@@ -165,6 +165,15 @@ declared as an observed channel, never treated as part of the containment.
 
 ## Per-run virtual keys
 
+Agent images, and only agent images, install `@openai/codex@0.164.0` plus Node
+and npm. The image build checks the exact `codex-cli 0.164.0` version. Scripted
+images retain their previous package and command layers. The default subject is
+[`codex_gateway.sh`](codex_gateway.sh), which reads the pinned model, gateway
+URL, and ephemeral virtual key from the scrubbed environment. It configures a
+custom Responses provider with `env_key="OPENAI_API_KEY"`, disables standalone
+and hosted web search, and writes `codex exec --json` output to the retained
+transcript. The key value is never placed in config or argv.
+
 A non-dry real-agent run requires `LITELLM_MASTER_KEY` on the host, a single
 `--case-id`, the `gateway` egress token, a non-loopback gateway URL ending in
 `/v1`, and `--model`. The runner mints one LiteLLM virtual key before creating

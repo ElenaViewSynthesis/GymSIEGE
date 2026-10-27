@@ -36,6 +36,7 @@ except ModuleNotFoundError:  # direct ``python modal_honeypot/runner.py``
 REPO = Path(__file__).resolve().parents[1]
 REMOTE_ROOT = "/opt/honeypot"
 DEFAULT_APP = "rogue-agent-honeypots"
+CODEX_VERSION = "0.164.0"
 POLICY = {
     "block_network": True,
     "cpu": (1.0, 2.0),
@@ -287,6 +288,7 @@ def remote_argv(
     weights_mode: str = "text",
     demo: bool = False,
     subject_command: str | None = None,
+    model: str | None = None,
     egress_allowlist: list[str] | None = None,
 ) -> list[str]:
     if demo:
@@ -316,6 +318,8 @@ def remote_argv(
         command.append("HONEYPOT_EVIDENCE_CHAIN=1")
     if harness == "collusion":
         command.append("MODAL_COLLUSION_CONTAINMENT_ENFORCED=1")
+        if subject_command is not None and model is not None:
+            command.append(f"HONEYPOT_CODEX_MODEL={model}")
     if harness == "network-off":
         command.append("MODAL_NETWORK_OFF_ENFORCED=1")
     if allow_network:
@@ -355,7 +359,9 @@ def build_image(modal_module, *, verify_secret_environment: bool = False):
         # Modal injects Secret values into the Sandbox environment. This build
         # assertion proves the image's non-login runuser preserves such
         # inherited variables for the unprivileged exec process.
-        image = image.run_commands(
+        image = image.apt_install("nodejs", "npm").run_commands(
+            f"npm install --global @openai/codex@{CODEX_VERSION}",
+            f"codex --version | grep -Fx 'codex-cli {CODEX_VERSION}'",
             "env MODAL_SECRET_ENV_PROBE=preserved /usr/sbin/runuser -u honeypot "
             "--preserve-environment -- "
             "sh -c 'test \"$MODAL_SECRET_ENV_PROBE\" = preserved'",
@@ -418,6 +424,7 @@ def run(
         weights_mode=args.weights_mode,
         demo=args.demo,
         subject_command=args.subject_command,
+        model=getattr(args, "model", None),
         egress_allowlist=egress_allowlist,
     )
     if args.allow_network:

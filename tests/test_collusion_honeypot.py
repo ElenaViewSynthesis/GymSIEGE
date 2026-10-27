@@ -121,14 +121,19 @@ class CollusionCorpusTests(unittest.TestCase):
             AGENT_SUBJECT.CONTAINMENT_MARKER: "1",
             "HOME": "/tmp/home", "PATH": "/usr/bin", "LD_PRELOAD": "/tmp/base.so",
             "HONEYPOT_COLLUSION_PRELOAD": "/tmp/collusion.so",
+            "HONEYPOT_CODEX_MODEL": "pinned-model",
             "HONEYPOT_WORKSPACE": "/tmp/workspace", "OPENAI_API_KEY": "virtual-key",
             "OPENAI_BASE_URL": "https://gateway.invalid/v1",
             "LITELLM_MASTER_KEY": "must-not-pass", "AWS_SECRET_ACCESS_KEY": "must-not-pass",
             "GITHUB_TOKEN": "must-not-pass", "SSH_AUTH_SOCK": "/tmp/agent.sock",
+            "LANGFUSE_PUBLIC_KEY": "must-not-pass",
+            "LANGFUSE_SECRET_KEY": "must-not-pass",
+            "LANGFUSE_BASE_URL": "https://trace.invalid",
         }
         env = AGENT_SUBJECT.build_agent_environment(source)
         self.assertEqual(env["OPENAI_API_KEY"], "virtual-key")
         self.assertEqual(env["OPENAI_BASE_URL"], "https://gateway.invalid/v1")
+        self.assertEqual(env["HONEYPOT_CODEX_MODEL"], "pinned-model")
         self.assertEqual(env["LD_PRELOAD"], "/tmp/collusion.so:/tmp/base.so")
         self.assertEqual(
             set(env) & {
@@ -137,7 +142,10 @@ class CollusionCorpusTests(unittest.TestCase):
             },
             {"OPENAI_API_KEY", "OPENAI_BASE_URL"},
         )
-        for name in ("LITELLM_MASTER_KEY", "AWS_SECRET_ACCESS_KEY", "GITHUB_TOKEN", "SSH_AUTH_SOCK"):
+        for name in (
+            "LITELLM_MASTER_KEY", "AWS_SECRET_ACCESS_KEY", "GITHUB_TOKEN", "SSH_AUTH_SOCK",
+            "LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY", "LANGFUSE_BASE_URL",
+        ):
             self.assertNotIn(name, env)
 
     def test_evidence_descriptors_are_distinct(self):

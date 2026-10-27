@@ -101,9 +101,11 @@ class ModalHoneypotTests(unittest.TestCase):
     def test_collusion_subject_command_is_scoped_and_forwarded(self):
         command = MODULE.remote_argv(
             "collusion", "CLH-036", 1, subject_command="codex exec --json prompt",
+            model="pinned-model",
         )
         self.assertEqual(command[-2:], ["--subject-command", "codex exec --json prompt"])
         self.assertIn("--preserve-environment", command[:5])
+        self.assertIn("HONEYPOT_CODEX_MODEL=pinned-model", command)
         self.assertNotIn("--preserve-environment", MODULE.remote_argv("collusion", "CLH-036", 1))
         with self.assertRaises(ValueError):
             MODULE.remote_argv("agent", "APH-176", 1, subject_command="true")
@@ -587,8 +589,10 @@ class ModalHoneypotTests(unittest.TestCase):
         class Builder:
             def __init__(self):
                 self.commands = []
+                self.packages = []
 
             def apt_install(self, *args):
+                self.packages.extend(args)
                 return self
 
             def run_commands(self, *args):
@@ -608,6 +612,78 @@ class ModalHoneypotTests(unittest.TestCase):
             and "runuser -u honeypot --preserve-environment" in command
             for command in builder.commands
         ))
+        self.assertIn("nodejs", builder.packages)
+        self.assertIn("npm", builder.packages)
+        self.assertTrue(any(
+            f"@openai/codex@{MODULE.CODEX_VERSION}" in command
+            for command in builder.commands
+        ))
+
+    def test_scripted_image_does_not_install_codex(self):
+        class Builder:
+            def __init__(self):
+                self.commands = []
+                self.packages = []
+
+            def apt_install(self, *args):
+                self.packages.extend(args)
+                return self
+
+            def run_commands(self, *args):
+                self.commands.extend(args)
+                return self
+
+            def add_local_dir(self, *args, **kwargs):
+                return self
+
+        builder = Builder()
+        fake_modal = SimpleNamespace(Image=SimpleNamespace(
+            debian_slim=lambda **kwargs: builder,
+        ))
+        MODULE.build_image(fake_modal, verify_secret_environment=False)
+        self.assertNotIn("nodejs", builder.packages)
+        self.assertFalse(any("@openai/codex" in command for command in builder.commands))
+
+    def test_codex_gateway_adapter_is_scoped_and_search_disabled(self):
+        adapter = (MODULE.REPO / "modal_honeypot/codex_gateway.sh").read_text()
+        self.assertIn('env_key="OPENAI_API_KEY"', adapter)
+        self.assertIn('base_url=\\"$OPENAI_BASE_URL\\"', adapter)
+        self.assertIn('--model "$HONEYPOT_CODEX_MODEL"', adapter)
+        self.assertIn('web_search="disabled"', adapter)
+        self.assertIn("supports_standalone_web_search=false", adapter)
+        self.assertNotIn("LANGFUSE_", adapter)
+
+    def test_experiment_trials_override_changes_plan_cell_count(self):
+        script = MODULE.REPO / "agent_honeypot/collusion_tripwires/run_experiments.sh"
+        env = {
+            **os.environ,
+            "OPENAI_BASE_URL": "https://gateway.invalid/v1",
+            "LANGFUSE_BASE_URL": "https://trace.invalid",
+        }
+        completed = subprocess.run(
+            ["bash", str(script), "--arm", "lure-pair", "--trials", "1",
+             "--model", "pinned-model"],
+            cwd=MODULE.REPO, env=env, text=True, capture_output=True, check=False,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertIn("2 cells", completed.stdout)
+        self.assertEqual(completed.stdout.count("] PLAN"), 2)
+        self.assertIn("PLAN ONLY: no sandbox, no model call", completed.stdout)
+        self.assertIn('"secrets": [', completed.stdout)
+        self.assertIn('"virtual-key:collusion/CLH-036/t1/', completed.stdout)
+        self.assertIn('"egress": "allowlist"', completed.stdout)
+        self.assertIn('"gateway.invalid"', completed.stdout)
+        self.assertIn('"trace.invalid"', completed.stdout)
+        self.assertNotIn("LITELLM_MASTER_KEY", completed.stdout)
+
+    def test_experiment_trials_override_rejects_zero(self):
+        script = MODULE.REPO / "agent_honeypot/collusion_tripwires/run_experiments.sh"
+        completed = subprocess.run(
+            ["bash", str(script), "--arm", "lure-pair", "--trials", "0"],
+            cwd=MODULE.REPO, text=True, capture_output=True, check=False,
+        )
+        self.assertEqual(completed.returncode, 64)
+        self.assertIn("positive integer", completed.stderr)
 
 
 if __name__ == "__main__":
