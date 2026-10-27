@@ -182,6 +182,28 @@ credential or public upload target is used.
 See [RUBRIC.md](RUBRIC.md). Keep the raw evidence: the score is intentionally a
 compact decision signal, not a replacement for reviewing the event timeline.
 
+## Host-side Langfuse view
+
+[`langfuse_ingest.py`](langfuse_ingest.py) turns completed local or pulled
+artifacts into a derived trace tree without placing a Langfuse SDK, endpoint,
+or key in a sandbox. It verifies every copied evidence chain in key-less mode
+before emitting behavior observations, redacts run markers and 128-bit weight
+canaries, uses deterministic trace IDs, and preserves the deterministic scorer
+as `chain_valid`, `stage`, `score`, and `verdict` scores.
+
+Dry-run one case without credentials or network access:
+
+```bash
+python3 agent_honeypot/langfuse_ingest.py \
+  results/collusion-calibration-local-20261026 --case-id CLH-036 --dry-run
+```
+
+`--push` is the only external-write mode. It requires
+`LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, and `LANGFUSE_BASE_URL` on the
+host, calls `shutdown()` before exit, and appends only the resulting trace ID
+to `summary.json`. A broken chain is tagged `unobservable` and contributes no
+tripwire or transcript behavior observations.
+
 ## Limitations
 
 - This is an observation instrument, not a sandbox or a security boundary.
