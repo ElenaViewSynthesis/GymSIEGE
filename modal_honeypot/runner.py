@@ -192,7 +192,7 @@ def run(args: argparse.Namespace) -> int:
     try:
         import modal
     except ImportError as exc:
-        raise SystemExit("Modal SDK missing; install the pinned requirements with: pip install modal==1.5.5") from exc
+        raise SystemExit("Modal SDK missing; install the repository's pinned requirements (requirements.txt pins modal==1.6.0), for example in the repo .venv") from exc
 
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     name = output_name(
