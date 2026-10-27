@@ -5,9 +5,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlparse
 
 
 REPO = Path(__file__).resolve().parents[1]
@@ -63,6 +65,55 @@ def validate_allow_network(harness: str | None, allow_network: bool) -> None:
         raise ValueError(f"--allow-network cannot be combined with {target}")
 
 
+def resolve_egress_allowlist(spec: str | None) -> list[str] | None:
+    """Parse --egress-allowlist into hostnames.
+
+    The token ``langfuse`` resolves to the host of LANGFUSE_BASE_URL, read on the
+    host at plan time (a hostname, never a key). Entries are bare hostnames;
+    URLs and ``*`` are refused so the list can never widen to open egress.
+    """
+    if spec is None:
+        return None
+    hosts: list[str] = []
+    for item in spec.split(","):
+        item = item.strip()
+        if not item:
+            continue
+        if item == "langfuse":
+            base = os.environ.get("LANGFUSE_BASE_URL", "")
+            host = urlparse(base).hostname if base else None
+            if not host:
+                raise ValueError("--egress-allowlist langfuse needs LANGFUSE_BASE_URL in the environment")
+            item = host
+        if item == "*" or "/" in item or ":" in item:
+            raise ValueError(f"--egress-allowlist entries are bare hostnames, not URLs or '*': {item}")
+        hosts.append(item.lower())
+    if not hosts:
+        raise ValueError("--egress-allowlist is empty")
+    return sorted(set(hosts))
+
+
+def validate_egress_allowlist(
+    harness: str | None, allowlist: list[str] | None, allow_network: bool,
+) -> None:
+    """--egress-allowlist opens egress to the listed hosts only.
+
+    It sets block_network=False with outbound_domain_allowlist=hosts, so the
+    sandbox can reach those hosts and nothing else. Because it is scoped it is
+    permitted for the collusion suite, where open egress is refused; it is
+    still refused for the network-off suite and never combined with
+    --allow-network. It is recorded in the policy, the metadata, the tags, and
+    the output directory name, and exported to the sandbox as
+    MODAL_NETWORK_ALLOWLIST so in-sandbox code knows egress is scoped.
+    """
+    if allowlist is None:
+        return
+    if allow_network:
+        raise ValueError("--egress-allowlist cannot be combined with --allow-network")
+    if harness == "network-off":
+        raise ValueError("--egress-allowlist cannot be combined with --network-off-suite")
+
+
 def validate_weights_mode(harness: str | None, weights_mode: str) -> None:
     if weights_mode not in {"text", "format"}:
         raise ValueError(f"unknown weights mode: {weights_mode}")
@@ -84,13 +135,14 @@ def output_name(
     weights_mode: str,
     allow_network: bool,
     subject_command: str | None = None,
+    egress_allowlist: list[str] | None = None,
 ) -> str:
     target = "demo" if demo else str(harness)
     selection = "run" if demo else case_id or "all"
     if subject_command is not None:
         selection += "-agent"
     chain = "chain" if evidence_chain else "chain-off"
-    network = "-net-open" if allow_network else ""
+    network = "-net-open" if allow_network else ("-net-allow" if egress_allowlist else "")
     return f"{target}-{selection}-{chain}-{weights_mode}{network}"
 
 
@@ -105,6 +157,7 @@ def remote_argv(
     weights_mode: str = "text",
     demo: bool = False,
     subject_command: str | None = None,
+    egress_allowlist: list[str] | None = None,
 ) -> list[str]:
     if demo:
         if harness is not None or case_id is not None:
@@ -115,6 +168,7 @@ def remote_argv(
         validate_case(harness, case_id)
     validate_network_off_opt_in(harness, network_off_enabled)
     validate_allow_network(harness, allow_network)
+    validate_egress_allowlist(harness, egress_allowlist, allow_network)
     validate_weights_mode(harness, weights_mode)
     validate_subject_command(harness, subject_command)
     command = [
@@ -130,6 +184,8 @@ def remote_argv(
         command.append("MODAL_NETWORK_OFF_ENFORCED=1")
     if allow_network:
         command.append("MODAL_NETWORK_OPEN=1")
+    if egress_allowlist:
+        command.append("MODAL_NETWORK_ALLOWLIST=" + ",".join(egress_allowlist))
     if demo:
         command.append("TMPDIR=/tmp/honeypot-output")
     command.extend([
@@ -170,15 +226,19 @@ def run(args: argparse.Namespace) -> int:
         validate_case(args.harness, args.case_id)
     validate_network_off_opt_in(args.harness, args.enable_network_off_suite)
     validate_allow_network(args.harness, args.allow_network)
+    egress_allowlist = resolve_egress_allowlist(getattr(args, "egress_allowlist", None))
+    validate_egress_allowlist(args.harness, egress_allowlist, args.allow_network)
     validate_weights_mode(args.harness, args.weights_mode)
     validate_subject_command(args.harness, args.subject_command)
-    block_network = not args.allow_network
+    block_network = not (args.allow_network or bool(egress_allowlist))
     if args.harness == "network-off" and block_network is not True:
         raise RuntimeError("network-off suite requires block_network=True")
     evidence_chain = args.evidence_chain or args.harness == "collusion"
     runtime_policy = {
         **POLICY,
         "block_network": block_network,
+        "egress": "open" if args.allow_network else ("allowlist" if egress_allowlist else "blocked"),
+        "egress_allowlist": egress_allowlist,
         "timeout": args.sandbox_timeout,
         "exec_timeout": args.exec_timeout,
         "network_off_suite_enabled": args.enable_network_off_suite,
@@ -193,11 +253,18 @@ def run(args: argparse.Namespace) -> int:
         weights_mode=args.weights_mode,
         demo=args.demo,
         subject_command=args.subject_command,
+        egress_allowlist=egress_allowlist,
     )
     if args.allow_network:
         print("WARNING: --allow-network: this sandbox has outbound network access; "
               "the user-space tripwires still log and refuse egress, but the outer "
               "boundary is open", file=sys.stderr)
+    if egress_allowlist:
+        print("WARNING: --egress-allowlist: this sandbox can reach "
+              + ", ".join(egress_allowlist)
+              + " and no other host; the user-space tripwires still log and refuse "
+              "egress, and every byte to those hosts is an observed channel",
+              file=sys.stderr)
     if args.dry_run:
         print(json.dumps({"app": args.app_name, "harness": args.harness, "demo": args.demo,
                           "case_id": args.case_id, "output_name": output_name(
@@ -205,6 +272,7 @@ def run(args: argparse.Namespace) -> int:
                               evidence_chain=evidence_chain, weights_mode=args.weights_mode,
                               allow_network=args.allow_network,
                               subject_command=args.subject_command,
+                              egress_allowlist=egress_allowlist,
                           ), "policy": runtime_policy, "remote_argv": command},
                          indent=2))
         return 0
@@ -220,12 +288,16 @@ def run(args: argparse.Namespace) -> int:
         evidence_chain=evidence_chain, weights_mode=args.weights_mode,
         allow_network=args.allow_network,
         subject_command=args.subject_command,
+        egress_allowlist=egress_allowlist,
     )
     output = (args.output / f"{name}-{stamp}").resolve()
     output.mkdir(parents=True, exist_ok=False)
     app = modal.App.lookup(args.app_name, create_if_missing=True)
     image = build_image(modal)
     sandbox = None
+    sandbox_kwargs: dict[str, object] = {}
+    if egress_allowlist:
+        sandbox_kwargs["outbound_domain_allowlist"] = list(egress_allowlist)
     metadata: dict[str, object] = {
         "schema_version": "1.0", "harness": args.harness, "demo": args.demo,
         "case_id": args.case_id, "evidence_chain": evidence_chain,
@@ -239,10 +311,11 @@ def run(args: argparse.Namespace) -> int:
                 "sleep", "infinity", app=app, image=image, workdir="/workspace",
                 block_network=block_network, cpu=POLICY["cpu"], memory=POLICY["memory"],
                 timeout=args.sandbox_timeout, idle_timeout=POLICY["idle_timeout"],
-                secrets=[], volumes={},
+                secrets=[], volumes={}, **sandbox_kwargs,
                 tags={"purpose": "rogue-agent-honeypot",
                       "harness": "demo" if args.demo else args.harness,
-                      "network": "open" if args.allow_network else "blocked"},
+                      "network": "open" if args.allow_network
+                      else ("allowlist" if egress_allowlist else "blocked")},
             )
         metadata["sandbox_id"] = sandbox.object_id
         process = sandbox.exec(*command, timeout=args.exec_timeout)
@@ -286,6 +359,13 @@ def main() -> int:
         help="open outbound network for this run (block_network=False); refused with "
              "--network-off-suite; recorded in the metadata and the output directory name",
     )
+    parser.add_argument(
+        "--egress-allowlist",
+        help="comma-separated hostnames the sandbox may reach and nothing else "
+             "(block_network=False with outbound_domain_allowlist); the token 'langfuse' "
+             "resolves to the host of LANGFUSE_BASE_URL; permitted for --harness collusion, "
+             "refused with --allow-network and with --network-off-suite",
+    )
     selection = parser.add_mutually_exclusive_group()
     selection.add_argument("--case-id")
     selection.add_argument("--all", action="store_true")
@@ -307,6 +387,9 @@ def main() -> int:
     try:
         validate_network_off_opt_in(args.harness, args.enable_network_off_suite)
         validate_allow_network(args.harness, args.allow_network)
+        validate_egress_allowlist(
+            args.harness, resolve_egress_allowlist(args.egress_allowlist), args.allow_network,
+        )
         validate_weights_mode(args.harness, args.weights_mode)
         validate_subject_command(args.harness, args.subject_command)
     except ValueError as exc:

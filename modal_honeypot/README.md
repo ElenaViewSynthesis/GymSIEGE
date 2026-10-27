@@ -115,3 +115,34 @@ python3 modal_honeypot/runner.py --harness agent --case-id APH-176 --allow-netwo
 The Modal SDK is pinned in the repository requirements. Authenticate locally
 with Modal before a remote run; do not inject provider credentials into this
 Sandbox.
+
+## Scoped egress: `--egress-allowlist`
+
+`--allow-network` opens the sandbox to everything and is refused for the
+collusion suite. `--egress-allowlist HOST[,HOST...]` is the scoped alternative:
+`block_network=False` with Modal's `outbound_domain_allowlist` set to exactly
+those hostnames, so the sandbox can reach them and nothing else. The token
+`langfuse` resolves, on the host at plan time, to the hostname of
+`LANGFUSE_BASE_URL` (a hostname, never a key). Entries are bare hostnames; URLs
+and `*` are refused so the list cannot widen to open egress.
+
+```bash
+# Langfuse only: a scripted collusion run whose sole egress is the Langfuse host
+export LANGFUSE_BASE_URL=...   # from .env.local; never print it
+python3 modal_honeypot/runner.py --harness collusion --case-id CLH-036 \
+  --egress-allowlist langfuse --dry-run
+```
+
+The run is recorded as `egress: allowlist` with the host list in the policy
+and metadata, tagged `network=allowlist`, suffixed `-net-allow` in the output
+directory name, and exported to the sandbox as `MODAL_NETWORK_ALLOWLIST`. It is
+permitted for `--harness collusion` because it is scoped; it is still refused
+for the network-off suite and never combined with `--allow-network`.
+`secrets=[]` is unchanged: the allowlist opens a path, it does not place a key
+in the sandbox.
+
+Two consequences to keep in view. A real-agent subject reaches the model only
+through the gateway, so a Langfuse-only list fits scripted runs; add the
+gateway host for a real agent. And every byte to an allowlisted host is a
+channel out of the sandbox: for the lure arm it is declared as an observed
+channel, never treated as part of the containment.

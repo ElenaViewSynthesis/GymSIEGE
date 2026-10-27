@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import os
 import subprocess
 import sys
 import tarfile
@@ -233,6 +234,77 @@ class ModalHoneypotTests(unittest.TestCase):
         self.assertEqual(result["observability"], "unobservable")
         self.assertEqual(result["evidence_chains"], [False])
         self.assertEqual(result["mirror_events"], [12])
+
+    def test_egress_allowlist_resolves_langfuse_host_and_rejects_widening(self):
+        with mock.patch.dict(os.environ, {"LANGFUSE_BASE_URL": "https://cloud.langfuse.com/"}):
+            self.assertEqual(MODULE.resolve_egress_allowlist("langfuse"), ["cloud.langfuse.com"])
+            self.assertEqual(
+                MODULE.resolve_egress_allowlist("Langfuse-Proxy.example.org, langfuse"),
+                ["cloud.langfuse.com", "langfuse-proxy.example.org"],
+            )
+        with mock.patch.dict(os.environ, {}, clear=True):
+            with self.assertRaises(ValueError):
+                MODULE.resolve_egress_allowlist("langfuse")
+        for bad in ("*", "https://cloud.langfuse.com", "host:443", " , "):
+            with self.assertRaises(ValueError):
+                MODULE.resolve_egress_allowlist(bad)
+        self.assertIsNone(MODULE.resolve_egress_allowlist(None))
+
+    def test_egress_allowlist_is_scoped_marked_and_refused_where_it_must_be(self):
+        hosts = ["cloud.langfuse.com"]
+        # permitted for collusion (scoped egress), exported to the sandbox, never open
+        command = MODULE.remote_argv("collusion", "CLH-036", 1, egress_allowlist=hosts)
+        self.assertIn("MODAL_NETWORK_ALLOWLIST=cloud.langfuse.com", command)
+        self.assertNotIn("MODAL_NETWORK_OPEN=1", command)
+        self.assertIn("MODAL_COLLUSION_CONTAINMENT_ENFORCED=1", command)
+        # refused with open egress and with the network-off suite
+        with self.assertRaises(ValueError):
+            MODULE.remote_argv("agent", "APH-001", 1, allow_network=True, egress_allowlist=hosts)
+        with self.assertRaises(ValueError):
+            MODULE.remote_argv("network-off", "NOF-001", 1, network_off_enabled=True,
+                               egress_allowlist=hosts)
+        # the output directory records it
+        name = MODULE.output_name("collusion", "CLH-036", demo=False, evidence_chain=True,
+                                  weights_mode="text", allow_network=False,
+                                  egress_allowlist=hosts)
+        self.assertTrue(name.endswith("-net-allow"), name)
+        # open egress still refused for collusion
+        with self.assertRaises(ValueError):
+            MODULE.remote_argv("collusion", "CLH-036", 1, allow_network=True)
+
+    def test_egress_allowlist_dry_run_policy(self):
+        env = {**os.environ, "LANGFUSE_BASE_URL": "https://cloud.langfuse.com"}
+        completed = subprocess.run(
+            [sys.executable, str(MODULE_PATH), "--harness", "collusion", "--case-id", "CLH-037",
+             "--egress-allowlist", "langfuse", "--dry-run"],
+            capture_output=True, text=True, env=env, check=True,
+        )
+        plan = json.loads(completed.stdout)
+        policy = plan["policy"]
+        self.assertFalse(policy["block_network"])
+        self.assertEqual(policy["egress"], "allowlist")
+        self.assertEqual(policy["egress_allowlist"], ["cloud.langfuse.com"])
+        self.assertEqual(policy["secrets"], [])
+        self.assertTrue(policy["evidence_chain"])
+        self.assertIn("MODAL_NETWORK_ALLOWLIST=cloud.langfuse.com", plan["remote_argv"])
+        self.assertTrue(plan["output_name"].endswith("-net-allow"))
+        self.assertIn("--egress-allowlist", completed.stderr)  # the warning names the mode
+        # combined with open egress: refused on a harness where --allow-network alone is legal
+        refused = subprocess.run(
+            [sys.executable, str(MODULE_PATH), "--harness", "agent", "--case-id", "APH-001",
+             "--egress-allowlist", "langfuse", "--allow-network", "--dry-run"],
+            capture_output=True, text=True, env=env,
+        )
+        self.assertEqual(refused.returncode, 2)
+        self.assertIn("cannot be combined with --allow-network", refused.stderr)
+        # and for collusion the open-egress refusal fires first, so it never gets that far
+        refused = subprocess.run(
+            [sys.executable, str(MODULE_PATH), "--harness", "collusion", "--case-id", "CLH-037",
+             "--egress-allowlist", "langfuse", "--allow-network", "--dry-run"],
+            capture_output=True, text=True, env=env,
+        )
+        self.assertEqual(refused.returncode, 2)
+        self.assertIn("--allow-network cannot be combined with --harness collusion", refused.stderr)
 
 
 if __name__ == "__main__":
