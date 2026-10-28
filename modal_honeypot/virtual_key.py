@@ -101,15 +101,17 @@ class LiteLLMAdminClient:
 
 def mint_virtual_key(
     client: AdminClient, *, alias: str, model: str, budget_usd: float, ttl: str,
-    metadata: Mapping[str, object], tags: list[str],
+    metadata: Mapping[str, object],
 ) -> MintedKey:
+    # No "tags": LiteLLM gates key tags behind an Enterprise license
+    # (HTTP 403 from _premium_user_check on an unlicensed gateway). The
+    # alias and metadata already carry the run identity Langfuse joins on.
     payload: dict[str, object] = {
         "key_alias": alias,
         "models": [model],
         "max_budget": budget_usd,
         "duration": ttl,
         "metadata": dict(metadata),
-        "tags": list(tags),
     }
     response = client.generate(payload)
     key = response.get("key")

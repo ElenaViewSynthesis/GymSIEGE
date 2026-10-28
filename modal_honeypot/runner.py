@@ -519,7 +519,6 @@ def run(
                 budget_usd=key_budget,
                 ttl=key_ttl,
                 metadata=key_metadata,
-                tags=["honeypot", args.harness, args.case_id],
             )
             key_record: dict[str, object] = {
                 "key_alias": key_alias,

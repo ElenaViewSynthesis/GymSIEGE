@@ -178,11 +178,14 @@ A non-dry real-agent run requires `LITELLM_MASTER_KEY` on the host, a single
 `--case-id`, the `gateway` egress token, a non-loopback gateway URL ending in
 `/v1`, and `--model`. The runner mints one LiteLLM virtual key before creating
 the Sandbox. `/key/generate` receives exactly `key_alias`, a one-element
-`models` list, `max_budget`, `duration`, `metadata`, and `tags`. Metadata is
+`models` list, `max_budget`, `duration`, and `metadata`. Metadata is
 `run_id`, `harness`, `case_id`, `trial`, `arm`, and
-`purpose=rogue-agent-honeypot`; tags are `honeypot`, the harness, and the case
-ID. The default budget is USD 0.50 and the default TTL is five minutes longer
-than the Sandbox lifetime; a shorter TTL is refused.
+`purpose=rogue-agent-honeypot`. Key-level `tags` are intentionally absent:
+LiteLLM 1.99.1 gates any truthy value for that field behind an Enterprise
+license and an unlicensed gateway rejects the mint with HTTP 403. Modal's own
+Sandbox tags and the host ingester's Langfuse trace tags are unrelated and
+remain enabled. The default budget is USD 0.50 and the default TTL is five
+minutes longer than the Sandbox lifetime; a shorter TTL is refused.
 
 The returned key stays in host memory and is delivered with an unnamed
 `modal.Secret.from_dict` as only `OPENAI_API_KEY` and the full

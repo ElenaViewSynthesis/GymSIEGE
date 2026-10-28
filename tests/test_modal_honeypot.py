@@ -547,7 +547,8 @@ class ModalHoneypotTests(unittest.TestCase):
         self.assertEqual(payload["models"], ["pinned-model"])
         self.assertEqual(payload["max_budget"], 0.50)
         self.assertEqual(payload["duration"], "35m")
-        self.assertEqual(payload["tags"], ["honeypot", "collusion", "CLH-037"])
+        # LiteLLM gates key tags behind an Enterprise license; the mint must not send them.
+        self.assertNotIn("tags", payload)
         self.assertEqual(payload["metadata"]["trial"], 2)
         self.assertEqual(payload["metadata"]["arm"], "lure-pair")
         self.assertEqual(payload["metadata"]["run_id"], payload["key_alias"])
