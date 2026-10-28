@@ -502,11 +502,21 @@ identity remains in metadata (`run_id`, `harness`, `case_id`, `trial`, `arm`,
 and `purpose`). Modal's sandbox tags and Langfuse trace tags are separate
 features and remain unchanged.
 
-Gate 2 has not yet been retried. Resume only with the bounded `$0.01`, five-minute
-`smoke/<stamp>` key and one model call after explicit approval. Record exactly
-which key fields LiteLLM forwards to the gateway-created Langfuse generation;
-do not assume that it shares the host trace's session ID or Langfuse tags. As of
-the failed attempt, no smoke key was created and the orphan count was zero.
+Gate 2 passed on 2026-10-28 with one five-minute `smoke/<stamp>` key capped at
+`$1.00` (raised from the pre-registered `$0.01` before the mint; the deviation
+and its reason are recorded in the Phase 2 handoff) and one minimal model call.
+The call cost `$0.000002`; revocation
+succeeded, reuse returned HTTP 401, and the alias-filtered orphan check returned
+zero. Langfuse generation `96aed0e12d24841e6a3276c273310ac9` received the key
+alias as `attributes.litellm.key_alias` and
+`attributes.metadata.user_api_key_alias`, with `purpose` and `harness` nested
+under `attributes.metadata.user_api_key_auth_metadata`. It received no session
+ID and no tags, so host/gateway correlation must use the alias and metadata,
+not assumed shared Langfuse attributes.
+
+Before the key-hygiene change, one revoked smoke key appeared in the gateway
+access log through the key-info query string; keys are now looked up and revoked
+by hash.
 
 For GitHub Actions CI/CD, pull requests automatically run the corpus, unit, and
 parser-contract checks in

@@ -121,13 +121,13 @@ def mint_virtual_key(
     key_hash = response.get("key_hash")
     token_id = token_id if isinstance(token_id, str) and token_id else None
     key_hash = key_hash if isinstance(key_hash, str) and key_hash else None
-    fingerprint = "sha256:" + hashlib.sha256(key.encode()).hexdigest()
+    key_digest = hashlib.sha256(key.encode()).hexdigest()
+    fingerprint = "sha256:" + key_digest
     return MintedKey(
         key=key,
-        # LiteLLM documents /key/info and /key/delete in terms of the returned
-        # virtual key. Keep it only in memory for those lifecycle calls; the
-        # token/hash is the non-secret identifier recorded in metadata.
-        management_id=key,
+        # Lifecycle calls accept the token hash, keeping the plaintext key only
+        # in MintedKey.key for secret delivery and post-run redaction scans.
+        management_id=token_id or key_digest,
         key_alias=alias,
         fingerprint=fingerprint,
         token_id=token_id,
@@ -136,6 +136,8 @@ def mint_virtual_key(
 
 
 def key_spend(client: AdminClient, key_id: str) -> float:
+    if key_id.startswith("sk-"):
+        raise VirtualKeyError("LiteLLM key lifecycle requires a hashed identifier")
     response = client.info(key_id)
     info: Any = response.get("info", response)
     spend = info.get("spend") if isinstance(info, dict) else None
@@ -145,4 +147,6 @@ def key_spend(client: AdminClient, key_id: str) -> float:
 
 
 def revoke_virtual_key(client: AdminClient, key_id: str) -> None:
+    if key_id.startswith("sk-"):
+        raise VirtualKeyError("LiteLLM key lifecycle requires a hashed identifier")
     client.delete(key_id)

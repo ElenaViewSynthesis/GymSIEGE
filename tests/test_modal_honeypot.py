@@ -1,4 +1,5 @@
 import contextlib
+import hashlib
 import importlib.util
 import io
 import json
@@ -11,6 +12,8 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
+
+from modal_honeypot.virtual_key import VirtualKeyError
 
 
 MODULE_PATH = Path(__file__).parents[1] / "modal_honeypot" / "runner.py"
@@ -559,14 +562,43 @@ class ModalHoneypotTests(unittest.TestCase):
         self.assertEqual(len(captured["sandbox_kwargs"]["secrets"]), 1)
         self.assertNotIn(FAKE_VIRTUAL_KEY, json.dumps(captured["command"]))
         self.assertEqual(client.calls[-2:], [
-            ("info", FAKE_VIRTUAL_KEY), ("delete", FAKE_VIRTUAL_KEY),
+            ("info", "f" * 64), ("delete", "f" * 64),
         ])
+        self.assertNotIn(FAKE_VIRTUAL_KEY, json.dumps(client.calls))
         self.assertTrue(captured["terminated"])
         self.assertTrue(captured["detached"])
         self.assertEqual(metadata["virtual_key"]["spend_usd"], 0.0125)
         self.assertIn("revoked_at", metadata["virtual_key"])
         self.assertTrue(metadata["redaction"]["passed"])
         self.assertNotIn(FAKE_VIRTUAL_KEY, metadata_text)
+
+    def test_key_lifecycle_falls_back_to_sha256_when_token_id_is_absent(self):
+        class FakeClient(FakeLiteLLMClient):
+            def generate(self, payload):
+                self.calls.append(("generate", dict(payload)))
+                return {"key": FAKE_VIRTUAL_KEY}
+
+        client = FakeClient()
+        minted = MODULE.mint_virtual_key(
+            client, alias="collusion/CLH-037/t1/stamp", model="pinned-model",
+            budget_usd=0.50, ttl="35m", metadata={"purpose": "unit-test"},
+        )
+        self.assertEqual(
+            minted.management_id,
+            hashlib.sha256(FAKE_VIRTUAL_KEY.encode()).hexdigest(),
+        )
+        MODULE.key_spend(client, minted.management_id)
+        MODULE.revoke_virtual_key(client, minted.management_id)
+        self.assertEqual(client.calls[-2:], [
+            ("info", minted.management_id), ("delete", minted.management_id),
+        ])
+        self.assertNotIn(FAKE_VIRTUAL_KEY, json.dumps(client.calls))
+
+    def test_key_spend_rejects_plaintext_identifier_before_request(self):
+        client = FakeLiteLLMClient()
+        with self.assertRaises(VirtualKeyError):
+            MODULE.key_spend(client, FAKE_VIRTUAL_KEY)
+        self.assertEqual(client.calls, [])
 
     def test_redaction_scanner_checks_plain_files_and_archives(self):
         with tempfile.TemporaryDirectory() as directory:

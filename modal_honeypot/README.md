@@ -198,7 +198,9 @@ original `runuser` argv. The subject launcher's allowlist passes these two provi
 variables and drops the host master key.
 
 Teardown terminates the Sandbox, reads spend from `/key/info`, and calls
-`/key/delete` even when the remote process fails. `modal-run.json` records only
+`/key/delete` even when the remote process fails. Both lifecycle calls use the
+hashed token identifier, never the plaintext virtual key. `modal-run.json`
+records only
 the alias, token ID/hash or SHA-256 fingerprint, mint/revoke timestamps, spend,
 budget, and TTL. A cleanup failure is recorded and raised; expiration remains
 the revocation backstop.

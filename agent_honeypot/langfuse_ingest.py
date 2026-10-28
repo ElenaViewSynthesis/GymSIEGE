@@ -49,6 +49,10 @@ class LangfuseClient(Protocol):
     def shutdown(self) -> None: ...
 
 
+class LangfuseObservationsClient(Protocol):
+    def get_many(self, **kwargs: object) -> object: ...
+
+
 @dataclass
 class Observation:
     kind: str
@@ -412,6 +416,90 @@ def _transcript_usage(case_dir: Path) -> tuple[int, int]:
     return generations, tokens
 
 
+def _object_field(value: object, *names: str) -> object:
+    for name in names:
+        if isinstance(value, Mapping) and name in value:
+            return value[name]
+        if hasattr(value, name):
+            return getattr(value, name)
+    return None
+
+
+def _gateway_alias(observation: object) -> str | None:
+    metadata = _object_field(observation, "metadata")
+    if not isinstance(metadata, Mapping):
+        return None
+    direct = metadata.get("attributes.litellm.key_alias")
+    if isinstance(direct, str):
+        return direct
+    attributes = metadata.get("attributes")
+    if isinstance(attributes, Mapping):
+        flattened = attributes.get("litellm.key_alias")
+        if isinstance(flattened, str):
+            return flattened
+    litellm = attributes.get("litellm") if isinstance(attributes, Mapping) else None
+    alias = litellm.get("key_alias") if isinstance(litellm, Mapping) else None
+    return alias if isinstance(alias, str) else None
+
+
+def _gateway_tokens(observation: object) -> int:
+    usage = _object_field(observation, "usage_details", "usageDetails")
+    if not isinstance(usage, Mapping):
+        return 0
+    for key in ("total", "total_tokens"):
+        value = usage.get(key)
+        if isinstance(value, int) and not isinstance(value, bool):
+            return value
+    input_tokens = usage.get("input", usage.get("input_tokens", 0))
+    output_tokens = usage.get("output", usage.get("output_tokens", 0))
+    return sum(
+        value for value in (input_tokens, output_tokens)
+        if isinstance(value, int) and not isinstance(value, bool)
+    )
+
+
+def add_gateway_generation_usage(
+    plan: TracePlan, observations_client: LangfuseObservationsClient,
+) -> None:
+    """Stage 4: join gateway generations by alias and record count/token parity."""
+    alias = plan.attributes.get("gateway_key_alias")
+    if not alias:
+        return
+    filter_value = json.dumps([{
+        "type": "stringObject",
+        "column": "metadata",
+        "key": "attributes.litellm.key_alias",
+        "operator": "=",
+        "value": alias,
+    }], separators=(",", ":"))
+    generation_count = 0
+    total_tokens = 0
+    cursor: str | None = None
+    while True:
+        response = observations_client.get_many(
+            fields="core,metadata,usage", type="GENERATION", filter=filter_value,
+            limit=1000, cursor=cursor,
+        )
+        data = _object_field(response, "data")
+        for observation in data if isinstance(data, (list, tuple)) else []:
+            # The API filter is authoritative; the local check keeps fake-client
+            # tests honest and prevents a permissive backend from inflating counts.
+            if _gateway_alias(observation) != alias:
+                continue
+            generation_count += 1
+            total_tokens += _gateway_tokens(observation)
+        meta = _object_field(response, "meta")
+        next_cursor = _object_field(meta, "cursor")
+        if not isinstance(next_cursor, str) or not next_cursor or next_cursor == cursor:
+            break
+        cursor = next_cursor
+    plan.root.metadata["gateway_generation_count"] = generation_count
+    plan.root.metadata["gateway_total_tokens"] = total_tokens
+    plan.root.metadata["gateway_transcript_generation_count_mismatch"] = (
+        generation_count != plan.root.metadata.get("transcript_generation_count")
+    )
+
+
 def _harness_name(case_id: str, modal: Mapping[str, Any]) -> str:
     if isinstance(modal.get("harness"), str):
         return str(modal["harness"])
@@ -545,7 +633,16 @@ def _build_case_plan(
     started_at = str(modal.get("started_at") or cohort)
     trace_seed = f"{cohort}:{case_id}:trial-{trial}:{started_at}"
     trace_id = deterministic_trace_id(trace_seed)
-    session_id = f"{arm}/{case_id}/t{trial}"
+    virtual_key = modal.get("virtual_key")
+    gateway_key_alias = (
+        virtual_key.get("key_alias") if isinstance(virtual_key, Mapping) else None
+    )
+    gateway_key_alias = (
+        gateway_key_alias
+        if isinstance(gateway_key_alias, str) and gateway_key_alias
+        else None
+    )
+    session_id = gateway_key_alias or f"{arm}/{case_id}/t{trial}"
     harness = _harness_name(case_id, modal)
     subject_mode = str(modal.get("subject_mode") or report.get("subject_mode") or "scripted")
     tags = [harness, arm, subject_mode, "chain=on"]
@@ -558,9 +655,17 @@ def _build_case_plan(
         "policy": modal.get("policy", {}),
         "source_commit": modal.get("source_commit"),
         "observability": "observable" if chains_valid else "unobservable",
+        "session_id_source": "key_alias" if gateway_key_alias else "derived",
         "transcript_generation_count": transcript_generations,
         "transcript_total_tokens": transcript_tokens,
     }
+    if gateway_key_alias:
+        metadata["gateway_key_alias"] = gateway_key_alias
+    attributes = {
+        "harness": harness, "arm": arm, "case_id": case_id, "trial": str(trial),
+    }
+    if gateway_key_alias:
+        attributes["gateway_key_alias"] = gateway_key_alias
     root = Observation(
         kind="span", name=f"{harness}-case", input=trace_input, output=trace_output,
         metadata=metadata, children=_run_specs(case_dir, case, logs, chains_valid),
@@ -570,7 +675,7 @@ def _build_case_plan(
         trace_seed=trace_seed,
         session_id=session_id,
         tags=tags,
-        attributes={"harness": harness, "arm": arm, "case_id": case_id, "trial": str(trial)},
+        attributes=attributes,
         root=root,
         scores=_score_rows(report, chains_valid),
         case_id=case_id,
@@ -734,6 +839,13 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps([asdict(plan) for plan in plans], indent=2, sort_keys=True))
             return 0
         client, propagate = _push_client()
+        observations_client = client.api.observations
+        try:
+            for plan in plans:
+                add_gateway_generation_usage(plan, observations_client)
+        except Exception:
+            client.shutdown()
+            raise
         push_trace_plans(plans, client, propagate=propagate)
         write_trace_ids(args.run, plans)
         print(json.dumps({"trace_ids": [plan.trace_id for plan in plans]}, sort_keys=True))

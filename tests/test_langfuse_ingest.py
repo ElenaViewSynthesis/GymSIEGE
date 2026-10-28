@@ -69,6 +69,17 @@ def walk(observation):
 
 
 class LangfuseIngestTests(unittest.TestCase):
+    def _plan_with_gateway_alias(self, alias="collusion/CLH-036/t1/stamp"):
+        with tempfile.TemporaryDirectory() as directory:
+            copied = Path(directory) / "CLH-036"
+            shutil.copytree(COLLUSION_RUN / "CLH-036", copied)
+            (copied / "modal-run.json").write_text(json.dumps({
+                "arm": "lure-pair",
+                "trial": 1,
+                "virtual_key": {"key_alias": alias},
+            }))
+            return ingest.build_trace_plans(copied)[0]
+
     def test_instrument_tree_uses_verified_events(self):
         plan = ingest.build_trace_plans(INSTRUMENT_RUN, case_id="IHT-001")[0]
         rows = list(walk(plan.root))
@@ -96,6 +107,47 @@ class LangfuseIngestTests(unittest.TestCase):
         self.assertEqual(first.trace_id, second.trace_id)
         self.assertRegex(first.trace_id, r"^[0-9a-f]{32}$")
         self.assertEqual(first.trace_id, ingest.deterministic_trace_id(first.trace_seed))
+        self.assertEqual(first.session_id, "solvable/CLH-036/t1")
+        self.assertEqual(first.root.metadata["session_id_source"], "derived")
+
+    def test_virtual_key_alias_becomes_session_and_join_attribute(self):
+        alias = "collusion/CLH-036/t1/stamp"
+        plan = self._plan_with_gateway_alias(alias)
+        self.assertEqual(plan.session_id, alias)
+        self.assertEqual(plan.attributes["gateway_key_alias"], alias)
+        self.assertEqual(plan.root.metadata["gateway_key_alias"], alias)
+        self.assertEqual(plan.root.metadata["session_id_source"], "key_alias")
+        self.assertIn(alias, json.dumps(ingest.asdict(plan), sort_keys=True))
+
+    def test_gateway_usage_helper_filters_alias_and_sums_tokens(self):
+        alias = "collusion/CLH-036/t1/stamp"
+        plan = self._plan_with_gateway_alias(alias)
+
+        class FakeObservations:
+            def __init__(self):
+                self.calls = []
+
+            def get_many(self, **kwargs):
+                self.calls.append(kwargs)
+                return {
+                    "data": [
+                        {"metadata": {"attributes.litellm.key_alias": alias},
+                         "usageDetails": {"total": 11}},
+                        {"metadata": {"attributes": {"litellm.key_alias": alias}},
+                         "usage_details": {"input": 7, "output": 5}},
+                        {"metadata": {"attributes.litellm.key_alias": "collusion/other"},
+                         "usageDetails": {"total": 1000}},
+                    ],
+                    "meta": {"cursor": None},
+                }
+
+        client = FakeObservations()
+        ingest.add_gateway_generation_usage(plan, client)
+        self.assertEqual(plan.root.metadata["gateway_generation_count"], 2)
+        self.assertEqual(plan.root.metadata["gateway_total_tokens"], 23)
+        self.assertIn("gateway_transcript_generation_count_mismatch", plan.root.metadata)
+        self.assertEqual(client.calls[0]["type"], "GENERATION")
+        self.assertIn(alias, client.calls[0]["filter"])
 
     def test_chain_break_tags_unobservable_and_suppresses_behavior(self):
         source = COLLUSION_RUN / "CLH-036"
