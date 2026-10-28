@@ -1,0 +1,26 @@
+# GYMSIEGE is a flat application/script repository, not an installable Python
+# package. requirements.txt remains the single dependency source; this file
+# centralizes repository-wide tool configuration only.
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-ra"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+extend-exclude = [
+  ".venv",
+  "CVE-bench/upstream",
+  "exploitbench/upstream",
+  "artifacts",
+  "ci-artifacts",
+  "data",
+  "recordings",
+  "results",
+]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
