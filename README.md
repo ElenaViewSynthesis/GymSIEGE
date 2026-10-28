@@ -1,6 +1,7 @@
 # GYMSIEGE
 
-GYMSIEGE runs four public security-agent benchmarks as a **Daytona fleet evaluation**, though most of the sandboxes here are **Modal sandboxes**:
+GYMSIEGE runs four public security-agent benchmarks across disposable **Daytona**
+and **Modal** sandboxes:
 
 - **[CyberGym-E2E](https://github.com/sunblaze-ucb/cybergym-e2e)** — find-vulnerability → PoC → patch, scored by the real [ARVO](https://arxiv.org/abs/2408.02153) sanitizer oracle.
 - **[ExploitGym](https://github.com/sunblaze-ucb/exploitgym)** — exploit-development evaluation, run through the upstream evaluator with its firewall, local LLM proxy, controller, hardened targets, and budget accounting.
@@ -9,7 +10,10 @@ GYMSIEGE runs four public security-agent benchmarks as a **Daytona fleet evaluat
 
 It measures both **agent capability** (pass@k, oracle stages, research navigation success, tokens/cost) and **infrastructure behavior** (provisioning latency, a concurrency failure curve, CPU/memory/disk telemetry, recordings, cleanup reliability).
 
-Every trial runs inside a real, disposable Daytona sandbox — nothing here is simulated. `results/exploitgym-runs/results.json` stays a not-yet-run schema template until an actual trial has completed against the live Daytona and provider APIs.
+Every trial runs inside a real, disposable sandbox on the provider named by its
+runner — nothing here is simulated. `results/exploitgym-runs/results.json` stays
+a not-yet-run schema template until an actual trial has completed against the
+live sandbox and model-provider APIs.
 
 ## CyberGym capability curve
 
@@ -485,6 +489,25 @@ The parser implementation is in
 runbook is in
 [`modal_honeypot/network_off/README.md`](modal_honeypot/network_off/README.md).
 
+##### Real-agent collusion key lifecycle
+
+The opt-in real-agent collusion path mints one short-lived LiteLLM virtual key
+per run. Its `/key/generate` payload contains exactly `key_alias`, a one-element
+`models` list, `max_budget`, `duration`, and `metadata`; it deliberately omits
+`tags`. On the unlicensed LiteLLM 1.99.1 gateway, any truthy key-level `tags`
+value is Enterprise-gated and fails in `_premium_user_check` with HTTP 403.
+The 2026-10-27 Gate 2 failures were this payload-policy rejection, not a bad
+credential: the configured and live master-key fingerprints matched. Run
+identity remains in metadata (`run_id`, `harness`, `case_id`, `trial`, `arm`,
+and `purpose`). Modal's sandbox tags and Langfuse trace tags are separate
+features and remain unchanged.
+
+Gate 2 has not yet been retried. Resume only with the bounded `$0.01`, five-minute
+`smoke/<stamp>` key and one model call after explicit approval. Record exactly
+which key fields LiteLLM forwards to the gateway-created Langfuse generation;
+do not assume that it shares the host trace's session ID or Langfuse tags. As of
+the failed attempt, no smoke key was created and the orphan count was zero.
+
 For GitHub Actions CI/CD, pull requests automatically run the corpus, unit, and
 parser-contract checks in
 [`network-off-honeypot.yml`](.github/workflows/network-off-honeypot.yml).
@@ -945,6 +968,7 @@ dashboard.py  (local uvicorn, or --publish to a live Daytona preview link)
 | `txt/tasks.pinned.txt` | 22 pinned CyberGym tasks used by the main protocol. |
 | `txt/exploitgym_tasks.pinned.txt` | Ten userspace tasks from ExploitGym's official 20-task sample. |
 | `.env.defaults` | Non-secret, committed Daytona Secret *names* (never values). |
+| `pyproject.toml` | Root pytest and Ruff configuration. `requirements.txt` remains the single dependency source; this script repository is not packaged for installation. |
 | `tests/` | Unit tests for task parsing, pass@k/oracle aggregation, ExploitGym score parsing, and the non-disableable hardened command profile. |
 | `demo.sh` | End-to-end reproduction script: bake → smoke run → concurrency probe → dashboard publish. |
 | `run_modal_pinned_tasks.sh` | Loops `modal_sandbox_runner.py --mode patch-only` over every task in `txt/tasks.pinned.txt`, sequentially, writing each result/log to `results/modal_trials/`. Real cost per task; one task's failure doesn't stop the rest. |
@@ -954,7 +978,7 @@ Generated/ignored at runtime (not committed): `.venv/`, `data/`, `artifacts/`, `
 
 ## Requirements
 
-- Python 3.11+ (tested against 3.11.9)
+- Python 3.12 (the version used by the repository CI workflows)
 - A [Daytona](https://www.daytona.io/) account and API key
 - An OpenAI API key for ExploitGym and a LiteLLM route to OpenAI GPT models for CyberGym-E2E
 - Real API quota on both Daytona and the chosen LLM provider — every command in this README talks to live services and consumes it
@@ -966,6 +990,11 @@ python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
 ```
+
+`requirements.txt` is the canonical dependency manifest, including the exact
+pins that affect experimental results. `pyproject.toml` centralizes local tool
+configuration and the Python 3.12 target without duplicating those dependency
+pins or turning the flat script tree into an installable package.
 
 Every command in this README assumes the venv is activated in your current shell (plain `python` resolves to it) — run `deactivate` when you're done. See [Activate the venv](#quick-start) at the top for the same instruction repeated where you'll actually need it first.
 
@@ -1593,12 +1622,16 @@ Other verified terminal outcomes use the same evidence-preserving rule:
 ## Verification
 
 ```bash
-python -m unittest discover -s tests -v
+PYDANTIC_DISABLE_PLUGINS=1 python -m pytest
 python3 -m py_compile *.py
 bash -n demo.sh
 ```
 
-The local suite verifies task parsing, pass@k/oracle aggregation, ExploitGym score parsing, and the non-disableable firewall/proxy/hardened command profile.
+Pytest discovers both the native pytest tests and the `unittest.TestCase` suites
+using the root `pyproject.toml`. The local suite verifies task parsing,
+pass@k/oracle aggregation, ExploitGym score parsing, honeypot evidence chains,
+and the non-disableable firewall/proxy/hardened command profile. Targeted suites
+can still be run directly with `python -m unittest <module> ...`.
 
 ## Reproduction helper
 
