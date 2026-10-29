@@ -197,6 +197,8 @@ litellm_settings:
   turn_off_message_logging: true
 ```
 
+The shared gateway enforces `litellm_settings.turn_off_message_logging: true` gateway-wide.
+
 The setting is gateway-wide: for every key and route, including the CyberGym
 and ExploitBench runs that trace through the same gateway, prompts and
 responses are no longer sent to Langfuse, while request metadata, usage, cost,
