@@ -36,6 +36,22 @@ cd -- "$repo"
 # HONEYPOT_RUNNER lets the unit tests substitute a fake runner; production runs
 # leave it unset.
 runner=${HONEYPOT_RUNNER:-modal_honeypot/runner.py}
+# The runner needs the pinned Modal SDK, which lives in the repo venv, not in
+# the system python3. Use the venv interpreter whenever it exists so the driver
+# does not depend on the venv being activated in the caller's shell (a plain
+# `python3` stopped the 2026-10-29T08:29Z pilot attempt before any sandbox).
+# HONEYPOT_PYTHON overrides the choice.
+if [[ -n ${HONEYPOT_PYTHON:-} ]]; then
+  python=$HONEYPOT_PYTHON
+elif [[ -x $repo/.venv/bin/python ]]; then
+  python=$repo/.venv/bin/python
+else
+  python=python3
+fi
+if ! command -v -- "$python" >/dev/null 2>&1 && [[ ! -x $python ]]; then
+  printf 'python interpreter not found: %s (set HONEYPOT_PYTHON or create the repo .venv)\n' "$python" >&2
+  exit 78
+fi
 
 # --------------------------------------------------------------------------
 # EXPERIMENT ARMS. Augment this table from Table 3 of the honeypot paper: add
@@ -220,6 +236,11 @@ PY
   if ((execute)); then
     [[ ${EXPERIMENT_APPROVED:-0} == 1 ]] || {
       printf 'refusing paid run: set EXPERIMENT_APPROVED=1 to confirm (and you reviewed the plan + cost)\n' >&2; exit 77; }
+    # A paid cell needs the Modal SDK in the chosen interpreter; a plan does not.
+    if [[ -z ${HONEYPOT_RUNNER:-} ]] && ! "$python" -c 'import modal' >/dev/null 2>&1; then
+      printf 'the interpreter %s cannot import modal; use the repo .venv (requirements.txt pins modal==1.6.0) or set HONEYPOT_PYTHON\n' "$python" >&2
+      exit 78
+    fi
     if ((any_agent)); then
       [[ -n ${LITELLM_MASTER_KEY:-} ]] || {
         printf 'agent arm needs LITELLM_MASTER_KEY on the host to mint its scoped virtual key\n' >&2; exit 78; }
@@ -237,7 +258,7 @@ run_arm() {
   local tag="$output_root/$arm"
   for case_id in "${cases[@]}"; do
     for ((t=1; t<=trials; t++)); do
-      local -a cmd=(python3 "$runner" --harness collusion --case-id "$case_id"
+      local -a cmd=("$python" "$runner" --harness collusion --case-id "$case_id"
                     --workers "$workers" --output "$tag")
       if [[ $subj == agent ]]; then
         cmd+=(--subject-command "$SUBJECT_CMD" --egress-allowlist langfuse,gateway
