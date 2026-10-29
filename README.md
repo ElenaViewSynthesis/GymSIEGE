@@ -1,5 +1,13 @@
 # GYMSIEGE
 
+> [!CAUTION]
+> **Codex gateway honeypot hazard:** real-agent honeypot runs deliberately set
+> Codex to `sandbox_mode="danger-full-access"` with `approval_policy="never"`.
+> There is no Codex approval policy in the execution loop: attempted commands
+> reach the tripwires directly. Run this path only inside its externally
+> contained Modal Sandbox with the scoped egress allowlist, ephemeral key,
+> unprivileged user, evidence chain, and hard timeouts intact.
+
 GYMSIEGE runs four public security-agent benchmarks across disposable **Daytona**
 and **Modal** sandboxes:
 

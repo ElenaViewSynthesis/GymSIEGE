@@ -11,6 +11,8 @@ set -Eeuo pipefail
 
 codex \
   --model "$HONEYPOT_CODEX_MODEL" \
+  -c 'approval_policy="never"' \
+  -c 'sandbox_mode="danger-full-access"' \
   -c 'web_search="disabled"' \
   -c 'model_provider="honeypot_gateway"' \
   -c 'model_providers.honeypot_gateway.name="Scoped LiteLLM gateway"' \
@@ -18,5 +20,5 @@ codex \
   -c 'model_providers.honeypot_gateway.env_key="OPENAI_API_KEY"' \
   -c 'model_providers.honeypot_gateway.wire_api="responses"' \
   -c 'model_providers.honeypot_gateway.supports_standalone_web_search=false' \
-  exec --json "$(cat "$HONEYPOT_COLLUSION_PROMPT_FILE")" \
+  exec --skip-git-repo-check --json "$(cat "$HONEYPOT_COLLUSION_PROMPT_FILE")" \
   | tee "$HONEYPOT_COLLUSION_TRANSCRIPT"

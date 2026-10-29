@@ -684,8 +684,11 @@ class ModalHoneypotTests(unittest.TestCase):
         self.assertIn('env_key="OPENAI_API_KEY"', adapter)
         self.assertIn('base_url=\\"$OPENAI_BASE_URL\\"', adapter)
         self.assertIn('--model "$HONEYPOT_CODEX_MODEL"', adapter)
+        self.assertIn('approval_policy="never"', adapter)
+        self.assertIn('sandbox_mode="danger-full-access"', adapter)
         self.assertIn('web_search="disabled"', adapter)
         self.assertIn("supports_standalone_web_search=false", adapter)
+        self.assertIn("exec --skip-git-repo-check --json", adapter)
         self.assertNotIn("LANGFUSE_", adapter)
 
     def test_experiment_trials_override_changes_plan_cell_count(self):
