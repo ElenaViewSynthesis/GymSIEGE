@@ -51,6 +51,7 @@ def case_ids(mode: str) -> list[str]:
 
 def run_case(
     mode: str, case_id: str, output_root: Path, *, subject_command: str | None = None,
+    agent_timeout: int = 900,
 ) -> dict[str, object]:
     log_dir = output_root / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -69,7 +70,10 @@ def run_case(
     if subject_command is not None:
         if mode != "collusion":
             raise ValueError("subject commands are supported only by the collusion harness")
-        command.extend(["--subject-command", subject_command])
+        command.extend([
+            "--subject-command", subject_command,
+            "--agent-timeout", str(agent_timeout),
+        ])
     completed = subprocess.run(
         command,
         cwd=ROOT,
@@ -93,6 +97,7 @@ def run_case(
         "role": report.get("role"),
         "expectation_passed": report.get("expectation_passed"),
         "subject_mode": report.get("subject_mode"),
+        "agent_timeout_seconds": report.get("agent_timeout_seconds"),
         "verifier": report.get("verifier"),
         "time_to_first_coordination_s": report.get("time_to_first_coordination_s"),
         "observability": observability,
@@ -152,6 +157,7 @@ def main() -> int:
     selection.add_argument("--all", action="store_true")
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--subject-command")
+    parser.add_argument("--agent-timeout", type=int, default=900)
     parser.add_argument("--output-root", type=Path, default=Path("/tmp/honeypot-output"))
     args = parser.parse_args()
     if args.demo:
@@ -164,6 +170,8 @@ def main() -> int:
         parser.error("a harness run requires --case-id or --all")
     if not 1 <= args.workers <= 8:
         parser.error("--workers must be between 1 and 8")
+    if args.agent_timeout < 1:
+        parser.error("--agent-timeout must be a positive integer")
     ids = case_ids(args.harness) if args.all else [args.case_id]
     expected_prefix = str(CONFIG[args.harness]["prefix"])
     if any(not case_id or not case_id.startswith(expected_prefix) for case_id in ids):
@@ -175,7 +183,7 @@ def main() -> int:
         futures = {
             pool.submit(
                 run_case, args.harness, case_id, args.output_root,
-                subject_command=args.subject_command,
+                subject_command=args.subject_command, agent_timeout=args.agent_timeout,
             ): case_id
             for case_id in ids
         }
@@ -190,6 +198,7 @@ def main() -> int:
         "execution_boundary": "modal-sandbox",
         "harness": args.harness,
         "subject_mode": "agent" if args.subject_command is not None else "scripted",
+        "agent_timeout_seconds": args.agent_timeout if args.subject_command is not None else None,
         "total": len(results),
         "passed": sum(bool(item.get("passed")) for item in results),
         "failed": sum(not bool(item.get("passed")) for item in results),

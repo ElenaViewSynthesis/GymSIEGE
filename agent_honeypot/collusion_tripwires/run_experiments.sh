@@ -80,6 +80,7 @@ cost_per_cell=0.13   # planning estimate carried from the chain cohort; agent ar
 model=${MODEL:-}
 key_budget=0.50
 key_ttl=
+agent_timeout=900
 trials_override=
 
 usage() { sed -n '2,20p' "$0"; }
@@ -95,6 +96,7 @@ while (($#)); do
     --model) model=$2; shift 2 ;;
     --key-budget) key_budget=$2; shift 2 ;;
     --key-ttl) key_ttl=$2; shift 2 ;;
+    --agent-timeout) agent_timeout=$2; shift 2 ;;
     --trials) trials_override=$2; shift 2 ;;
     --output) output_root=$2; shift 2 ;;
     -h|--help) usage; exit 0 ;;
@@ -104,6 +106,10 @@ done
 
 if [[ -n $trials_override && ! $trials_override =~ ^[1-9][0-9]*$ ]]; then
   printf '%s\n' '--trials must be a positive integer' >&2
+  exit 64
+fi
+if [[ ! $agent_timeout =~ ^[1-9][0-9]*$ ]]; then
+  printf '%s\n' '--agent-timeout must be a positive integer' >&2
   exit 64
 fi
 if [[ -n $want_case ]]; then
@@ -171,13 +177,13 @@ key = record.get("virtual_key") if isinstance(record.get("virtual_key"), dict) e
 redaction = record.get("redaction") if isinstance(record.get("redaction"), dict) else {}
 spend = key.get("spend_usd")
 checks = {
+    "remote_exit_zero": record.get("remote_exit_code") == 0,
     "termination_explicit_finally": record.get("termination") == "explicit-finally",
     "key_revoked": bool(key.get("revoked_at")),
     "spend_recorded": isinstance(spend, (int, float)) and not isinstance(spend, bool),
     "spend_within_cap": isinstance(spend, (int, float)) and not isinstance(spend, bool) and spend <= budget,
     "redaction_passed": redaction.get("passed") is True,
 }
-    "remote_exit_zero": record.get("remote_exit_code") == 0,
 alias = key.get("key_alias") or "(no alias recorded)"
 summary = " ".join(f"{name}={str(ok).lower()}" for name, ok in checks.items())
 print(f"gate: {summary} alias={alias} output={record.get('output', '?')}")
@@ -235,7 +241,8 @@ run_arm() {
                     --workers "$workers" --output "$tag")
       if [[ $subj == agent ]]; then
         cmd+=(--subject-command "$SUBJECT_CMD" --egress-allowlist langfuse,gateway
-              --model "$model" --arm "$arm" --trial "$t" --key-budget "$key_budget")
+              --model "$model" --arm "$arm" --trial "$t" --key-budget "$key_budget"
+              --agent-timeout "$agent_timeout")
         [[ -n $key_ttl ]] && cmd+=(--key-ttl "$key_ttl")
       fi
       ((execute)) || cmd+=(--dry-run)
@@ -247,6 +254,7 @@ run_arm() {
         set +e
         "${cmd[@]}" 2>&1 | tee "$log"
         rc=${PIPESTATUS[0]}
+        set -e
         printf '    runner exit %s; output kept in %s\n' "$rc" "$log"
         if ((rc != 0)); then
           if ((keep_going)); then
@@ -254,7 +262,6 @@ run_arm() {
             continue
           fi
           printf 'stopping at the first failed cell (%s trial %d); inspect %s\n' "$case_id" "$t" "$log" >&2
-        set -e
           exit "$rc"
         fi
         if [[ $subj == agent ]]; then

@@ -288,6 +288,7 @@ def remote_argv(
     weights_mode: str = "text",
     demo: bool = False,
     subject_command: str | None = None,
+    agent_timeout: int = 900,
     model: str | None = None,
     egress_allowlist: list[str] | None = None,
 ) -> list[str]:
@@ -303,6 +304,8 @@ def remote_argv(
     validate_egress_allowlist(harness, egress_allowlist, allow_network)
     validate_weights_mode(harness, weights_mode)
     validate_subject_command(harness, subject_command)
+    if agent_timeout < 1:
+        raise ValueError("agent_timeout must be a positive number of seconds")
     command = ["/usr/sbin/runuser", "-u", "honeypot"]
     if subject_command is not None:
         # The virtual key and gateway URL arrive as Sandbox Secret environment
@@ -338,7 +341,10 @@ def remote_argv(
         command.extend(["--harness", str(harness), "--workers", str(workers)])
         command.extend(["--case-id", case_id] if case_id else ["--all"])
         if subject_command is not None:
-            command.extend(["--subject-command", subject_command])
+            command.extend([
+                "--subject-command", subject_command,
+                "--agent-timeout", str(agent_timeout),
+            ])
     return command
 
 
@@ -395,6 +401,7 @@ def run(
     trial = getattr(args, "trial", 1)
     key_ttl = getattr(args, "key_ttl", None) or default_key_ttl(args.sandbox_timeout)
     key_budget = getattr(args, "key_budget", 0.50)
+    agent_timeout = getattr(args, "agent_timeout", 900)
     key_alias = None
     if args.subject_command is not None:
         key_alias = virtual_key_alias(args.harness, args.case_id, arm, trial, stamp)
@@ -415,6 +422,7 @@ def run(
             "key_budget_usd": key_budget,
             "key_ttl": key_ttl,
             "key_model": getattr(args, "model", None),
+            "agent_timeout_seconds": agent_timeout,
         })
     command = remote_argv(
         args.harness, args.case_id, args.workers,
@@ -424,6 +432,7 @@ def run(
         weights_mode=args.weights_mode,
         demo=args.demo,
         subject_command=args.subject_command,
+        agent_timeout=agent_timeout,
         model=getattr(args, "model", None),
         egress_allowlist=egress_allowlist,
     )
@@ -497,7 +506,9 @@ def run(
         "policy": runtime_policy, "started_at": stamp,
     }
     if key_alias is not None:
-        metadata.update({"arm": arm, "trial": trial})
+        metadata.update({
+            "arm": arm, "trial": trial, "agent_timeout_seconds": agent_timeout,
+        })
     try:
         runtime_secrets = []
         if key_alias is not None:
@@ -648,6 +659,10 @@ def main() -> int:
         "--subject-command",
         help="real-agent command for collusion subjects; requires external containment",
     )
+    parser.add_argument(
+        "--agent-timeout", type=int, default=900,
+        help="subject harness timeout in seconds for real-agent runs only (default: 900)",
+    )
     parser.add_argument("--model", help="single LiteLLM model allowed on a minted virtual key")
     parser.add_argument("--key-budget", type=float, default=0.50, help="per-run virtual-key budget in USD")
     parser.add_argument(
@@ -680,6 +695,10 @@ def main() -> int:
         parser.error("a harness run requires --case-id or --all")
     if args.sandbox_timeout < args.exec_timeout or args.sandbox_timeout > 86400:
         parser.error("sandbox timeout must cover exec timeout and be at most 86400 seconds")
+    if args.agent_timeout < 1:
+        parser.error("--agent-timeout must be a positive integer")
+    if args.subject_command is not None and args.agent_timeout > args.exec_timeout:
+        parser.error("--agent-timeout must not exceed --exec-timeout")
     if not math.isfinite(args.key_budget) or args.key_budget <= 0:
         parser.error("--key-budget must be a positive finite USD amount")
     if args.trial < 1:

@@ -264,8 +264,11 @@ def _output_texts(root: Path, outputs: dict[str, str]) -> dict[str, str]:
 
 def run_one(
     case: dict[str, Any], output: Path, *, subject_command: list[str] | None = None,
+    agent_timeout: int = 900,
 ) -> dict[str, Any]:
     _require_containment(subject_command)
+    if agent_timeout < 1:
+        raise ValueError("agent_timeout must be a positive number of seconds")
     PREPARE.prepare(case, output)
     library = output / "libcollusion_tripwire.so"
     subprocess.run([
@@ -295,7 +298,9 @@ def run_one(
         run_id = str(run["id"])
         run_root = output / "runs" / run_id
         env = _run_env(case, output, run, board_url, library)
-        command = [str(BASE_HARNESS), "--evidence-chain", "--timeout", str(case["input"].get("timeout_seconds", 15)),
+        is_agent_subject = run["kind"] == "subject" and subject_command is not None
+        timeout_seconds = agent_timeout if is_agent_subject else case["input"].get("timeout_seconds", 15)
+        command = [str(BASE_HARNESS), "--evidence-chain", "--timeout", str(timeout_seconds),
                    "--output", str(run_root / "harness")]
         if observe_only:
             command.append("--observe-only")
@@ -348,6 +353,7 @@ def run_one(
         all(run_exit_codes.get(run_id) == 0 for run_id in subject_ids)
         if subject_command is not None else None
     )
+    report["agent_timeout_seconds"] = agent_timeout if subject_command is not None else None
     if "verifier_can_pass" in case.get("metadata", {}):
         # Gate 3 Option 1 is an infrastructure pilot. No task verifier exists
         # yet, so preserve that limitation beside the behavioral result.
@@ -361,7 +367,7 @@ def run_one(
 
 def run_all(
     cases: list[dict[str, Any]], output_root: Path, workers: int, *,
-    subject_command_text: str | None = None,
+    subject_command_text: str | None = None, agent_timeout: int = 900,
 ) -> dict[str, Any]:
     output_root.mkdir(parents=True, exist_ok=True)
     logs = output_root / "logs"
@@ -370,7 +376,10 @@ def run_all(
     def invoke(case_id: str) -> dict[str, Any]:
         command = [sys.executable, str(HERE / "run_case.py"), case_id, "--output-root", str(output_root)]
         if subject_command_text is not None:
-            command.extend(["--subject-command", subject_command_text])
+            command.extend([
+                "--subject-command", subject_command_text,
+                "--agent-timeout", str(agent_timeout),
+            ])
         completed = subprocess.run(
             command,
             cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -399,6 +408,7 @@ def run_all(
             else "local-scripted-no-model-no-network"
         ),
         "subject_mode": "agent" if subject_command_text is not None else "scripted",
+        "agent_timeout_seconds": agent_timeout if subject_command_text is not None else None,
         "total": len(rows), "passed": sum(bool(row.get("passed")) for row in rows),
         "failed": sum(not bool(row.get("passed")) for row in rows),
         "all_chains_valid": all(bool(row.get("observable")) for row in rows),
@@ -420,9 +430,15 @@ def main() -> int:
         "--subject-command",
         help="replace each subject's scripted actor with this shell-split command; requires external containment",
     )
+    parser.add_argument(
+        "--agent-timeout", type=int, default=900,
+        help="subject harness timeout in seconds for real-agent runs only (default: 900)",
+    )
     args = parser.parse_args()
     if not 1 <= args.workers <= 8:
         parser.error("--workers must be between 1 and 8")
+    if args.agent_timeout < 1:
+        parser.error("--agent-timeout must be a positive integer")
     cases = _load_cases()
     try:
         subject_command = _subject_command(args.subject_command)
@@ -432,7 +448,7 @@ def main() -> int:
     if args.all:
         summary = run_all(
             cases, args.output_root.resolve(), args.workers,
-            subject_command_text=args.subject_command,
+            subject_command_text=args.subject_command, agent_timeout=args.agent_timeout,
         )
         print(json.dumps({key: summary[key] for key in ("total", "passed", "failed", "all_chains_valid")}, sort_keys=True))
         return 0 if summary["failed"] == 0 else 1
@@ -440,7 +456,9 @@ def main() -> int:
     if case is None:
         raise SystemExit(f"unknown case: {args.case_id}")
     output = args.output_root.resolve() / str(case["id"])
-    report = run_one(case, output, subject_command=subject_command)
+    report = run_one(
+        case, output, subject_command=subject_command, agent_timeout=args.agent_timeout,
+    )
     print(json.dumps({"case_id": case["id"], "stage": report["observed_stage"],
                       "calibration_passed": report["calibration_passed"],
                       "observability": report["observability"]}, sort_keys=True))

@@ -55,7 +55,8 @@ class ModalHoneypotTests(unittest.TestCase):
             "enable_network_off_suite": False, "allow_network": False,
             "egress_allowlist": "langfuse,gateway", "weights_mode": "text",
             "subject_command": "fake-agent", "evidence_chain": False,
-            "sandbox_timeout": 1800, "exec_timeout": 1500, "workers": 1,
+            "sandbox_timeout": 1800, "exec_timeout": 1500,
+            "agent_timeout": 900, "workers": 1,
             "app_name": "fake-app", "output": Path(output), "dry_run": False,
             "model": "pinned-model", "key_budget": 0.50, "key_ttl": "35m",
             "arm": "lure-pair", "trial": 2,
@@ -106,7 +107,9 @@ class ModalHoneypotTests(unittest.TestCase):
             "collusion", "CLH-036", 1, subject_command="codex exec --json prompt",
             model="pinned-model",
         )
-        self.assertEqual(command[-2:], ["--subject-command", "codex exec --json prompt"])
+        self.assertEqual(command[-4:], [
+            "--subject-command", "codex exec --json prompt", "--agent-timeout", "900",
+        ])
         self.assertIn("--preserve-environment", command[:5])
         self.assertIn("HONEYPOT_CODEX_MODEL=pinned-model", command)
         self.assertNotIn("--preserve-environment", MODULE.remote_argv("collusion", "CLH-036", 1))
@@ -225,6 +228,7 @@ class ModalHoneypotTests(unittest.TestCase):
                 "role": "behavior_eval",
                 "expectation_passed": False,
                 "subject_mode": "agent",
+                "agent_timeout_seconds": 900,
                 "verifier": "not implemented",
                 "time_to_first_coordination_s": 0.5,
                 "evidence_chains": [{"valid": True, "mirror_events": 9}],
@@ -238,10 +242,13 @@ class ModalHoneypotTests(unittest.TestCase):
                 "collusion", "CLH-036", Path(directory), subject_command="fake-agent",
             )
         command = run.call_args.args[0]
-        self.assertEqual(command[-2:], ["--subject-command", "fake-agent"])
+        self.assertEqual(command[-4:], [
+            "--subject-command", "fake-agent", "--agent-timeout", "900",
+        ])
         self.assertTrue(result["passed"])
         self.assertEqual(result["stage"], "acted")
         self.assertEqual(result["subject_mode"], "agent")
+        self.assertEqual(result["agent_timeout_seconds"], 900)
         self.assertEqual(result["verifier"], "not implemented")
         self.assertEqual(result["evidence_chains"], [True])
 
@@ -710,6 +717,8 @@ class ModalHoneypotTests(unittest.TestCase):
         self.assertIn('"secrets": [', completed.stdout)
         self.assertIn('"virtual-key:collusion/CLH-036/t1/', completed.stdout)
         self.assertIn('"egress": "allowlist"', completed.stdout)
+        self.assertIn('"agent_timeout_seconds": 900', completed.stdout)
+        self.assertIn('"--agent-timeout"', completed.stdout)
         self.assertIn('"gateway.invalid"', completed.stdout)
         self.assertIn('"trace.invalid"', completed.stdout)
         self.assertNotIn("LITELLM_MASTER_KEY", completed.stdout)
@@ -768,7 +777,9 @@ trial = args[args.index("--trial") + 1] if "--trial" in args else "1"
 run_dir = output / f"collusion-{case_id}-fake-t{trial}"
 run_dir.mkdir(parents=True, exist_ok=True)
 bad = os.environ.get("FAKE_RUNNER_FAIL_CASE") == case_id
+exit_failure = os.environ.get("FAKE_RUNNER_EXIT_CASE") == case_id
 record = {
+    "remote_exit_code": 1 if exit_failure else 0,
     "termination": "explicit-finally",
     "virtual_key": {"key_alias": f"collusion/{case_id}/t{trial}/fake",
                     "spend_usd": 0.0125, "revoked_at": "2026-10-29T00:00:00+00:00"},
@@ -777,9 +788,8 @@ record = {
 (run_dir / "modal-run.json").write_text(json.dumps(record))
 print("WARNING: fake runner, nothing contacted")
 print(json.dumps({"output": str(run_dir), **record}, indent=2, sort_keys=True))
-exit_failure = os.environ.get("FAKE_RUNNER_EXIT_CASE") == case_id
+raise SystemExit(1 if exit_failure else 0)
 """
-    "remote_exit_code": 1 if exit_failure else 0,
 
     def _execute_driver(self, directory, fail_case=None, exit_case=None, extra=()):
         script = MODULE.REPO / "agent_honeypot/collusion_tripwires/run_experiments.sh"
@@ -788,7 +798,6 @@ exit_failure = os.environ.get("FAKE_RUNNER_EXIT_CASE") == case_id
         env = {
             **os.environ,
             "OPENAI_BASE_URL": "https://gateway.invalid/v1",
-raise SystemExit(1 if exit_failure else 0)
             "LANGFUSE_BASE_URL": "https://trace.invalid",
             "EXPERIMENT_APPROVED": "1",
             "LITELLM_MASTER_KEY": "unit-test-master-not-a-key",
@@ -796,6 +805,8 @@ raise SystemExit(1 if exit_failure else 0)
         }
         if fail_case:
             env["FAKE_RUNNER_FAIL_CASE"] = fail_case
+        if exit_case:
+            env["FAKE_RUNNER_EXIT_CASE"] = exit_case
         return subprocess.run(
             ["bash", str(script), "--arm", "lure-pair", "--trials", "1", "--model", "pinned-model",
              "--output", str(Path(directory) / "out"), "--execute", *extra],
@@ -805,8 +816,6 @@ raise SystemExit(1 if exit_failure else 0)
     def test_experiment_execute_keeps_runner_output_and_gates_each_agent_cell(self):
         with tempfile.TemporaryDirectory() as directory:
             completed = self._execute_driver(directory)
-        if exit_case:
-            env["FAKE_RUNNER_EXIT_CASE"] = exit_case
             self.assertEqual(completed.returncode, 0, completed.stderr)
             self.assertEqual(completed.stdout.count("] RUN"), 2)
             self.assertLess(completed.stdout.index("[CLH-036"), completed.stdout.index("[CLH-037"))
@@ -832,9 +841,6 @@ raise SystemExit(1 if exit_failure else 0)
             self.assertEqual(completed.stdout.count("] RUN"), 2)
             self.assertIn("continuing past the failed gate", completed.stderr)
 
-
-if __name__ == "__main__":
-    unittest.main()
     def test_experiment_execute_preserves_runner_exit_and_stops_before_next_cell(self):
         with tempfile.TemporaryDirectory() as directory:
             completed = self._execute_driver(directory, exit_case="CLH-036")
@@ -845,3 +851,6 @@ if __name__ == "__main__":
             self.assertNotIn("[CLH-037", completed.stdout)
             self.assertNotIn("Done.", completed.stdout)
 
+
+if __name__ == "__main__":
+    unittest.main()

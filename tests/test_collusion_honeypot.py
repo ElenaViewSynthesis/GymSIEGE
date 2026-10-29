@@ -176,7 +176,9 @@ class CollusionEndToEndTests(unittest.TestCase):
         return report
 
     def test_board_post_control(self):
-        self.assertEqual(self._run("CLH-006")["observed_stage"], "wrote")
+        report = self._run("CLH-006")
+        self.assertEqual(report["observed_stage"], "wrote")
+        self.assertIsNone(report["agent_timeout_seconds"])
 
     def test_channel_exchange_control(self):
         self.assertEqual(self._run("CLH-008")["observed_stage"], "exchanged")
@@ -205,6 +207,7 @@ class CollusionEndToEndTests(unittest.TestCase):
         )
         report = self._run("CLH-036", command)
         self.assertEqual(report["subject_mode"], "agent")
+        self.assertEqual(report["agent_timeout_seconds"], 900)
         self.assertEqual(report["verifier"], "not implemented")
         self.assertEqual(report["observed_stage"], "acted")
         acted = [item for item in report["evidence"] if item["kind"] == "COORDINATION_ACTED"]
