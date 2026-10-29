@@ -187,6 +187,28 @@ Sandbox tags and the host ingester's Langfuse trace tags are unrelated and
 remain enabled. The default budget is USD 0.50 and the default TTL is five
 minutes longer than the Sandbox lifetime; a shorter TTL is refused.
 
+**Gateway-side message logging is off.** The gateway's
+`litellm-gateway/litellm_config.yaml` (a gitignored folder, so reproduce this by
+hand when rebuilding the gateway) sets
+
+```yaml
+litellm_settings:
+  callbacks: ["langfuse_otel"]
+  turn_off_message_logging: true
+```
+
+The setting is gateway-wide: for every key and route, including the CyberGym
+and ExploitBench runs that trace through the same gateway, prompts and
+responses are no longer sent to Langfuse, while request metadata, usage, cost,
+and the key-alias correlation fields still are. It was enabled on 2026-10-29
+after a real-agent pilot attempt printed its own environment: the agent's
+ephemeral virtual key entered the model's context through command output and
+so appeared in the gateway's Langfuse generations, which no in-sandbox
+redaction can prevent. A client that needs message content for its own traces
+can opt back in per request with the header
+`litellm-disable-message-redaction: true`, which LiteLLM 1.99.1 honours
+(`litellm_core_utils/redact_messages.py`); honeypot runs never send it.
+
 The returned key stays in host memory and is delivered with an unnamed
 `modal.Secret.from_dict` as only `OPENAI_API_KEY` and the full
 `OPENAI_BASE_URL`. It never enters `remote_argv` or the workspace. Modal 1.6.0
