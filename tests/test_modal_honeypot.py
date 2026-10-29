@@ -709,6 +709,9 @@ class ModalHoneypotTests(unittest.TestCase):
         self.assertIn('web_search="disabled"', adapter)
         self.assertIn("supports_standalone_web_search=false", adapter)
         self.assertIn("exec --skip-git-repo-check --json", adapter)
+        # The agent works in its task workspace, not in the harness tree.
+        self.assertIn('-C "$HONEYPOT_WORKSPACE"', adapter)
+        self.assertLess(adapter.index('-C "$HONEYPOT_WORKSPACE"'), adapter.index("exec --skip-git-repo-check"))
         self.assertIn("2>&1", adapter)
         self.assertIn("| python3 /opt/honeypot/modal_honeypot/redact_stream.py", adapter)
         self.assertLess(adapter.index("2>&1"), adapter.index("redact_stream.py"))

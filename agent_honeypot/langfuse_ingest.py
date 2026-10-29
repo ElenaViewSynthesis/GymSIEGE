@@ -402,18 +402,40 @@ def _tool_observations(path: Path, source: str) -> list[Observation]:
 
 
 def _transcript_usage(case_dir: Path) -> tuple[int, int]:
-    generations = 0
+    """(turns, total tokens) from the Codex JSONL transcripts of a case.
+
+    A Codex ``exec`` transcript records usage per turn, not per model request,
+    so this is a turn count: one agent turn may be many gateway generations.
+    """
+    turns = 0
     tokens = 0
     for path in case_dir.rglob("trajectory.jsonl"):
         for row in _read_jsonl(path):
             if row.get("type") != "turn.completed":
                 continue
-            generations += 1
+            turns += 1
             usage = row.get("usage") if isinstance(row.get("usage"), dict) else {}
             total = usage.get("total_tokens")
-            if isinstance(total, int) and not isinstance(total, bool):
-                tokens += total
-    return generations, tokens
+            if not (isinstance(total, int) and not isinstance(total, bool)):
+                # Codex exec reports input_tokens and output_tokens, no total;
+                # their sum equals the gateway's total for the same turn.
+                total = sum(
+                    v for v in (usage.get("input_tokens"), usage.get("output_tokens"))
+                    if isinstance(v, int) and not isinstance(v, bool)
+                )
+            tokens += total
+    return turns, tokens
+
+
+TOKEN_PARITY_TOLERANCE = 0.05
+
+
+def token_parity_mismatch(gateway_tokens: int, transcript_tokens: int) -> bool | None:
+    """True when the gateway's and the transcript's token totals differ by more
+    than the tolerance; None when either side recorded nothing to compare."""
+    if gateway_tokens <= 0 or transcript_tokens <= 0:
+        return None
+    return abs(gateway_tokens - transcript_tokens) > TOKEN_PARITY_TOLERANCE * max(gateway_tokens, transcript_tokens)
 
 
 def _object_field(value: object, *names: str) -> object:
@@ -495,8 +517,11 @@ def add_gateway_generation_usage(
         cursor = next_cursor
     plan.root.metadata["gateway_generation_count"] = generation_count
     plan.root.metadata["gateway_total_tokens"] = total_tokens
-    plan.root.metadata["gateway_transcript_generation_count_mismatch"] = (
-        generation_count != plan.root.metadata.get("transcript_generation_count")
+    # Generations and turns are different units (one turn, many requests), so
+    # parity is judged on token totals, not on counts.
+    transcript_tokens = plan.root.metadata.get("transcript_total_tokens")
+    plan.root.metadata["gateway_transcript_token_mismatch"] = token_parity_mismatch(
+        total_tokens, transcript_tokens if isinstance(transcript_tokens, int) else 0,
     )
 
 
@@ -520,21 +545,25 @@ def _root_io(case: Mapping[str, Any], report: Mapping[str, Any], chains_valid: b
         "solvability": case_metadata.get("verifier_can_pass"),
         "trial": trial,
     }
-    verifier = report.get("expectation_passed", report.get("calibration_passed"))
+    # The policy expectation (did the run stay at or below its maximum stage) and
+    # the task verifier (did the agent solve its task) are different things and
+    # are never read as one another; the verifier field is the report's own.
+    policy_passed = report.get("expectation_passed", report.get("calibration_passed"))
     trace_output = {
         "strongest_stage": report.get("observed_stage", report.get("stage")),
         "score": report.get("score", report.get("overall_score", report.get("containment_score"))),
         "severity": report.get("severity"),
         "policy_verdict": report.get("verdict"),
+        "policy_expectation_passed": policy_passed,
         "chains_valid": chains_valid,
-        "verifier_result": verifier,
+        "verifier_result": report.get("verifier"),
     }
     return trace_input, trace_output
 
 
 def _score_rows(report: Mapping[str, Any], chains_valid: bool) -> list[Score]:
-    verifier = report.get("expectation_passed", report.get("calibration_passed"))
-    verdict = "pass" if verifier is True else "fail" if verifier is False else str(report.get("verdict", "unknown"))
+    policy_passed = report.get("expectation_passed", report.get("calibration_passed"))
+    verdict = "pass" if policy_passed is True else "fail" if policy_passed is False else str(report.get("verdict", "unknown"))
     rows = [Score("chain_valid", 1.0 if chains_valid else 0.0, "NUMERIC")]
     stage = report.get("observed_stage", report.get("stage"))
     if stage is not None:
@@ -649,14 +678,16 @@ def _build_case_plan(
     if not chains_valid:
         tags.append("unobservable")
     trace_input, trace_output = _root_io(case, report, chains_valid, trial)
-    transcript_generations, transcript_tokens = _transcript_usage(case_dir)
+    transcript_turns, transcript_tokens = _transcript_usage(case_dir)
     metadata: dict[str, Any] = {
         "sandbox_id": modal.get("sandbox_id"),
         "policy": modal.get("policy", {}),
         "source_commit": modal.get("source_commit"),
         "observability": "observable" if chains_valid else "unobservable",
         "session_id_source": "key_alias" if gateway_key_alias else "derived",
-        "transcript_generation_count": transcript_generations,
+        # The task verifier's own status, kept apart from the policy verdict.
+        "verifier_status": report.get("verifier"),
+        "transcript_turn_count": transcript_turns,
         "transcript_total_tokens": transcript_tokens,
     }
     if gateway_key_alias:

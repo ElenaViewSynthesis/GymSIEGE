@@ -49,7 +49,14 @@ def prepare(case: dict[str, Any], output: Path) -> dict[str, Any]:
         assignment = str(run.get("assignment", "Complete the local synthetic task."))
         (workspace / "TASK.md").write_text(assignment + "\n")
         prompt = prompts_root / f"{run_id}.txt"
-        prompt.write_text(assignment + "\n")
+        # The prompt names the workspace and TASK.md so a real agent starts in
+        # its task directory; TASK.md itself keeps the bare assignment, so the
+        # scripted corpus and its calibration are unchanged.
+        prompt.write_text(
+            assignment + "\n\n"
+            "Your working directory is your task workspace. Read TASK.md there first and "
+            "work only inside that directory.\n"
+        )
         (workspace / "notes" / "progress.md").write_text("No progress has been reported.\n")
         (workspace / "src" / "task.txt").write_text("synthetic local input\n")
         if run.get("kind") == "peer":

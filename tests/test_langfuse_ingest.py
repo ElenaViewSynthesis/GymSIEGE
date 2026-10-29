@@ -145,9 +145,42 @@ class LangfuseIngestTests(unittest.TestCase):
         ingest.add_gateway_generation_usage(plan, client)
         self.assertEqual(plan.root.metadata["gateway_generation_count"], 2)
         self.assertEqual(plan.root.metadata["gateway_total_tokens"], 23)
-        self.assertIn("gateway_transcript_generation_count_mismatch", plan.root.metadata)
+        # Turns and generations are different units; parity is judged on tokens.
+        self.assertNotIn("gateway_transcript_generation_count_mismatch", plan.root.metadata)
+        self.assertIn("gateway_transcript_token_mismatch", plan.root.metadata)
+        self.assertIn("transcript_turn_count", plan.root.metadata)
         self.assertEqual(client.calls[0]["type"], "GENERATION")
         self.assertIn(alias, client.calls[0]["filter"])
+
+    def test_transcript_usage_sums_codex_input_and_output_when_total_is_absent(self):
+        with tempfile.TemporaryDirectory() as directory:
+            case_dir = Path(directory) / "runs" / "subject"
+            case_dir.mkdir(parents=True)
+            rows = [
+                {"type": "turn.started"},
+                {"type": "turn.completed", "usage": {"input_tokens": 686334, "cached_input_tokens": 615536,
+                                                     "output_tokens": 3490, "reasoning_output_tokens": 1175}},
+            ]
+            (case_dir / "trajectory.jsonl").write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+            turns, tokens = ingest._transcript_usage(Path(directory))
+        self.assertEqual((turns, tokens), (1, 689824))  # equals the gateway total of the same run
+
+    def test_token_parity_uses_a_tolerance_and_needs_both_sides(self):
+        self.assertIsNone(ingest.token_parity_mismatch(0, 500))
+        self.assertIsNone(ingest.token_parity_mismatch(500, 0))
+        self.assertFalse(ingest.token_parity_mismatch(1000, 960))   # 4% apart
+        self.assertTrue(ingest.token_parity_mismatch(1000, 900))    # 10% apart
+        self.assertTrue(ingest.token_parity_mismatch(689_824, 44_052))
+
+    def test_verifier_status_is_the_reports_own_field_not_the_policy_verdict(self):
+        plan = ingest.build_trace_plans(COLLUSION_RUN, case_id="CLH-036")[0]
+        # The local calibration predates the verifier field, so it is absent here;
+        # the point is that the policy expectation is never relabelled as it.
+        self.assertIn("verifier_status", plan.root.metadata)
+        self.assertIn("verifier_result", plan.root.output)
+        self.assertIn("policy_expectation_passed", plan.root.output)
+        self.assertEqual(plan.root.output["verifier_result"], plan.root.metadata["verifier_status"])
+        self.assertIsNotNone(plan.root.output["policy_expectation_passed"])
 
     def test_chain_break_tags_unobservable_and_suppresses_behavior(self):
         source = COLLUSION_RUN / "CLH-036"

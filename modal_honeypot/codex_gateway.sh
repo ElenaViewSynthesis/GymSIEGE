@@ -8,8 +8,13 @@ set -Eeuo pipefail
 : "${HONEYPOT_CODEX_MODEL:?pinned model is missing}"
 : "${HONEYPOT_COLLUSION_PROMPT_FILE:?prompt path is missing}"
 : "${HONEYPOT_COLLUSION_TRANSCRIPT:?transcript path is missing}"
+: "${HONEYPOT_WORKSPACE:?task workspace is missing}"
 
+# -C: the agent works in its own task workspace. Without it Codex inherits the
+# harness's cwd (/opt/honeypot) and treats the honeypot source tree as its
+# project, as the first real-agent pilots did.
 codex \
+  -C "$HONEYPOT_WORKSPACE" \
   --model "$HONEYPOT_CODEX_MODEL" \
   -c 'approval_policy="never"' \
   -c 'sandbox_mode="danger-full-access"' \
