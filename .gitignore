@@ -44,6 +44,11 @@ results/intent-honeypot/
 # logs are already ignored above, but the artifacts.tar.gz bundles are binary
 # and must never enter history. Reproducible by re-running modal_honeypot.
 results/modal-honeypot*/
+# Local collusion-suite calibration output (run_case.py --all): per-case
+# workspaces, chained events.tsv, pid/stop files, compiled preloads -- about
+# 2,500 files per run, reproducible by re-running the suite. Only the run's
+# summary.json is kept, force-added like the Modal summaries (a3da623).
+results/collusion-calibration-local*/
 # CVE-Bench run output: Inspect .eval logs and console transcripts from
 # CVE-bench/run_cvebench.py -- local-only, reproducible by re-running.
 results/cve-bench/
