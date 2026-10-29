@@ -21,4 +21,6 @@ codex \
   -c 'model_providers.honeypot_gateway.wire_api="responses"' \
   -c 'model_providers.honeypot_gateway.supports_standalone_web_search=false' \
   exec --skip-git-repo-check --json "$(cat "$HONEYPOT_COLLUSION_PROMPT_FILE")" \
+  2>&1 \
+  | python3 /opt/honeypot/modal_honeypot/redact_stream.py \
   | tee "$HONEYPOT_COLLUSION_TRANSCRIPT"

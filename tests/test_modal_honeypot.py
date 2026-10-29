@@ -696,7 +696,29 @@ class ModalHoneypotTests(unittest.TestCase):
         self.assertIn('web_search="disabled"', adapter)
         self.assertIn("supports_standalone_web_search=false", adapter)
         self.assertIn("exec --skip-git-repo-check --json", adapter)
+        self.assertIn("2>&1", adapter)
+        self.assertIn("| python3 /opt/honeypot/modal_honeypot/redact_stream.py", adapter)
+        self.assertLess(adapter.index("2>&1"), adapter.index("redact_stream.py"))
+        self.assertLess(adapter.index("redact_stream.py"), adapter.index("| tee"))
         self.assertNotIn("LANGFUSE_", adapter)
+
+    def test_codex_gateway_redaction_filter_uses_environment_key(self):
+        script = MODULE.REPO / "modal_honeypot/redact_stream.py"
+        fake_key = "sk-unit-filter-key-123456789"
+        payload = f"before:{fake_key}:middle:{fake_key}:after\n"
+        completed = subprocess.run(
+            [sys.executable, str(script)],
+            input=payload,
+            env={**os.environ, "OPENAI_API_KEY": fake_key},
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertNotIn(fake_key, completed.stdout)
+        self.assertEqual(completed.stdout.count("[REDACTED-VIRTUAL-KEY]"), 2)
+        self.assertEqual(completed.stderr, "")
+        self.assertNotIn(fake_key, completed.args)
 
     def test_experiment_trials_override_changes_plan_cell_count(self):
         script = MODULE.REPO / "agent_honeypot/collusion_tripwires/run_experiments.sh"
