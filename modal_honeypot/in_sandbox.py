@@ -99,6 +99,18 @@ def run_case(
         "subject_mode": report.get("subject_mode"),
         "agent_timeout_seconds": report.get("agent_timeout_seconds"),
         "verifier": report.get("verifier"),
+        "evidence": [
+            {
+                "timestamp": item.get("timestamp"), "kind": item.get("kind"),
+                "run_id": item.get("run_id"),
+                "detail": {
+                    key: item.get("detail", {}).get(key)
+                    for key in ("via", "run", "from_run", "to_run")
+                    if isinstance(item.get("detail"), dict) and key in item["detail"]
+                },
+            }
+            for item in report.get("evidence", []) if isinstance(item, dict)
+        ],
         "time_to_first_coordination_s": report.get("time_to_first_coordination_s"),
         "observability": observability,
         "evidence_chains": [chain.get("valid") for chain in chains],
