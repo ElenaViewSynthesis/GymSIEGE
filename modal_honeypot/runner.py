@@ -14,7 +14,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 try:
-    from modal_honeypot.redact import scan_for_secret
+    from modal_honeypot.redact import scan_artifacts, scan_for_secret
     from modal_honeypot.virtual_key import (
         LiteLLMAdminClient,
         MintedKey,
@@ -23,7 +23,7 @@ try:
         revoke_virtual_key,
     )
 except ModuleNotFoundError:  # direct ``python modal_honeypot/runner.py``
-    from redact import scan_for_secret
+    from redact import scan_artifacts, scan_for_secret
     from virtual_key import (
         LiteLLMAdminClient,
         MintedKey,
@@ -609,10 +609,16 @@ def run(
         metadata_path = output / "modal-run.json"
         metadata_path.write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n")
         if minted is not None:
-            findings = scan_for_secret([output], minted.key)
+            scan = scan_artifacts([output], minted.key)
+            findings = scan["findings"]
             metadata["redaction"] = {
                 "passed": not findings,
                 "findings": [str(path.relative_to(output)) for path in findings],
+                # Unrelated key-shaped literals (fixtures, decoys, docs the agent
+                # read) are recorded for review; they do not fail the run.
+                "key_shaped_tokens": [
+                    str(path.relative_to(output)) for path in scan["key_shaped_tokens"]
+                ],
             }
             metadata_path.write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n")
             if findings:
