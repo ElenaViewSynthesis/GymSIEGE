@@ -177,6 +177,7 @@ checks = {
     "spend_within_cap": isinstance(spend, (int, float)) and not isinstance(spend, bool) and spend <= budget,
     "redaction_passed": redaction.get("passed") is True,
 }
+    "remote_exit_zero": record.get("remote_exit_code") == 0,
 alias = key.get("key_alias") or "(no alias recorded)"
 summary = " ".join(f"{name}={str(ok).lower()}" for name, ok in checks.items())
 print(f"gate: {summary} alias={alias} output={record.get('output', '?')}")
@@ -243,7 +244,8 @@ run_arm() {
         mkdir -p "$tag"
         local log="$tag/driver-${case_id}-t${t}-$(date -u +%Y%m%dT%H%M%SZ).log"
         local rc=0
-        "${cmd[@]}" 2>&1 | tee "$log" || true
+        set +e
+        "${cmd[@]}" 2>&1 | tee "$log"
         rc=${PIPESTATUS[0]}
         printf '    runner exit %s; output kept in %s\n' "$rc" "$log"
         if ((rc != 0)); then
@@ -252,6 +254,7 @@ run_arm() {
             continue
           fi
           printf 'stopping at the first failed cell (%s trial %d); inspect %s\n' "$case_id" "$t" "$log" >&2
+        set -e
           exit "$rc"
         fi
         if [[ $subj == agent ]]; then

@@ -777,15 +777,18 @@ record = {
 (run_dir / "modal-run.json").write_text(json.dumps(record))
 print("WARNING: fake runner, nothing contacted")
 print(json.dumps({"output": str(run_dir), **record}, indent=2, sort_keys=True))
+exit_failure = os.environ.get("FAKE_RUNNER_EXIT_CASE") == case_id
 """
+    "remote_exit_code": 1 if exit_failure else 0,
 
-    def _execute_driver(self, directory, fail_case=None, extra=()):
+    def _execute_driver(self, directory, fail_case=None, exit_case=None, extra=()):
         script = MODULE.REPO / "agent_honeypot/collusion_tripwires/run_experiments.sh"
         fake = Path(directory) / "fake_runner.py"
         fake.write_text(self.FAKE_RUNNER)
         env = {
             **os.environ,
             "OPENAI_BASE_URL": "https://gateway.invalid/v1",
+raise SystemExit(1 if exit_failure else 0)
             "LANGFUSE_BASE_URL": "https://trace.invalid",
             "EXPERIMENT_APPROVED": "1",
             "LITELLM_MASTER_KEY": "unit-test-master-not-a-key",
@@ -802,13 +805,15 @@ print(json.dumps({"output": str(run_dir), **record}, indent=2, sort_keys=True))
     def test_experiment_execute_keeps_runner_output_and_gates_each_agent_cell(self):
         with tempfile.TemporaryDirectory() as directory:
             completed = self._execute_driver(directory)
+        if exit_case:
+            env["FAKE_RUNNER_EXIT_CASE"] = exit_case
             self.assertEqual(completed.returncode, 0, completed.stderr)
             self.assertEqual(completed.stdout.count("] RUN"), 2)
             self.assertLess(completed.stdout.index("[CLH-036"), completed.stdout.index("[CLH-037"))
             logs = sorted((Path(directory) / "out" / "lure-pair").glob("driver-CLH-03*-t1-*.log"))
             self.assertEqual(len(logs), 2)
             self.assertIn('"termination": "explicit-finally"', logs[0].read_text())
-            self.assertEqual(completed.stdout.count("gate: termination_explicit_finally=true"), 2)
+            self.assertEqual(completed.stdout.count("gate: remote_exit_zero=true"), 2)
             self.assertIn("alias=collusion/CLH-037/t1/fake", completed.stdout)
             self.assertNotIn("unit-test-master-not-a-key", completed.stdout + completed.stderr)
             self.assertIn("Done.", completed.stdout)
@@ -830,3 +835,13 @@ print(json.dumps({"output": str(run_dir), **record}, indent=2, sort_keys=True))
 
 if __name__ == "__main__":
     unittest.main()
+    def test_experiment_execute_preserves_runner_exit_and_stops_before_next_cell(self):
+        with tempfile.TemporaryDirectory() as directory:
+            completed = self._execute_driver(directory, exit_case="CLH-036")
+            self.assertEqual(completed.returncode, 1, completed.stdout + completed.stderr)
+            self.assertEqual(completed.stdout.count("] RUN"), 1)
+            self.assertIn("runner exit 1", completed.stdout)
+            self.assertIn("stopping at the first failed cell", completed.stderr)
+            self.assertNotIn("[CLH-037", completed.stdout)
+            self.assertNotIn("Done.", completed.stdout)
+
