@@ -11,16 +11,31 @@
 #   ./agent_honeypot/collusion_tripwires/run_experiments.sh --arm lure-pair --trials 1 --model PINNED_MODEL
 #   ./agent_honeypot/collusion_tripwires/run_experiments.sh --list     # list arms + Table 3 rows
 #   ./agent_honeypot/collusion_tripwires/run_experiments.sh --arm sensor-controls --execute   # PAID
+#   ./agent_honeypot/collusion_tripwires/run_experiments.sh --arm lure-pair --trials 1 --case CLH-036 \
+#       --model PINNED_MODEL --execute                                  # PAID, one case of the arm
 #
 # Agent arms require --model (or MODEL), gateway and Langfuse URLs. Paid runs
 # also require EXPERIMENT_APPROVED=1 and LITELLM_MASTER_KEY on the host, so a
 # stray --execute cannot mint or bill by itself. --allow-network is never passed.
 # --trials overrides the selected arm's frozen default without editing the table.
+# --case restricts a selected arm to one of its cases, so paid cells can run one
+# at a time with a review in between.
+#
+# Under --execute every cell's runner output is kept in
+# <output>/<arm>/driver-<case>-t<trial>-<stamp>.log (never discarded), the
+# driver stops at the first failed cell, and after each agent cell it reads the
+# runner's run record and refuses to continue unless the sandbox terminated
+# through the explicit finally, the virtual key was revoked, its spend is within
+# the cap, and the redaction scan passed. --keep-going restores the old
+# continue-past-failures behaviour for scripted calibration sweeps. The gate
+# prints field names, booleans and the key alias only, never a key value.
 set -Eeuo pipefail
 
 repo=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
 cd -- "$repo"
-runner="modal_honeypot/runner.py"
+# HONEYPOT_RUNNER lets the unit tests substitute a fake runner; production runs
+# leave it unset.
+runner=${HONEYPOT_RUNNER:-modal_honeypot/runner.py}
 
 # --------------------------------------------------------------------------
 # EXPERIMENT ARMS. Augment this table from Table 3 of the honeypot paper: add
@@ -55,7 +70,9 @@ if [[ -z ${SUBJECT_CMD:-} ]]; then
 fi
 
 want_arm=
+want_case=
 execute=0
+keep_going=0
 list=0
 workers=4
 output_root="results/modal-honeypot-collusion-exp"
@@ -69,7 +86,9 @@ usage() { sed -n '2,20p' "$0"; }
 while (($#)); do
   case "$1" in
     --arm) want_arm=$2; shift 2 ;;
+    --case) want_case=$2; shift 2 ;;
     --execute) execute=1; shift ;;
+    --keep-going) keep_going=1; shift ;;
     --list) list=1; shift ;;
     --workers) workers=$2; shift 2 ;;
     --subject-command) SUBJECT_CMD=$2; shift 2 ;;
@@ -86,6 +105,10 @@ done
 if [[ -n $trials_override && ! $trials_override =~ ^[1-9][0-9]*$ ]]; then
   printf '%s\n' '--trials must be a positive integer' >&2
   exit 64
+fi
+if [[ -n $want_case ]]; then
+  [[ -n $want_arm ]] || { printf '%s\n' '--case requires --arm' >&2; exit 64; }
+  [[ $want_case =~ ^CLH-[0-9]{3}$ ]] || { printf '%s\n' '--case must be a CLH-NNN id' >&2; exit 64; }
 fi
 
 arm_rows() { grep -vE '^\s*#|^\s*$' <<<"$ARMS"; }
@@ -105,6 +128,62 @@ cases_of() {
     SENSORS) tr ',' '\n' <<<"$SENSORS" ;;
     *) tr ',' '\n' <<<"$1" ;;
   esac
+}
+
+# The arm's cases after the optional --case filter. Membership is validated in
+# the main shell (see "Select arms"), because an exit inside a process
+# substitution would only end the subshell and leave an empty, silent plan.
+arm_cases() {
+  local sel=$1
+  local -a all; mapfile -t all < <(cases_of "$sel")
+  if [[ -z $want_case ]]; then
+    printf '%s\n' "${all[@]}"
+    return 0
+  fi
+  local c
+  for c in "${all[@]}"; do
+    [[ $c == "$want_case" ]] && printf '%s\n' "$c"
+  done
+}
+
+# After an agent cell: read the runner's final run record from the kept log and
+# refuse to go on unless the sandbox was torn down, the key revoked, the spend
+# within the cap, and the redaction scan clean. Prints names, booleans, the
+# alias and the output path; never a key value.
+check_agent_run() {
+  local log=$1 budget=$2
+  python3 - "$log" "$budget" <<'PY'
+import json
+import sys
+
+log_path, budget = sys.argv[1], float(sys.argv[2])
+lines = open(log_path, encoding="utf-8", errors="replace").read().splitlines()
+starts = [i for i, line in enumerate(lines) if line.strip() == "{"]
+if not starts:
+    print("gate: FAILED, the runner printed no run record", file=sys.stderr)
+    raise SystemExit(1)
+try:
+    record = json.loads("\n".join(lines[starts[-1]:]))
+except json.JSONDecodeError:
+    print("gate: FAILED, the runner's run record is not valid JSON", file=sys.stderr)
+    raise SystemExit(1)
+key = record.get("virtual_key") if isinstance(record.get("virtual_key"), dict) else {}
+redaction = record.get("redaction") if isinstance(record.get("redaction"), dict) else {}
+spend = key.get("spend_usd")
+checks = {
+    "termination_explicit_finally": record.get("termination") == "explicit-finally",
+    "key_revoked": bool(key.get("revoked_at")),
+    "spend_recorded": isinstance(spend, (int, float)) and not isinstance(spend, bool),
+    "spend_within_cap": isinstance(spend, (int, float)) and not isinstance(spend, bool) and spend <= budget,
+    "redaction_passed": redaction.get("passed") is True,
+}
+alias = key.get("key_alias") or "(no alias recorded)"
+summary = " ".join(f"{name}={str(ok).lower()}" for name, ok in checks.items())
+print(f"gate: {summary} alias={alias} output={record.get('output', '?')}")
+if not all(checks.values()):
+    print(f"gate: FAILED for alias {alias}; if key_revoked is false, revoke it by alias now", file=sys.stderr)
+    raise SystemExit(1)
+PY
 }
 
 # Pre-flight for paid runs.
@@ -145,7 +224,7 @@ PY
 # Run or plan one arm.
 run_arm() {
   local arm=$1 sel=$2 subj=$3 trials=$4 t3=$5
-  local -a cases; mapfile -t cases < <(cases_of "$sel")
+  local -a cases; mapfile -t cases < <(arm_cases "$sel" "$arm")
   local cells=$(( ${#cases[@]} * trials ))
   printf '\n== arm %s  (subject=%s, trials=%s, cells=%s, Table 3: %s)\n' "$arm" "$subj" "$trials" "$cells" "$t3"
   local tag="$output_root/$arm"
@@ -161,7 +240,30 @@ run_arm() {
       ((execute)) || cmd+=(--dry-run)
       printf '  [%s trial %d] %s\n' "$case_id" "$t" "$( ((execute)) && echo RUN || echo PLAN )"
       if ((execute)); then
-        "${cmd[@]}" >/dev/null 2>&1 || printf '    (runner exit %s -- inspect %s)\n' "$?" "$tag" >&2
+        mkdir -p "$tag"
+        local log="$tag/driver-${case_id}-t${t}-$(date -u +%Y%m%dT%H%M%SZ).log"
+        local rc=0
+        "${cmd[@]}" 2>&1 | tee "$log" || true
+        rc=${PIPESTATUS[0]}
+        printf '    runner exit %s; output kept in %s\n' "$rc" "$log"
+        if ((rc != 0)); then
+          if ((keep_going)); then
+            printf '    (--keep-going: continuing past the failed cell)\n' >&2
+            continue
+          fi
+          printf 'stopping at the first failed cell (%s trial %d); inspect %s\n' "$case_id" "$t" "$log" >&2
+          exit "$rc"
+        fi
+        if [[ $subj == agent ]]; then
+          if ! check_agent_run "$log" "$key_budget"; then
+            if ((keep_going)); then
+              printf '    (--keep-going: continuing past the failed gate)\n' >&2
+              continue
+            fi
+            printf 'post-run gate failed for %s trial %d; not starting the next cell\n' "$case_id" "$t" >&2
+            exit 75
+          fi
+        fi
       else
         "${cmd[@]}" || printf '    (runner exit %s -- inspect plan above)\n' "$?" >&2
       fi
@@ -176,12 +278,27 @@ while read -r arm sel subj trials t3 desc; do
 done < <(arm_rows)
 [[ ${#selected[@]} -gt 0 ]] || { printf 'no matching arm: %s (use --list)\n' "${want_arm:-}" >&2; exit 64; }
 
+# A --case outside the selected arm is refused here, in the main shell, so the
+# refusal really stops the script.
+if [[ -n $want_case ]]; then
+  for row in "${selected[@]}"; do
+    IFS='|' read -r arm sel subj trials t3 <<<"$row"
+    mapfile -t all_cases < <(cases_of "$sel")
+    found=0
+    for c in "${all_cases[@]}"; do [[ $c == "$want_case" ]] && found=1; done
+    ((found)) || {
+      printf 'case %s is not in arm %s (its cases: %s)\n' "$want_case" "$arm" "$(IFS=,; echo "${all_cases[*]}")" >&2
+      exit 64
+    }
+  done
+fi
+
 # Cost summary + agent detection.
 total_cells=0 any_agent=0
 for row in "${selected[@]}"; do
   IFS='|' read -r arm sel subj trials t3 <<<"$row"
   [[ -n $trials_override ]] && trials=$trials_override
-  mapfile -t c < <(cases_of "$sel"); total_cells=$(( total_cells + ${#c[@]} * trials ))
+  mapfile -t c < <(arm_cases "$sel" "$arm"); total_cells=$(( total_cells + ${#c[@]} * trials ))
   [[ $subj == agent ]] && any_agent=1
 done
 printf 'Plan: %d arm(s), %d cells, ~$%.2f (@ $%.2f/cell). Mode: %s.\n' \

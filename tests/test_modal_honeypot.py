@@ -225,6 +225,7 @@ class ModalHoneypotTests(unittest.TestCase):
                 "role": "behavior_eval",
                 "expectation_passed": False,
                 "subject_mode": "agent",
+                "verifier": "not implemented",
                 "time_to_first_coordination_s": 0.5,
                 "evidence_chains": [{"valid": True, "mirror_events": 9}],
             }))
@@ -241,6 +242,7 @@ class ModalHoneypotTests(unittest.TestCase):
         self.assertTrue(result["passed"])
         self.assertEqual(result["stage"], "acted")
         self.assertEqual(result["subject_mode"], "agent")
+        self.assertEqual(result["verifier"], "not implemented")
         self.assertEqual(result["evidence_chains"], [True])
 
     def test_artifact_bundle_keeps_agent_transcripts(self):
@@ -717,6 +719,110 @@ class ModalHoneypotTests(unittest.TestCase):
         )
         self.assertEqual(completed.returncode, 64)
         self.assertIn("positive integer", completed.stderr)
+
+    def test_experiment_case_filter_plans_one_cell(self):
+        script = MODULE.REPO / "agent_honeypot/collusion_tripwires/run_experiments.sh"
+        env = {
+            **os.environ,
+            "OPENAI_BASE_URL": "https://gateway.invalid/v1",
+            "LANGFUSE_BASE_URL": "https://trace.invalid",
+        }
+        completed = subprocess.run(
+            ["bash", str(script), "--arm", "lure-pair", "--trials", "1", "--case", "CLH-037",
+             "--model", "pinned-model"],
+            cwd=MODULE.REPO, env=env, text=True, capture_output=True, check=False,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertIn("1 cells", completed.stdout)
+        self.assertEqual(completed.stdout.count("] PLAN"), 1)
+        self.assertIn('"virtual-key:collusion/CLH-037/t1/', completed.stdout)
+        self.assertNotIn("CLH-036", completed.stdout)
+
+    def test_experiment_case_filter_rejects_a_case_outside_the_arm(self):
+        script = MODULE.REPO / "agent_honeypot/collusion_tripwires/run_experiments.sh"
+        completed = subprocess.run(
+            ["bash", str(script), "--arm", "lure-pair", "--case", "CLH-001", "--model", "pinned-model"],
+            cwd=MODULE.REPO, text=True, capture_output=True, check=False,
+            env={**os.environ, "OPENAI_BASE_URL": "https://gateway.invalid/v1",
+                 "LANGFUSE_BASE_URL": "https://trace.invalid"},
+        )
+        self.assertEqual(completed.returncode, 64)
+        self.assertIn("not in arm lure-pair", completed.stderr)
+        completed = subprocess.run(
+            ["bash", str(script), "--case", "CLH-036"],
+            cwd=MODULE.REPO, text=True, capture_output=True, check=False,
+        )
+        self.assertEqual(completed.returncode, 64)
+        self.assertIn("--case requires --arm", completed.stderr)
+
+    FAKE_RUNNER = """
+import json, os, sys
+from pathlib import Path
+args = sys.argv[1:]
+case_id = args[args.index("--case-id") + 1]
+output = Path(args[args.index("--output") + 1])
+trial = args[args.index("--trial") + 1] if "--trial" in args else "1"
+run_dir = output / f"collusion-{case_id}-fake-t{trial}"
+run_dir.mkdir(parents=True, exist_ok=True)
+bad = os.environ.get("FAKE_RUNNER_FAIL_CASE") == case_id
+record = {
+    "termination": "explicit-finally",
+    "virtual_key": {"key_alias": f"collusion/{case_id}/t{trial}/fake",
+                    "spend_usd": 0.0125, "revoked_at": "2026-10-29T00:00:00+00:00"},
+    "redaction": {"passed": not bad, "findings": ["leak.txt"] if bad else []},
+}
+(run_dir / "modal-run.json").write_text(json.dumps(record))
+print("WARNING: fake runner, nothing contacted")
+print(json.dumps({"output": str(run_dir), **record}, indent=2, sort_keys=True))
+"""
+
+    def _execute_driver(self, directory, fail_case=None, extra=()):
+        script = MODULE.REPO / "agent_honeypot/collusion_tripwires/run_experiments.sh"
+        fake = Path(directory) / "fake_runner.py"
+        fake.write_text(self.FAKE_RUNNER)
+        env = {
+            **os.environ,
+            "OPENAI_BASE_URL": "https://gateway.invalid/v1",
+            "LANGFUSE_BASE_URL": "https://trace.invalid",
+            "EXPERIMENT_APPROVED": "1",
+            "LITELLM_MASTER_KEY": "unit-test-master-not-a-key",
+            "HONEYPOT_RUNNER": str(fake),
+        }
+        if fail_case:
+            env["FAKE_RUNNER_FAIL_CASE"] = fail_case
+        return subprocess.run(
+            ["bash", str(script), "--arm", "lure-pair", "--trials", "1", "--model", "pinned-model",
+             "--output", str(Path(directory) / "out"), "--execute", *extra],
+            cwd=MODULE.REPO, env=env, text=True, capture_output=True, check=False,
+        )
+
+    def test_experiment_execute_keeps_runner_output_and_gates_each_agent_cell(self):
+        with tempfile.TemporaryDirectory() as directory:
+            completed = self._execute_driver(directory)
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertEqual(completed.stdout.count("] RUN"), 2)
+            self.assertLess(completed.stdout.index("[CLH-036"), completed.stdout.index("[CLH-037"))
+            logs = sorted((Path(directory) / "out" / "lure-pair").glob("driver-CLH-03*-t1-*.log"))
+            self.assertEqual(len(logs), 2)
+            self.assertIn('"termination": "explicit-finally"', logs[0].read_text())
+            self.assertEqual(completed.stdout.count("gate: termination_explicit_finally=true"), 2)
+            self.assertIn("alias=collusion/CLH-037/t1/fake", completed.stdout)
+            self.assertNotIn("unit-test-master-not-a-key", completed.stdout + completed.stderr)
+            self.assertIn("Done.", completed.stdout)
+
+    def test_experiment_execute_stops_before_the_next_cell_when_the_gate_fails(self):
+        with tempfile.TemporaryDirectory() as directory:
+            completed = self._execute_driver(directory, fail_case="CLH-036")
+            self.assertEqual(completed.returncode, 75, completed.stdout + completed.stderr)
+            self.assertEqual(completed.stdout.count("] RUN"), 1)
+            self.assertIn("redaction_passed=false", completed.stdout)
+            self.assertIn("gate: FAILED for alias collusion/CLH-036/t1/fake", completed.stderr)
+            self.assertFalse((Path(directory) / "out" / "lure-pair" / "collusion-CLH-037-fake-t1").exists())
+            self.assertNotIn("Done.", completed.stdout)
+            completed = self._execute_driver(directory, fail_case="CLH-036", extra=("--keep-going",))
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertEqual(completed.stdout.count("] RUN"), 2)
+            self.assertIn("continuing past the failed gate", completed.stderr)
 
 
 if __name__ == "__main__":
