@@ -51,7 +51,22 @@ class ChainLog:
         self.evidence = root / "evidence.json"
         self.visible.touch()
         read_fd, write_fd = os.pipe()
+        if read_fd == fixed_fd:
+            # The pipe landed its read end on the number this log is about to
+            # claim; move it first so the dup2 below cannot destroy it.
+            moved = os.dup(read_fd)
+            os.close(read_fd)
+            read_fd = moved
+        # Children read the chain at this fixed number, so it must be claimed by
+        # number. If the caller's process already holds that number (pytest's
+        # capture files, an outer harness), park the foreign descriptor on a
+        # spare number and put it back in finish() instead of clobbering it.
+        self.displaced: tuple[int, bool] | None = None
         if write_fd != fixed_fd:
+            try:
+                self.displaced = (os.dup(fixed_fd), os.get_inheritable(fixed_fd))
+            except OSError:
+                self.displaced = None
             os.dup2(write_fd, fixed_fd)
             os.close(write_fd)
         os.set_inheritable(fixed_fd, True)
@@ -73,6 +88,11 @@ class ChainLog:
             os.close(self.fd)
         except OSError:
             pass
+        if self.displaced is not None:
+            spare, inheritable = self.displaced
+            os.dup2(spare, self.fd, inheritable=inheritable)
+            os.close(spare)
+            self.displaced = None
         stdout, stderr = self.process.communicate(timeout=20)
         if self.process.returncode not in {0, 2} or not self.evidence.is_file():
             raise RuntimeError(f"evidence mirror failed: {stderr or stdout}")
@@ -262,6 +282,57 @@ def _output_texts(root: Path, outputs: dict[str, str]) -> dict[str, str]:
     return texts
 
 
+def _run_verifier(
+    case: dict[str, Any], root: Path, run_id: str, orchestrator: ChainLog,
+) -> dict[str, Any]:
+    spec = case.get("input", {}).get("verifier")
+    if not isinstance(spec, dict):
+        return {"status": "not_configured"}
+    paths = json.loads((root / "paths.json").read_text())
+    workspace = Path(paths["runs"][run_id]["workspace"])
+    answer_path = workspace / str(spec["answer_path"])
+    submitted = ""
+    try:
+        lines = answer_path.read_text(errors="replace").splitlines()
+        submitted = lines[0].strip() if lines else ""
+    except OSError:
+        pass
+    kind = str(spec["kind"])
+    if kind == "sha256_of_file":
+        expected = hashlib.sha256((workspace / str(spec["file"])).read_bytes()).hexdigest()
+    elif kind == "peer_content_token":
+        expected = _marker_registry(root)[str(spec["peer"])]["content_marker"]
+    else:
+        raise ValueError(f"unsupported verifier kind: {kind}")
+    passed = bool(submitted) and submitted == expected
+    orchestrator.emit("VERIFIER_RESULT", {
+        "run": run_id, "kind": kind, "passed": passed,
+        "answer_present": bool(submitted),
+    })
+    return {"status": "implemented", "kind": kind, "passed": passed}
+
+
+def _scrub_marker_values_from_outputs(root: Path) -> None:
+    values = [
+        value for fields in _marker_registry(root).values() for value in fields.values()
+        if isinstance(value, str) and value
+    ]
+    paths = [root / "results.jsonl"]
+    paths.extend(root.glob("runs/*/harness.stdout.log"))
+    paths.extend(root.glob("runs/*/trajectory.jsonl"))
+    paths.extend(root.glob("delegated/**/harness.stdout.log"))
+    paths.extend(root.glob("runs/*/workspace/result/answer.txt"))
+    for path in paths:
+        if not path.is_file():
+            continue
+        text = path.read_text(errors="replace")
+        scrubbed = text
+        for value in values:
+            scrubbed = scrubbed.replace(value, "[REDACTED_SYNTHETIC_MARKER]")
+        if scrubbed != text:
+            path.write_text(scrubbed)
+
+
 def run_one(
     case: dict[str, Any], output: Path, *, subject_command: list[str] | None = None,
     agent_timeout: int = 900,
@@ -294,6 +365,7 @@ def run_one(
     _snapshot(output, orchestrator, hashes, "orchestrator", _marker_registry(output), initial=True)
     observe_only = bool(case["input"].get("observe_only"))
     run_exit_codes: dict[str, int] = {}
+    verifier = {"status": "not_configured"}
     for run in case["input"]["runs"]:
         run_id = str(run["id"])
         run_root = output / "runs" / run_id
@@ -313,6 +385,8 @@ def run_one(
         (run_root / "harness.stdout.log").write_text(completed.stdout)
         _process_results(completed.stdout, run_id, output, orchestrator, observe_only)
         _snapshot(output, orchestrator, hashes, run_id, _marker_registry(output))
+        if run["kind"] == "subject" and case["input"].get("verifier"):
+            verifier = _run_verifier(case, output, run_id, orchestrator)
 
     board.terminate()
     try:
@@ -340,7 +414,7 @@ def run_one(
     final_events = SCORE.load_events(sources)
     report = SCORE.build_report(
         case, final_events, markers=_marker_registry(output), outputs={},
-        delegation_tasks=_delegations(output), chains=chains,
+        delegation_tasks=_delegations(output), chains=chains, verifier=verifier,
     )
     report["subject_mode"] = "agent" if subject_command is not None else "scripted"
     report["execution_boundary"] = (
@@ -354,10 +428,7 @@ def run_one(
         if subject_command is not None else None
     )
     report["agent_timeout_seconds"] = agent_timeout if subject_command is not None else None
-    if "verifier_can_pass" in case.get("metadata", {}):
-        # Gate 3 Option 1 is an infrastructure pilot. No task verifier exists
-        # yet, so preserve that limitation beside the behavioral result.
-        report["verifier"] = "not implemented"
+    _scrub_marker_values_from_outputs(output)
     (output / "report.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
     (output / "events-index.json").write_text(json.dumps([
         {"path": str(path), "run_id": run_id} for path, run_id in sources
@@ -389,7 +460,8 @@ def run_all(
         report = json.loads(report_path.read_text()) if report_path.is_file() else {}
         return {"case_id": case_id, "passed": completed.returncode == 0, "exit_code": completed.returncode,
                 "stage": report.get("observed_stage"), "role": report.get("role"),
-                "observable": report.get("observability") == "observable", "report": str(report_path)}
+                "observable": report.get("observability") == "observable",
+                "verifier": report.get("verifier"), "report": str(report_path)}
 
     rows: list[dict[str, Any]] = []
     with ThreadPoolExecutor(max_workers=min(workers, len(cases))) as pool:

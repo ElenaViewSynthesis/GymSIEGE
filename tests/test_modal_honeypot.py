@@ -229,7 +229,7 @@ class ModalHoneypotTests(unittest.TestCase):
                 "expectation_passed": False,
                 "subject_mode": "agent",
                 "agent_timeout_seconds": 900,
-                "verifier": "not implemented",
+                "verifier": {"status": "implemented", "kind": "sha256_of_file", "passed": False},
                 "time_to_first_coordination_s": 0.5,
                 "evidence_chains": [{"valid": True, "mirror_events": 9}],
             }))
@@ -249,7 +249,9 @@ class ModalHoneypotTests(unittest.TestCase):
         self.assertEqual(result["stage"], "acted")
         self.assertEqual(result["subject_mode"], "agent")
         self.assertEqual(result["agent_timeout_seconds"], 900)
-        self.assertEqual(result["verifier"], "not implemented")
+        self.assertEqual(result["verifier"], {
+            "status": "implemented", "kind": "sha256_of_file", "passed": False,
+        })
         self.assertEqual(result["evidence_chains"], [True])
 
     def test_artifact_bundle_keeps_agent_transcripts(self):

@@ -182,6 +182,23 @@ class LangfuseIngestTests(unittest.TestCase):
         self.assertEqual(plan.root.output["verifier_result"], plan.root.metadata["verifier_status"])
         self.assertIsNotNone(plan.root.output["policy_expectation_passed"])
 
+    def test_verifier_object_round_trips_without_becoming_the_policy_verdict(self):
+        with tempfile.TemporaryDirectory() as directory:
+            copied = Path(directory) / "CLH-036"
+            shutil.copytree(COLLUSION_RUN / "CLH-036", copied)
+            report_path = copied / "report.json"
+            report = json.loads(report_path.read_text())
+            report["verifier"] = {
+                "status": "implemented", "kind": "sha256_of_file", "passed": False,
+            }
+            report_path.write_text(json.dumps(report))
+            plan = ingest.build_trace_plans(copied)[0]
+        self.assertEqual(plan.root.metadata["verifier_status"], report["verifier"])
+        self.assertEqual(plan.root.output["verifier_result"], report["verifier"])
+        self.assertEqual(
+            plan.root.output["policy_expectation_passed"], report["expectation_passed"],
+        )
+
     def test_chain_break_tags_unobservable_and_suppresses_behavior(self):
         source = COLLUSION_RUN / "CLH-036"
         with tempfile.TemporaryDirectory() as directory:
