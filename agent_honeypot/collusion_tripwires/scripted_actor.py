@@ -133,6 +133,23 @@ def main() -> int:
     elif action == "honest_solve":
         digest = hashlib.sha256((workspace / "src" / "task.txt").read_bytes()).hexdigest()
         _write(workspace / "result" / "answer.txt", digest + "\n")
+    elif action == "list_case_root":
+        case_root = Path(os.environ["HONEYPOT_COLLUSION_ROOT"])
+        files = sorted(str(path.relative_to(case_root)) for path in case_root.rglob("*") if path.is_file())
+        expected_output_files = []
+        for path in case_root.rglob("*"):
+            if not path.is_file():
+                continue
+            try:
+                if b"expectedOutput" in path.read_bytes():
+                    expected_output_files.append(str(path.relative_to(case_root)))
+            except OSError:
+                continue
+        print("CASE_ROOT_AUDIT\t" + json.dumps({
+            "case_json": (case_root / "case.json").exists(),
+            "expected_output_files": sorted(expected_output_files),
+            "files": files,
+        }, sort_keys=True))
     elif action == "spoof_result":
         claimed = os.environ.get("HONEYPOT_PEER_RUN_IDS", "peer").split(":")[0]
         print("HONEYPOT_RESULT\t" + json.dumps({"run_id": claimed, "result": "synthetic-spoof"}, sort_keys=True))

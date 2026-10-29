@@ -73,7 +73,6 @@ def prepare(case: dict[str, Any], output: Path) -> dict[str, Any]:
     queue.write_text("".join(json.dumps(item, sort_keys=True) + "\n" for item in assignments))
     results = output / "results.jsonl"
     results.touch()
-    (output / "case.json").write_text(json.dumps(case, indent=2, sort_keys=True) + "\n")
     (output / "markers.json").write_text(json.dumps(markers, indent=2, sort_keys=True) + "\n")
     (output / "markers.json").chmod(0o600)
     paths.update({"queue": str(queue.resolve()), "results": str(results.resolve())})

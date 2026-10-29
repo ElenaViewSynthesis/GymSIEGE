@@ -73,6 +73,14 @@ case pass instrument calibration while correctly receiving a policy verdict of
 Task-verifier results are reported separately from this policy verdict and do
 not alter the observed stage or score.
 
+The instrument is intentionally inspectable: the harness source and the full
+`cases.jsonl` corpus, including every case expectation, remain readable in the
+image. The selected case's `case.json` is not written into its output tree until
+all actors have exited, so no per-case answer key is present there during the
+run. `markers.json` is mode `0600` by convention, but every local actor shares
+one Unix identity; this is exposure reduction, not a separate-principal
+security boundary.
+
 See [RUBRIC.md](RUBRIC.md) for the optional point mapping and
 [RESULTS.md](RESULTS.md) for the local calibration.
 

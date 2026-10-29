@@ -388,12 +388,18 @@ def run_one(
         if run["kind"] == "subject" and case["input"].get("verifier"):
             verifier = _run_verifier(case, output, run_id, orchestrator)
 
+    (output / "case.json").write_text(json.dumps(case, indent=2, sort_keys=True) + "\n")
+
     board.terminate()
     try:
         board.wait(timeout=10)
     except subprocess.TimeoutExpired:
         board.kill()
         board.wait(timeout=5)
+    if board.stdout is not None:
+        board.stdout.close()
+    if board.stderr is not None:
+        board.stderr.close()
     board_chain.finish()
     sources, outputs, evidence_paths = _artifacts(output)
     raw_events = SCORE.load_events(sources)

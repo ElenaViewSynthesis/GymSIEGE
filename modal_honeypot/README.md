@@ -75,6 +75,13 @@ timeouts, repetitions, and budget first. The image and Sandbox policy do not
 embed provider credentials (`secrets=[]`). Collusion artifact bundles retain
 the agent's JSONL transcript for post-run shape and evidence review.
 
+The collusion instrument is not hidden: its harness source and `cases.jsonl`,
+including all expectations, remain readable in the image by design. During a
+run the selected case's per-case answer key is absent from the case output tree;
+`case.json` is written only after every actor exits. `markers.json` uses mode
+`0600`, but actors still share one Unix identity, so that mode is a convention
+rather than a separate-principal boundary.
+
 Run names and metadata record chain state and weights mode. Format-valid
 weights are accepted only for the model harness.
 
