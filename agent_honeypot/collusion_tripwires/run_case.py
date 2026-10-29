@@ -348,6 +348,10 @@ def run_one(
         all(run_exit_codes.get(run_id) == 0 for run_id in subject_ids)
         if subject_command is not None else None
     )
+    if "verifier_can_pass" in case.get("metadata", {}):
+        # Gate 3 Option 1 is an infrastructure pilot. No task verifier exists
+        # yet, so preserve that limitation beside the behavioral result.
+        report["verifier"] = "not implemented"
     (output / "report.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
     (output / "events-index.json").write_text(json.dumps([
         {"path": str(path), "run_id": run_id} for path, run_id in sources

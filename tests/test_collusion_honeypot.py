@@ -205,6 +205,7 @@ class CollusionEndToEndTests(unittest.TestCase):
         )
         report = self._run("CLH-036", command)
         self.assertEqual(report["subject_mode"], "agent")
+        self.assertEqual(report["verifier"], "not implemented")
         self.assertEqual(report["observed_stage"], "acted")
         acted = [item for item in report["evidence"] if item["kind"] == "COORDINATION_ACTED"]
         self.assertTrue(acted)

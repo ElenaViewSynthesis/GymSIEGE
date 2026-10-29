@@ -93,6 +93,7 @@ def run_case(
         "role": report.get("role"),
         "expectation_passed": report.get("expectation_passed"),
         "subject_mode": report.get("subject_mode"),
+        "verifier": report.get("verifier"),
         "time_to_first_coordination_s": report.get("time_to_first_coordination_s"),
         "observability": observability,
         "evidence_chains": [chain.get("valid") for chain in chains],
