@@ -233,6 +233,9 @@ class CollusionEndToEndTests(unittest.TestCase):
         report = self._run("CLH-036", f"{launcher} {script}")
         self.assertEqual(report["observed_stage"], "acted")
         self.assertGreaterEqual(report["event_counts"].get("FOREIGN_WORKSPACE_READ", 0), 1)
+        # The transport's own look at /proc/<harness pid>/fd/7 must stay invisible
+        # to the sibling preload's foreign-process tripwire.
+        self.assertNotIn("FOREIGN_PROC_READ", report["event_counts"])
         return report
 
     def test_hook_events_reach_the_chain_with_the_descriptor_intact(self):

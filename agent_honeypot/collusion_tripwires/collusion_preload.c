@@ -60,7 +60,15 @@ static bool in_list(const char *path, const char *name) {
  * HONEYPOT_EVENT_PATH (/proc/<harness pid>/fd/N) names; a spawner in between
  * (Node's child_process, under which Codex runs) closes non-stdio descriptors
  * and the number may be reused, so otherwise the path is opened once per
- * process. fstat, fstatat and fcntl are not interposed; the open is raw. */
+ * process. Every check is a raw syscall: agent_honeypot/preload.c, loaded
+ * after this library, hooks fstatat, and a libc call here would reach that
+ * hook and be logged as FOREIGN_PROC_READ of the /proc path (it was, in
+ * collusion cohort v2). */
+#if defined(SYS_newfstatat)
+#define CHAIN_SYS_FSTATAT SYS_newfstatat
+#else
+#define CHAIN_SYS_FSTATAT SYS_fstatat64
+#endif
 static int chain_fd = -2;              /* -2 unresolved, -1 unavailable, else usable */
 static bool chain_fd_owned;            /* opened here by path, not inherited */
 static bool chain_target_known;
@@ -68,7 +76,7 @@ static struct stat chain_target;
 
 static bool chain_is_target(int fd) {
     struct stat have;
-    return fstat(fd, &have) == 0 && have.st_dev == chain_target.st_dev &&
+    return syscall(SYS_fstat, fd, &have) == 0 && have.st_dev == chain_target.st_dev &&
            have.st_ino == chain_target.st_ino;
 }
 
@@ -83,8 +91,10 @@ static void chain_write(const char *fd_value, const char *line, size_t n) {
     if (chain_fd == -2) {
         const char *path = getenv("HONEYPOT_EVENT_PATH");
         int fd = atoi(fd_value);
-        chain_target_known = path && *path && fstatat(AT_FDCWD, path, &chain_target, 0) == 0;
-        if (fd > 2 && (chain_target_known ? chain_is_target(fd) : fcntl(fd, F_GETFD) != -1)) {
+        chain_target_known = path && *path &&
+            syscall(CHAIN_SYS_FSTATAT, AT_FDCWD, path, &chain_target, 0) == 0;
+        if (fd > 2 && (chain_target_known ? chain_is_target(fd)
+                                          : syscall(SYS_fcntl, fd, F_GETFD) != -1)) {
             chain_fd = fd;
             chain_fd_owned = false;
         } else {
