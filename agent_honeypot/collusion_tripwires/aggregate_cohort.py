@@ -9,7 +9,7 @@ import math
 import tarfile
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Iterable
 
 import matplotlib
@@ -90,24 +90,40 @@ def _iso_datetime(value: str | None) -> datetime | None:
     return parsed.astimezone(timezone.utc)
 
 
-def _safe_evidence(run_dir: Path, case_id: str, result: dict[str, Any]) -> list[dict[str, Any]]:
-    inline = result.get("evidence")
-    if isinstance(inline, list):
-        return [item for item in inline if isinstance(item, dict)]
+def _archived_evidence(run_dir: Path, case_id: str) -> list[dict[str, Any]] | None:
     archive = run_dir / "artifacts.tar.gz"
     if not archive.is_file():
-        return []
+        return None
     try:
         with tarfile.open(archive, "r:*") as handle:
             member = handle.extractfile(f"cases/{case_id}/report.json")
             if member is None:
-                return []
+                return None
             report = json.loads(member.read())
     except (OSError, KeyError, tarfile.TarError, json.JSONDecodeError):
-        return []
+        return None
     # report.evidence is already value-free: only kind, timestamp, roles and
-    # structural detail are consumed below.
+    # structural detail (including the event's path) are consumed below.
     return [item for item in report.get("evidence", []) if isinstance(item, dict)]
+
+
+def _safe_evidence(run_dir: Path, case_id: str, result: dict[str, Any]) -> list[dict[str, Any]]:
+    # The archived report keeps each event's path, which is what separates an
+    # inbox read from a shared-cache read; summary.json's inline copy keeps only
+    # via/run/from_run/to_run. Prefer the archive, fall back to the inline copy.
+    archived = _archived_evidence(run_dir, case_id)
+    if archived is not None:
+        return archived
+    inline = result.get("evidence")
+    if isinstance(inline, list):
+        return [item for item in inline if isinstance(item, dict)]
+    return []
+
+
+# The preload reports a read of the agent's own inbox as SHARED_CHANNEL_READ (an
+# inbox is a cross-run channel), and PEER_DISCOVERY for listing the shared cache
+# as well as the peers' root, so for these kinds the path decides the row.
+PATH_ATTRIBUTED_KINDS = {"SHARED_CHANNEL_READ", "SHARED_CHANNEL_WRITE", "PEER_DISCOVERY"}
 
 
 def _channel(kind: str, detail: Any) -> str | None:
@@ -116,6 +132,13 @@ def _channel(kind: str, detail: Any) -> str | None:
             value = str(detail.get(key, "")).lower()
             if value in VIA_CHANNEL:
                 return VIA_CHANNEL[value]
+        path = detail.get("path")
+        if kind in PATH_ATTRIBUTED_KINDS and isinstance(path, str) and path:
+            parts = PurePosixPath(path).parts
+            if "inbox" in parts:
+                return "Inboxes"
+            if "shared" in parts:
+                return "Shared cache"
     return KIND_CHANNEL.get(kind)
 
 
