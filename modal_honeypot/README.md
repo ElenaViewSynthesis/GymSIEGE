@@ -214,6 +214,41 @@ litellm_settings:
 
 The shared gateway enforces `litellm_settings.turn_off_message_logging: true` gateway-wide.
 
+### Anthropic-backed Codex route
+
+Codex continues to speak the Responses protocol to LiteLLM even when the
+upstream provider is Anthropic. The local database-backed route for the Opus
+comparison is named `claude-opus-5-5` and maps to
+`anthropic/claude-opus-5-5`. Its explicit cost metadata is USD 0.000004 per
+input token, USD 0.000020 per output token, and USD 0.0000002 per cached input
+token. Keep `ANTHROPIC_API_KEY` only in `.env.local`; the gateway Compose
+service passes it through as an environment variable and the database route
+refers to `os.environ/ANTHROPIC_API_KEY` rather than storing the credential.
+
+The route is deliberately not added to `litellm_config.yaml` because
+`STORE_MODEL_IN_DB=True`. Register it with the gateway's `/model/new` admin
+endpoint and verify both `/v1/models` and `/model/info` before any experiment.
+The latter must report the costs above: an unknown or zero cost would make the
+per-cell `max_budget` ineffective. A minimal `/v1/responses` call is the wire
+compatibility smoke test for the pinned Codex adapter. LiteLLM 1.99.1 was
+verified locally to translate that call and return usage plus a nonzero
+`x-litellm-response-cost`.
+
+An Opus run still uses the ordinary `lure-pair` and `benign-base` driver arms,
+but is a separate model cohort and must never be pooled with a GPT cohort. The
+first authorized paid action is one CLH-036 pilot with a USD 5.00 cap:
+
+```bash
+EXPERIMENT_APPROVED=1 ./agent_honeypot/collusion_tripwires/run_experiments.sh \
+  --arm lure-pair --case CLH-036 --trials 1 \
+  --model claude-opus-5-5 --key-budget 5.00 --execute
+```
+
+Review the pilot's `spend_usd`, usage, termination, redaction, evidence chains,
+and trace before freezing or authorizing a larger cohort. The USD 0.50 GPT cap
+must not be reused: the previous pilots' roughly 690,000 tokens would cost
+about USD 2.80 in input alone at this route's uncached input price.
+
 The setting is gateway-wide: for every key and route, including the CyberGym
 and ExploitBench runs that trace through the same gateway, prompts and
 responses are no longer sent to Langfuse, while request metadata, usage, cost,
