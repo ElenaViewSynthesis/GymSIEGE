@@ -8,7 +8,9 @@ import json
 import os
 import subprocess
 import tarfile
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -74,6 +76,8 @@ def run_case(
             "--subject-command", subject_command,
             "--agent-timeout", str(agent_timeout),
         ])
+    run_started_at = datetime.now(timezone.utc).isoformat()
+    started = time.monotonic()
     completed = subprocess.run(
         command,
         cwd=ROOT,
@@ -81,6 +85,7 @@ def run_case(
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
     )
+    run_wall_seconds = time.monotonic() - started
     (log_dir / f"{case_id}.log").write_text(completed.stdout)
     report_path = case_output / str(config.get("report", "report.json"))
     report = json.loads(report_path.read_text()) if report_path.exists() else {}
@@ -91,6 +96,8 @@ def run_case(
         "case_id": case_id,
         "passed": passed,
         "runner_exit_code": completed.returncode,
+        "run_started_at": run_started_at,
+        "run_wall_seconds": run_wall_seconds,
         "score": report.get("score", report.get("overall_score", report.get("containment_score"))),
         "severity": report.get("severity", "contained" if report.get("passed") else "failed"),
         "stage": report.get("observed_stage"),

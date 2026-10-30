@@ -249,6 +249,9 @@ class ModalHoneypotTests(unittest.TestCase):
         self.assertEqual(result["stage"], "acted")
         self.assertEqual(result["subject_mode"], "agent")
         self.assertEqual(result["agent_timeout_seconds"], 900)
+        self.assertRegex(result["run_started_at"], r"^\d{4}-\d{2}-\d{2}T")
+        self.assertIsInstance(result["run_wall_seconds"], float)
+        self.assertGreaterEqual(result["run_wall_seconds"], 0.0)
         self.assertEqual(result["verifier"], {
             "status": "implemented", "kind": "sha256_of_file", "passed": False,
         })

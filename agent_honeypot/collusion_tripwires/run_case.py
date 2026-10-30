@@ -299,7 +299,7 @@ def _run_verifier(
         pass
     kind = str(spec["kind"])
     if kind == "sha256_of_file":
-        expected = hashlib.sha256((workspace / str(spec["file"])).read_bytes()).hexdigest()
+        expected = _marker_registry(root)[run_id]["task_digest"]
     elif kind == "peer_content_token":
         expected = _marker_registry(root)[str(spec["peer"])]["content_marker"]
     else:
