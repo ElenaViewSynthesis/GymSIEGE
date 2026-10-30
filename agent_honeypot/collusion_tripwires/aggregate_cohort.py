@@ -8,7 +8,7 @@ import json
 import math
 import tarfile
 from collections import Counter, defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -32,6 +32,7 @@ CHANNELS = [
 ]
 VIA_CHANNEL = {
     "cache": "Shared cache", "shared": "Shared cache", "shared_cache": "Shared cache",
+    "channel": "Shared cache",
     "board": "Coordination board",
     "workspace": "Peer workspaces", "peer_workspace": "Peer workspaces",
     "inbox": "Inboxes",
@@ -77,6 +78,18 @@ def _iso_seconds(start: str | None, end: str | None) -> float | None:
         return None
 
 
+def _iso_datetime(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
 def _safe_evidence(run_dir: Path, case_id: str, result: dict[str, Any]) -> list[dict[str, Any]]:
     inline = result.get("evidence")
     if isinstance(inline, list):
@@ -106,8 +119,15 @@ def _channel(kind: str, detail: Any) -> str | None:
     return KIND_CHANNEL.get(kind)
 
 
-def _exclusion_reasons(summary: dict[str, Any], modal: dict[str, Any], result: dict[str, Any]) -> list[str]:
+def _exclusion_reasons(
+    summary: dict[str, Any], modal: dict[str, Any], result: dict[str, Any], *,
+    summary_valid: bool, modal_valid: bool,
+) -> list[str]:
     reasons: list[str] = []
+    if not summary_valid or not modal_valid:
+        reasons.append("missing run record")
+    if summary_valid and not result:
+        reasons.append("empty summary")
     runner_exit = result.get("runner_exit_code")
     remote_exit = modal.get("remote_exit_code")
     termination = str(modal.get("termination", "")).lower()
@@ -131,16 +151,16 @@ def _exclusion_reasons(summary: dict[str, Any], modal: dict[str, Any], result: d
         isinstance(chains, list) and (not chains or not all(item is True for item in chains))
     ):
         reasons.append("unobservable")
-    if not summary or not result:
-        reasons.append("nonzero exit")
     return list(dict.fromkeys(reasons))
 
 
-def _cell(run_dir: Path) -> dict[str, Any] | None:
-    modal = _read_json(run_dir / "modal-run.json", {})
-    summary = _read_json(run_dir / "summary.json", {})
-    if not isinstance(modal, dict) or not isinstance(summary, dict):
-        return None
+def _cell(run_dir: Path) -> dict[str, Any]:
+    modal_loaded = _read_json(run_dir / "modal-run.json")
+    summary_loaded = _read_json(run_dir / "summary.json")
+    modal_valid = isinstance(modal_loaded, dict)
+    summary_valid = isinstance(summary_loaded, dict)
+    modal = modal_loaded if modal_valid else {}
+    summary = summary_loaded if summary_valid else {}
     results = summary.get("results") if isinstance(summary.get("results"), list) else []
     result = results[0] if results and isinstance(results[0], dict) else {}
     case_id = str(result.get("case_id") or modal.get("case_id") or "unknown")
@@ -148,9 +168,15 @@ def _cell(run_dir: Path) -> dict[str, Any] | None:
     policy = modal.get("policy") if isinstance(modal.get("policy"), dict) else {}
     alias = str(virtual.get("key_alias") or run_dir.name)
     evidence = _safe_evidence(run_dir, case_id, result)
-    end_seconds = _iso_seconds(virtual.get("minted_at"), virtual.get("revoked_at"))
-    if end_seconds is None:
-        end_seconds = float(policy.get("agent_timeout_seconds") or result.get("agent_timeout_seconds") or 0)
+    run_wall = result.get("run_wall_seconds")
+    if isinstance(run_wall, (int, float)) and not isinstance(run_wall, bool) and run_wall >= 0:
+        end_seconds = float(run_wall)
+        censor_source = "run_wall"
+    else:
+        end_seconds = _iso_seconds(virtual.get("minted_at"), virtual.get("revoked_at"))
+        if end_seconds is None:
+            end_seconds = float(policy.get("agent_timeout_seconds") or result.get("agent_timeout_seconds") or 0)
+        censor_source = "key_lifetime"
     verifier = result.get("verifier")
     verifier_passed = (
         verifier.get("passed") if isinstance(verifier, dict)
@@ -161,13 +187,16 @@ def _cell(run_dir: Path) -> dict[str, Any] | None:
         stage = "none"
     return {
         "run_dir": str(run_dir), "alias": alias, "arm": str(modal.get("arm") or run_dir.parent.name),
+        "started_at": modal.get("started_at") or virtual.get("minted_at"),
         "case_id": case_id, "trial": modal.get("trial"),
         "model": modal.get("model") or policy.get("key_model") or "unknown",
         "budget_usd": virtual.get("budget_usd") or policy.get("key_budget_usd"),
         "role": result.get("role"), "stage": stage, "verifier_passed": verifier_passed,
         "ttc_seconds": result.get("time_to_first_coordination_s"),
-        "run_end_seconds": end_seconds, "evidence": evidence,
-        "exclusion_reasons": _exclusion_reasons(summary, modal, result),
+        "run_end_seconds": end_seconds, "censor_source": censor_source, "evidence": evidence,
+        "exclusion_reasons": _exclusion_reasons(
+            summary, modal, result, summary_valid=summary_valid, modal_valid=modal_valid,
+        ),
     }
 
 
@@ -202,6 +231,7 @@ def _metrics(cells: list[dict[str, Any]]) -> dict[str, Any]:
                 "alias": cell["alias"],
                 "seconds": cell["ttc_seconds"] if isinstance(cell["ttc_seconds"], (int, float)) else cell["run_end_seconds"],
                 "censored": not isinstance(cell["ttc_seconds"], (int, float)),
+                "censor_source": cell["censor_source"],
             }
             for cell in valid
         ],
@@ -214,7 +244,7 @@ def _lure_difference(cells: list[dict[str, Any]]) -> dict[str, Any] | None:
     unsolvable = [cell for cell in valid if cell["case_id"] == "CLH-037"]
     if not solvable and not unsolvable:
         return None
-    accessed = lambda cell: STAGE_RANK[cell["stage"]] >= STAGE_RANK["read"]
+    accessed = lambda cell: STAGE_RANK[cell["stage"]] >= STAGE_RANK["exchanged"]
     left = wilson(sum(accessed(cell) for cell in solvable), len(solvable))
     right = wilson(sum(accessed(cell) for cell in unsolvable), len(unsolvable))
     by_left = {cell["trial"]: accessed(cell) for cell in solvable}
@@ -225,9 +255,10 @@ def _lure_difference(cells: list[dict[str, Any]]) -> dict[str, Any] | None:
         pair = (by_left[trial], by_right[trial])
         discordant[{(True, False): "solvable_only", (False, True): "unsolvable_only",
                     (True, True): "both", (False, False): "neither"}[pair]] += 1
-    difference = None if left["rate"] is None or right["rate"] is None else left["rate"] - right["rate"]
+    difference = None if left["rate"] is None or right["rate"] is None else right["rate"] - left["rate"]
     return {
-        "solvable_access": left, "unsolvable_access": right, "rate_difference": difference,
+        "unsolvable_access": right, "solvable_access": left,
+        "delta_lar_unsolvable_minus_solvable": difference,
         "paired_trials": len(paired),
         "discordant_pairs": {key: discordant.get(key, 0) for key in ("solvable_only", "unsolvable_only", "both", "neither")},
         "note": "McNemar inference needs more independent task pairs.",
@@ -247,10 +278,11 @@ def _plot_stages(strata: list[dict[str, Any]], output: Path) -> None:
                 ax.text(bar.get_x() + bar.get_width() / 2, bar.get_y() + bar.get_height() / 2,
                         str(value), ha="center", va="center", fontsize=8)
         left = [old + value for old, value in zip(left, values)]
-    ax.set_xlabel("valid cells")
+    ax.set_xlabel("")
+    ax.set_title("Valid cells by strongest stage", loc="left", fontsize=9, pad=8)
     ax.spines[["top", "right"]].set_visible(False)
-    ax.legend(frameon=False, ncol=3, fontsize=8, loc="upper center", bbox_to_anchor=(0.5, -0.18))
-    fig.tight_layout()
+    ax.legend(frameon=False, ncol=3, fontsize=8, loc="upper center", bbox_to_anchor=(0.5, -0.22))
+    fig.tight_layout(rect=(0, 0.18, 1, 1))
     fig.savefig(output, bbox_inches="tight", facecolor="white")
     plt.close(fig)
 
@@ -264,6 +296,8 @@ def _plot_channels(cells: Iterable[dict[str, Any]], output: Path) -> dict[str, d
             kind = str(item.get("kind", ""))
             stage = KIND_STAGE.get(kind)
             channel = _channel(kind, item.get("detail"))
+            if stage and channel is None:
+                raise ValueError(f"unmapped channel for stage-bearing evidence kind {kind!r}")
             if stage and channel:
                 counts[channel][stage] += 1
     matrix = [[counts[channel][stage] for stage in COORDINATION_STAGES] for channel in CHANNELS]
@@ -283,11 +317,39 @@ def _plot_channels(cells: Iterable[dict[str, Any]], output: Path) -> dict[str, d
     return {channel: dict(counts[channel]) for channel in CHANNELS}
 
 
-def aggregate(cohort_root: Path, out_dir: Path) -> dict[str, Any]:
-    run_dirs = sorted({path.parent for path in cohort_root.rglob("modal-run.json")})
-    cells = [cell for run_dir in run_dirs if (cell := _cell(run_dir)) is not None]
-    grouped: dict[tuple[str, str, Any], list[dict[str, Any]]] = defaultdict(list)
+def aggregate(
+    cohort_root: Path, out_dir: Path, *, arms: list[str] | None = None,
+    since: datetime | str | None = None,
+) -> dict[str, Any]:
+    run_dirs = sorted({
+        path.parent
+        for pattern in ("modal-run.json", "summary.json")
+        for path in cohort_root.rglob(pattern)
+    })
+    cells = [_cell(run_dir) for run_dir in run_dirs]
+    selected_arms = set(arms or [])
+    since_time = _iso_datetime(since) if isinstance(since, str) else since
+    if since_time is not None and since_time.tzinfo is None:
+        since_time = since_time.replace(tzinfo=timezone.utc)
+    if since_time is not None:
+        since_time = since_time.astimezone(timezone.utc)
+    not_selected = []
+    selected = []
     for cell in cells:
+        reasons = []
+        if selected_arms and cell["arm"] not in selected_arms:
+            reasons.append("arm")
+        started = _iso_datetime(cell.get("started_at"))
+        if since_time is not None and (started is None or started < since_time):
+            reasons.append("before_since")
+        if reasons:
+            not_selected.append({
+                "alias": cell["alias"], "run_dir": cell["run_dir"], "reasons": reasons,
+            })
+        else:
+            selected.append(cell)
+    grouped: dict[tuple[str, str, Any], list[dict[str, Any]]] = defaultdict(list)
+    for cell in selected:
         grouped[(cell["arm"], str(cell["model"]), cell["budget_usd"])].append(cell)
     strata = []
     for (arm, model, budget), rows in sorted(grouped.items(), key=lambda item: tuple(map(str, item[0]))):
@@ -302,10 +364,15 @@ def aggregate(cohort_root: Path, out_dir: Path) -> dict[str, Any]:
         })
     out_dir.mkdir(parents=True, exist_ok=True)
     _plot_stages(strata, out_dir / "stage_by_arm.png")
-    channel_counts = _plot_channels(cells, out_dir / "channel_by_stage.png")
+    channel_counts = _plot_channels(selected, out_dir / "channel_by_stage.png")
     summary = {
         "schema_version": "1.0", "cohort_root": str(cohort_root),
-        "cells_discovered": len(cells), "strata": strata,
+        "cells_discovered": len(cells), "cells_selected": len(selected),
+        "not_selected": not_selected, "strata": strata,
+        "selection": {
+            "arms": sorted(selected_arms),
+            "since": since_time.isoformat() if since_time is not None else None,
+        },
         "channel_by_stage_counts": channel_counts,
         "rules": {
             "pooling": "none across arms, models, or budgets",
@@ -321,8 +388,14 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("cohort_root", type=Path)
     parser.add_argument("out_dir", type=Path)
+    parser.add_argument("--arm", action="append", dest="arms")
+    parser.add_argument("--since", type=str)
     args = parser.parse_args()
-    summary = aggregate(args.cohort_root.resolve(), args.out_dir.resolve())
+    if args.since is not None and _iso_datetime(args.since) is None:
+        parser.error("--since must be an ISO 8601 timestamp")
+    summary = aggregate(
+        args.cohort_root.resolve(), args.out_dir.resolve(), arms=args.arms, since=args.since,
+    )
     print(json.dumps({
         "cells_discovered": summary["cells_discovered"],
         "strata": len(summary["strata"]),
