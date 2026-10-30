@@ -33,6 +33,15 @@ The existing process harness uses descriptor 7. The orchestrator and board use
 process-local descriptors 10 and 11, so nested harnesses can safely create a new
 descriptor 7 after the delegate closes the parent's inherited descriptors.
 
+The preload also receives the chain by path (`HONEYPOT_EVENT_PATH`, the
+harness's `/proc/<pid>/fd/7`) and uses the inherited number only while it is
+that pipe. A real agent runs under Codex's Node wrapper, which closes every
+non-stdio descriptor in its children; before this fallback (2026-10-30) no hook
+event from an agent's own commands reached the chain, so the `discovered` and
+`read` rungs were blind for real agents while `wrote` (file-version snapshots),
+`exchanged` and `acted` (output-marker derivation) and the task verifier were
+not. The two 2026-10-29 pilots and cohort v1 (2026-10-30) predate the fallback.
+
 ## Events
 
 | Event | Meaning |

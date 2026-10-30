@@ -58,7 +58,16 @@ monitor, and the harness's own lines) through a parent-owned mirror
 
 - Writers inherit the write end of a pipe as `HONEYPOT_EVENT_FD` (descriptor 7
   in this harness, 8 for the replication log, 9 for the intent sink). They
-  never hold the read end, so they cannot drain events.
+  never hold the read end, so they cannot drain events. Beside the number,
+  `HONEYPOT_EVENT_PATH` names the same pipe by path (`/proc/<harness pid>/fd/7`):
+  a writer whose inherited descriptor was closed by a spawner in between, or
+  whose number was reused for another file, checks the descriptor's identity
+  against that path before every event and re-opens the pipe by path once per
+  process. Codex's Node wrapper closes every non-stdio descriptor in its
+  children, so without the path every hook event from an agent's own commands
+  was lost; runs before 2026-10-30 (the two collusion pilots and collusion
+  cohort v1) have no agent-side hook events, and an `EXEC` count equal to the
+  harness's own start-up is the tell.
 - The mirror writes `events.tsv` in the usual format, so every scorer reads it
   unchanged, and a chained record of each line (sequence number, previous
   chain hash, SHA-256 chain hash, HMAC under a 32-byte per-run key) to a

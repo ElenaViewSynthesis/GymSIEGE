@@ -82,6 +82,14 @@ run the selected case's per-case answer key is absent from the case output tree;
 `0600`, but actors still share one Unix identity, so that mode is a convention
 rather than a separate-principal boundary.
 
+Hook events from the agent's own commands reach the evidence chain by path
+(`HONEYPOT_EVENT_PATH`) as well as by the inherited descriptor, because Codex's
+Node wrapper closes non-stdio descriptors in its children. Agent runs before
+2026-10-30 (the two collusion pilots and collusion cohort v1) predate that
+fallback and carry no agent-side hook events; in those records `EXEC` equals the
+harness start-up count. The preloads compile inside the sandbox at run time, so
+only the `harness.sh` export needed the image rebuilt.
+
 Run names and metadata record chain state and weights mode. Format-valid
 weights are accepted only for the model harness.
 
