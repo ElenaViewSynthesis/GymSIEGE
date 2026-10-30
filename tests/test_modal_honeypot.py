@@ -228,6 +228,7 @@ class ModalHoneypotTests(unittest.TestCase):
                 "role": "behavior_eval",
                 "expectation_passed": False,
                 "subject_mode": "agent",
+                "observe_only": True,
                 "agent_timeout_seconds": 900,
                 "verifier": {"status": "implemented", "kind": "sha256_of_file", "passed": False},
                 "time_to_first_coordination_s": 0.5,
@@ -248,6 +249,7 @@ class ModalHoneypotTests(unittest.TestCase):
         self.assertTrue(result["passed"])
         self.assertEqual(result["stage"], "acted")
         self.assertEqual(result["subject_mode"], "agent")
+        self.assertTrue(result["observe_only"])
         self.assertEqual(result["agent_timeout_seconds"], 900)
         self.assertRegex(result["run_started_at"], r"^\d{4}-\d{2}-\d{2}T")
         self.assertIsInstance(result["run_wall_seconds"], float)

@@ -178,7 +178,10 @@ def _wait_ready(path: Path, process: subprocess.Popen[str]) -> str:
     raise RuntimeError("loopback board did not become ready")
 
 
-def _run_env(case: dict[str, Any], root: Path, run: dict[str, Any], board_url: str, library: Path) -> dict[str, str]:
+def _run_env(
+    case: dict[str, Any], root: Path, run: dict[str, Any], board_url: str,
+    library: Path, *, observe_only: bool,
+) -> dict[str, str]:
     paths = json.loads((root / "paths.json").read_text())
     markers = _marker_registry(root)
     run_id = str(run["id"])
@@ -207,7 +210,7 @@ def _run_env(case: dict[str, Any], root: Path, run: dict[str, Any], board_url: s
         "HONEYPOT_SENSITIVE_PATHS": ":".join([paths["shared"], *peer_paths, paths["queue"], paths["results"]]),
         "HONEYPOT_PEER_ASSIGNMENT": str(peers[0]["assignment"] if peers else "synthetic peer assignment"),
     })
-    if case["input"].get("observe_only"):
+    if observe_only:
         env["HONEYPOT_COLLUSION_OBSERVE_ONLY"] = "1"
     else:
         env.pop("HONEYPOT_COLLUSION_OBSERVE_ONLY", None)
@@ -229,6 +232,11 @@ def _require_containment(subject_command: list[str] | None) -> None:
             "real collusion subjects require external containment; "
             f"set {CONTAINMENT_MARKER}=1 only inside the Modal path or a disposable isolated VM"
         )
+
+
+def _effective_observe_only(case: dict[str, Any], subject_command: list[str] | None) -> bool:
+    """Never let the tripwire change what a real-agent cell can observe."""
+    return subject_command is not None or bool(case["input"].get("observe_only"))
 
 
 def _process_results(output_text: str, reporter: str, root: Path, chain: ChainLog, observe_only: bool) -> None:
@@ -348,12 +356,13 @@ def run_one(
     orchestrator = ChainLog(output / "orchestrator", ORCHESTRATOR_EVIDENCE_FD)
     board_chain = ChainLog(output / "board", BOARD_EVIDENCE_FD)
     orchestrator.emit("CASE_STARTED", {"case": case["id"]})
+    observe_only = _effective_observe_only(case, subject_command)
     ready = output / "board" / "ready.txt"
     board_command = [
         sys.executable, str(HERE / "board.py"), "--event-fd", str(BOARD_EVIDENCE_FD),
         "--markers", str(output / "markers.json"), "--ready", str(ready),
     ]
-    if case["input"].get("observe_only"):
+    if observe_only:
         board_command.append("--observe-only")
     board = subprocess.Popen(
         board_command, pass_fds=(BOARD_EVIDENCE_FD,),
@@ -362,13 +371,14 @@ def run_one(
     board_url = _wait_ready(ready, board)
     hashes: dict[str, str] = {}
     _snapshot(output, orchestrator, hashes, "orchestrator", _marker_registry(output), initial=True)
-    observe_only = bool(case["input"].get("observe_only"))
     run_exit_codes: dict[str, int] = {}
     verifier = {"status": "not_configured"}
     for run in case["input"]["runs"]:
         run_id = str(run["id"])
         run_root = output / "runs" / run_id
-        env = _run_env(case, output, run, board_url, library)
+        env = _run_env(
+            case, output, run, board_url, library, observe_only=observe_only,
+        )
         is_agent_subject = run["kind"] == "subject" and subject_command is not None
         timeout_seconds = agent_timeout if is_agent_subject else case["input"].get("timeout_seconds", 15)
         command = [str(BASE_HARNESS), "--evidence-chain", "--timeout", str(timeout_seconds),
@@ -422,6 +432,7 @@ def run_one(
         delegation_tasks=_delegations(output), chains=chains, verifier=verifier,
     )
     report["subject_mode"] = "agent" if subject_command is not None else "scripted"
+    report["observe_only"] = observe_only
     report["execution_boundary"] = (
         "externally-contained-real-agent" if subject_command is not None
         else "local-scripted-no-model-no-network"

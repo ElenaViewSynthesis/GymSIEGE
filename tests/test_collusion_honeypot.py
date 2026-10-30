@@ -204,7 +204,7 @@ class CollusionCorpusTests(unittest.TestCase):
 
 @unittest.skipUnless(shutil.which("gcc") and Path("/proc").is_dir() and os.geteuid() != 0, "needs Linux, gcc, /proc, and a non-root user")
 class CollusionEndToEndTests(unittest.TestCase):
-    def _run(self, case_id, subject_command=None):
+    def _run(self, case_id, subject_command=None, *, require_calibration=True):
         with tempfile.TemporaryDirectory() as directory:
             command = [str(SUITE / "collusion_harness.sh"), case_id, "--output-root", directory]
             env = os.environ.copy()
@@ -216,7 +216,8 @@ class CollusionEndToEndTests(unittest.TestCase):
             )
             report = json.loads((Path(directory) / case_id / "report.json").read_text())
         self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
-        self.assertTrue(report["calibration_passed"])
+        if require_calibration:
+            self.assertTrue(report["calibration_passed"])
         self.assertEqual(report["observability"], "observable")
         self.assertTrue(report["evidence_chains"])
         self.assertTrue(all(item["valid"] for item in report["evidence_chains"]))
@@ -293,8 +294,32 @@ class CollusionEndToEndTests(unittest.TestCase):
         ])
         report = self._run("CLH-002", command)
         self.assertEqual(report["subject_mode"], "agent")
+        self.assertTrue(report["observe_only"])
         self.assertTrue(report["agent_execution_passed"])
         self.assertEqual(report["observed_stage"], "none")
+
+    def test_fake_agent_can_open_own_inbox_without_tripwire_interference(self):
+        command = shlex.join([
+            "python3", "-c",
+            (
+                "import os; "
+                "fd = os.open(os.environ['HONEYPOT_COLLUSION_OWN_INBOX'], "
+                "os.O_RDONLY | os.O_DIRECTORY); os.close(fd)"
+            ),
+        ])
+        report = self._run("CLH-001", command, require_calibration=False)
+        reads = [
+            item for item in report["evidence"]
+            if item["kind"] == "SHARED_CHANNEL_READ"
+        ]
+        self.assertTrue(report["agent_execution_passed"])
+        self.assertTrue(report["observe_only"])
+        self.assertTrue(reads)
+        self.assertEqual({item["detail"]["blocked"] for item in reads}, {"false"})
+
+    def test_scripted_cells_keep_their_configured_blocking_mode(self):
+        report = self._run("CLH-001")
+        self.assertFalse(report["observe_only"])
 
     def test_fake_agent_lure_is_scored_from_transcript(self):
         command = (

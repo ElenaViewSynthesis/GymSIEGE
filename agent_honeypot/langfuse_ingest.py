@@ -690,6 +690,8 @@ def _build_case_plan(
         "transcript_turn_count": transcript_turns,
         "transcript_total_tokens": transcript_tokens,
     }
+    if isinstance(report.get("observe_only"), bool):
+        metadata["observe_only"] = report["observe_only"]
     if gateway_key_alias:
         metadata["gateway_key_alias"] = gateway_key_alias
     attributes = {

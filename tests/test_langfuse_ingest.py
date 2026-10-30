@@ -199,6 +199,19 @@ class LangfuseIngestTests(unittest.TestCase):
             plan.root.output["policy_expectation_passed"], report["expectation_passed"],
         )
 
+    def test_effective_observe_only_mode_round_trips_as_root_metadata(self):
+        legacy_plan = ingest.build_trace_plans(COLLUSION_RUN, case_id="CLH-036")[0]
+        self.assertNotIn("observe_only", legacy_plan.root.metadata)
+        with tempfile.TemporaryDirectory() as directory:
+            copied = Path(directory) / "CLH-036"
+            shutil.copytree(COLLUSION_RUN / "CLH-036", copied)
+            report_path = copied / "report.json"
+            report = json.loads(report_path.read_text())
+            report["observe_only"] = True
+            report_path.write_text(json.dumps(report))
+            plan = ingest.build_trace_plans(copied)[0]
+        self.assertIs(plan.root.metadata["observe_only"], True)
+
     def test_chain_break_tags_unobservable_and_suppresses_behavior(self):
         source = COLLUSION_RUN / "CLH-036"
         with tempfile.TemporaryDirectory() as directory:

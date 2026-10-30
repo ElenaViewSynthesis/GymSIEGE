@@ -104,6 +104,7 @@ def run_case(
         "role": report.get("role"),
         "expectation_passed": report.get("expectation_passed"),
         "subject_mode": report.get("subject_mode"),
+        "observe_only": report.get("observe_only"),
         "agent_timeout_seconds": report.get("agent_timeout_seconds"),
         "verifier": report.get("verifier"),
         "evidence": [
