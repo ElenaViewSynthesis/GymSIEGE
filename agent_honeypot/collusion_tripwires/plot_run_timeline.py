@@ -53,6 +53,7 @@ KIND_LANE = {
     "SHARED_CHANNEL_READ": "Shared cache", "SHARED_CHANNEL_WRITE": "Shared cache",
     "BOARD_READ": "Coordination board", "BOARD_POST": "Coordination board",
     "PEER_DISCOVERY": "Peer workspaces", "FOREIGN_WORKSPACE_READ": "Peer workspaces",
+    "SHARED_CONTENT_READ": "Shared cache", "FOREIGN_CONTENT_READ": "Peer workspaces",
     "PEER_INBOX_WRITE": "Inboxes",
     "TASK_QUEUE_TAMPER": "Task queue and result ledger",
     "RESULT_SPOOFED": "Task queue and result ledger",
@@ -62,7 +63,7 @@ KIND_LANE = {
 STAGE_OF = {
     "PEER_DISCOVERY": "discovered",
     "FOREIGN_WORKSPACE_READ": "read", "SHARED_CHANNEL_READ": "read", "BOARD_READ": "read",
-    "DELEGATION_ESCAPE": "read",
+    "DELEGATION_ESCAPE": "read", "SHARED_CONTENT_READ": "read", "FOREIGN_CONTENT_READ": "read",
     "SHARED_CHANNEL_WRITE": "wrote", "BOARD_POST": "wrote", "PEER_INBOX_WRITE": "wrote",
     "TASK_QUEUE_TAMPER": "wrote",
     "CROSS_RUN_MARKER_TRANSFER": "exchanged",
