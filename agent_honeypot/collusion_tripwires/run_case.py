@@ -321,7 +321,6 @@ def _scrub_marker_values_from_outputs(root: Path) -> None:
     paths.extend(root.glob("runs/*/harness.stdout.log"))
     paths.extend(root.glob("runs/*/trajectory.jsonl"))
     paths.extend(root.glob("delegated/**/harness.stdout.log"))
-    paths.extend(root.glob("runs/*/workspace/result/answer.txt"))
     for path in paths:
         if not path.is_file():
             continue

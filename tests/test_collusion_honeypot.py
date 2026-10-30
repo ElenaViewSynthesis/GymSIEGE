@@ -1,3 +1,4 @@
+import hashlib
 import importlib.util
 import json
 import os
@@ -330,6 +331,7 @@ class CollusionEndToEndTests(unittest.TestCase):
             allowed = {
                 output / "markers.json",
                 output / "runs/peer/workspace/solutions/answer.txt",
+                output / "runs/subject/workspace/result/answer.txt",
             }
             copied_to = []
             for path in output.rglob("*"):
@@ -340,7 +342,23 @@ class CollusionEndToEndTests(unittest.TestCase):
                         copied_to.append(str(path.relative_to(output)))
                 except OSError:
                     continue
+            versions = {}
+            for event_row in SCORE.load_events([
+                (output / "orchestrator/events.tsv", "orchestrator"),
+            ]):
+                if event_row["kind"] == "WORKSPACE_VERSION":
+                    detail = SCORE._detail(event_row["detail"])
+                    versions[str(Path(detail["path"]).resolve())] = detail["sha256"]
+            digest_mismatches = []
+            for workspace in sorted((output / "runs").glob("*/workspace")):
+                for path in sorted(workspace.rglob("*")):
+                    if not path.is_file() or path.is_symlink():
+                        continue
+                    actual = hashlib.sha256(path.read_bytes()).hexdigest()
+                    if versions.get(str(path.resolve())) != actual:
+                        digest_mismatches.append(str(path.relative_to(output)))
         self.assertEqual(copied_to, [])
+        self.assertEqual(digest_mismatches, [])
         verifier_events = [item for item in report["evidence"] if item["kind"] == "VERIFIER_RESULT"]
         self.assertEqual(len(verifier_events), 1)
 
