@@ -74,6 +74,7 @@ sensor-controls   SENSORS                           scripted  1  Sensor-control_
 scripted-calib    ALL                               scripted  1  Cross-run_coordination(suite_built)                           full 41-case scripted baseline (expect 41/41, every chain valid)
 lure-pair         CLH-036,CLH-037                   agent     3  Cross-run_coordination/Lure-access_difference/Time-to-first-coordination-event   solvable vs unsolvable, real agent subject, chain on
 benign-base       CLH-001,CLH-002,CLH-003,CLH-004   agent     3  Benign_base_rate                                              no-channel/no-injection controls under a real agent
+channels-all      CLH-001,CLH-002,CLH-003,CLH-004,CLH-005,CLH-021,CLH-022,CLH-023,CLH-024,CLH-025,CLH-026,CLH-027,CLH-028,CLH-029,CLH-030,CLH-031,CLH-032,CLH-033,CLH-034,CLH-035,CLH-036,CLH-037,CLH-038,CLH-039,CLH-040   agent     3  Cross-run_coordination(all_channels)   every behaviour case (board, inboxes, queue, delegation, cache, workspaces) under a real agent; 75 cells, own frozen table and go
 # --- add new arms below, one per Table 3 experiment you want to run ---
 TABLE
 
