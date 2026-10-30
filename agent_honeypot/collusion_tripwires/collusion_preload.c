@@ -55,6 +55,50 @@ static bool in_list(const char *path, const char *name) {
     return false;
 }
 
+/* Evidence-chain transport, the same scheme as agent_honeypot/preload.c: the
+ * inherited HONEYPOT_EVENT_FD is used only while it is the pipe that
+ * HONEYPOT_EVENT_PATH (/proc/<harness pid>/fd/N) names; a spawner in between
+ * (Node's child_process, under which Codex runs) closes non-stdio descriptors
+ * and the number may be reused, so otherwise the path is opened once per
+ * process. fstat, fstatat and fcntl are not interposed; the open is raw. */
+static int chain_fd = -2;              /* -2 unresolved, -1 unavailable, else usable */
+static bool chain_fd_owned;            /* opened here by path, not inherited */
+static bool chain_target_known;
+static struct stat chain_target;
+
+static bool chain_is_target(int fd) {
+    struct stat have;
+    return fstat(fd, &have) == 0 && have.st_dev == chain_target.st_dev &&
+           have.st_ino == chain_target.st_ino;
+}
+
+static int chain_open_path(void) {
+    const char *path = getenv("HONEYPOT_EVENT_PATH");
+    if (!path || !*path) return -1;
+    long opened = syscall(SYS_openat, AT_FDCWD, path, O_WRONLY | O_CLOEXEC, 0);
+    return opened >= 0 ? (int)opened : -1;
+}
+
+static void chain_write(const char *fd_value, const char *line, size_t n) {
+    if (chain_fd == -2) {
+        const char *path = getenv("HONEYPOT_EVENT_PATH");
+        int fd = atoi(fd_value);
+        chain_target_known = path && *path && fstatat(AT_FDCWD, path, &chain_target, 0) == 0;
+        if (fd > 2 && (chain_target_known ? chain_is_target(fd) : fcntl(fd, F_GETFD) != -1)) {
+            chain_fd = fd;
+            chain_fd_owned = false;
+        } else {
+            chain_fd = chain_open_path();
+            chain_fd_owned = true;
+        }
+    } else if (chain_fd >= 0 && !chain_fd_owned && chain_target_known && !chain_is_target(chain_fd)) {
+        /* The inherited number was closed or reused since the last event. */
+        chain_fd = chain_open_path();
+        chain_fd_owned = true;
+    }
+    if (chain_fd >= 0) (void)syscall(SYS_write, chain_fd, line, n);
+}
+
 static void emit(const char *kind, const char *op, const char *path, bool blocked) {
     if (in_hook) return;
     in_hook = 1;
@@ -67,7 +111,7 @@ static void emit(const char *kind, const char *op, const char *path, bool blocke
         int n = snprintf(line, sizeof(line), "%lld.%09ld\t%s\t%d\t0\trun=%s op=%s path=%s blocked=%s\n",
             (long long)ts.tv_sec, ts.tv_nsec, kind, (int)getpid(), run ? run : "unknown",
             op, path ? path : "", blocked ? "true" : "false");
-        if (n > 0) (void)syscall(SYS_write, atoi(fd_s), line, (size_t)n);
+        if (n > 0) chain_write(fd_s, line, (size_t)n);
     }
     in_hook = 0;
 }

@@ -32,6 +32,53 @@ static void sanitize(char *dst, size_t size, const char *src) {
     dst[j] = '\0';
 }
 
+/* Evidence-chain transport. Writers inherit the pipe's write end as
+ * HONEYPOT_EVENT_FD, but a spawner between the harness and this process may
+ * close every non-stdio descriptor (Node's child_process does, and Codex runs
+ * under its Node wrapper), and the number may since have been reused for an
+ * unrelated file. HONEYPOT_EVENT_PATH names the same pipe by path
+ * (/proc/<harness pid>/fd/N). The inherited descriptor is used only while it
+ * is that pipe; otherwise the path is opened once per process. Nothing here
+ * calls an interposed symbol: fstat, fstatat and fcntl are not hooked, and the
+ * open is a raw syscall. */
+static int chain_fd = -2;              /* -2 unresolved, -1 unavailable, else usable */
+static bool chain_fd_owned;            /* opened here by path, not inherited */
+static bool chain_target_known;
+static struct stat chain_target;
+
+static bool chain_is_target(int fd) {
+    struct stat have;
+    return fstat(fd, &have) == 0 && have.st_dev == chain_target.st_dev &&
+           have.st_ino == chain_target.st_ino;
+}
+
+static int chain_open_path(void) {
+    const char *path = getenv("HONEYPOT_EVENT_PATH");
+    if (!path || !*path) return -1;
+    long opened = syscall(SYS_openat, AT_FDCWD, path, O_WRONLY | O_CLOEXEC, 0);
+    return opened >= 0 ? (int)opened : -1;
+}
+
+static void chain_write(const char *fd_value, const char *line, size_t n) {
+    if (chain_fd == -2) {
+        const char *path = getenv("HONEYPOT_EVENT_PATH");
+        int fd = atoi(fd_value);
+        chain_target_known = path && *path && fstatat(AT_FDCWD, path, &chain_target, 0) == 0;
+        if (fd > 2 && (chain_target_known ? chain_is_target(fd) : fcntl(fd, F_GETFD) != -1)) {
+            chain_fd = fd;
+            chain_fd_owned = false;
+        } else {
+            chain_fd = chain_open_path();
+            chain_fd_owned = true;
+        }
+    } else if (chain_fd >= 0 && !chain_fd_owned && chain_target_known && !chain_is_target(chain_fd)) {
+        /* The inherited number was closed or reused since the last event. */
+        chain_fd = chain_open_path();
+        chain_fd_owned = true;
+    }
+    if (chain_fd >= 0) (void)syscall(SYS_write, chain_fd, line, n);
+}
+
 static void log_event(const char *kind, long target, const char *detail) {
     if (in_hook) return;
     in_hook = 1;
@@ -46,8 +93,9 @@ static void log_event(const char *kind, long target, const char *detail) {
                          (long long)ts.tv_sec, ts.tv_nsec, kind, (int)getpid(), target, clean);
         const char *fd_value = getenv("HONEYPOT_EVENT_FD");
         if (fd_value && *fd_value) {
-            /* Evidence chain: an inherited pipe to the parent-owned mirror. */
-            if (n > 0) (void)syscall(SYS_write, atoi(fd_value), line, (size_t)n);
+            /* Evidence chain: an inherited pipe to the parent-owned mirror,
+             * re-opened by path when a spawner in between dropped it. */
+            if (n > 0) chain_write(fd_value, line, (size_t)n);
         } else {
             int fd = (int)syscall(SYS_openat, AT_FDCWD, path,
                                   O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0600);
