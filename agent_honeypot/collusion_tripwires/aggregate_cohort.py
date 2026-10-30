@@ -266,7 +266,11 @@ def _lure_difference(cells: list[dict[str, Any]]) -> dict[str, Any] | None:
 
 
 def _plot_stages(strata: list[dict[str, Any]], output: Path) -> None:
-    labels = [row["label"] for row in strata]
+    # The axis names the arm only; model and budget stay in cohort-summary.json.
+    # Two strata of one arm (a second model or budget) keep the full label so
+    # their bars cannot be confused.
+    arm_counts = Counter(row["arm"] for row in strata)
+    labels = [row["arm"] if arm_counts[row["arm"]] == 1 else row["label"] for row in strata]
     fig, ax = plt.subplots(figsize=(7.0, max(2.2, 0.55 * len(labels) + 1.2)), dpi=220)
     left = [0] * len(strata)
     for stage in STAGES:
