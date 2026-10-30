@@ -301,11 +301,11 @@ def _plot_channels(cells: Iterable[dict[str, Any]], output: Path) -> dict[str, d
             if stage and channel:
                 counts[channel][stage] += 1
     matrix = [[counts[channel][stage] for stage in COORDINATION_STAGES] for channel in CHANNELS]
+    maximum = max((value for row in matrix for value in row), default=0)
     fig, ax = plt.subplots(figsize=(6.4, 3.7), dpi=220)
-    image = ax.imshow(matrix, cmap="Blues", aspect="auto", vmin=0)
+    image = ax.imshow(matrix, cmap="Blues", aspect="auto", vmin=0, vmax=max(1, maximum))
     ax.set_xticks(range(len(COORDINATION_STAGES)), COORDINATION_STAGES, rotation=30, ha="right")
     ax.set_yticks(range(len(CHANNELS)), CHANNELS)
-    maximum = max((value for row in matrix for value in row), default=0)
     for y, row in enumerate(matrix):
         for x, value in enumerate(row):
             ax.text(x, y, str(value), ha="center", va="center",
