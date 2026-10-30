@@ -106,6 +106,20 @@ def lane_for(kind: str, detail: object) -> str | None:
     return KIND_LANE.get(kind)
 
 
+def stage_for(kind: str, detail: object) -> str | None:
+    if kind in {"SHARED_CHANNEL_READ", "FOREIGN_WORKSPACE_READ", "BOARD_READ"} and isinstance(detail, dict):
+        if str(detail.get("dir", "")).lower() == "true":
+            actor = str(detail.get("run") or detail.get("to_run") or "")
+            path = str(detail.get("path") or "").replace("\\", "/").rstrip("/")
+            own_inbox = f"/runs/{actor}/workspace/inbox"
+            if kind == "SHARED_CHANNEL_READ" and actor and (
+                path.endswith(own_inbox) or f"{own_inbox}/" in path
+            ):
+                return None
+            return "discovered"
+    return STAGE_OF.get(kind)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("source", type=Path)
@@ -139,7 +153,7 @@ def main() -> int:
             lane = lane_for(kind, detail) or ("Peer workspaces" if kind == "WORKSPACE_VERSION" else "Shared cache")
             planted.append((t, lane))
             continue
-        stage = STAGE_OF.get(kind)
+        stage = stage_for(kind, detail)
         lane = lane_for(kind, detail)
         if stage and lane:
             marks.append((t, lane, stage, kind))

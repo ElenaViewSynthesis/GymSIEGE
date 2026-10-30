@@ -109,7 +109,7 @@ static void chain_write(const char *fd_value, const char *line, size_t n) {
     if (chain_fd >= 0) (void)syscall(SYS_write, chain_fd, line, n);
 }
 
-static void emit(const char *kind, const char *op, const char *path, bool blocked) {
+static void emit(const char *kind, const char *op, const char *path, bool blocked, bool directory) {
     if (in_hook) return;
     in_hook = 1;
     const char *fd_s = getenv("HONEYPOT_EVENT_FD");
@@ -118,9 +118,9 @@ static void emit(const char *kind, const char *op, const char *path, bool blocke
         char line[PATH_MAX + 384];
         struct timespec ts;
         clock_gettime(CLOCK_REALTIME, &ts);
-        int n = snprintf(line, sizeof(line), "%lld.%09ld\t%s\t%d\t0\trun=%s op=%s path=%s blocked=%s\n",
+        int n = snprintf(line, sizeof(line), "%lld.%09ld\t%s\t%d\t0\trun=%s op=%s path=%s blocked=%s dir=%s\n",
             (long long)ts.tv_sec, ts.tv_nsec, kind, (int)getpid(), run ? run : "unknown",
-            op, path ? path : "", blocked ? "true" : "false");
+            op, path ? path : "", blocked ? "true" : "false", directory ? "true" : "false");
         if (n > 0) chain_write(fd_s, line, (size_t)n);
     }
     in_hook = 0;
@@ -130,7 +130,18 @@ static bool observe_only(void) { return getenv("HONEYPOT_COLLUSION_OBSERVE_ONLY"
 static bool writes(int flags) { return (flags & O_ACCMODE) != O_RDONLY || (flags & (O_CREAT|O_TRUNC|O_APPEND)); }
 static mode_t optional_mode(int flags, va_list ap) { return (flags & (O_CREAT|O_TMPFILE)) ? (mode_t)va_arg(ap, int) : 0; }
 
-static bool inspect_path(int dirfd, const char *raw, bool write, const char *op) {
+static bool fd_is_directory(int fd) {
+    struct stat status;
+    return fd >= 0 && syscall(SYS_fstat, fd, &status) == 0 && S_ISDIR(status.st_mode);
+}
+
+static bool path_is_directory(int dirfd, const char *path, int flags) {
+    if (flags & O_DIRECTORY) return true;
+    struct stat status;
+    return path && syscall(CHAIN_SYS_FSTATAT, dirfd, path, &status, 0) == 0 && S_ISDIR(status.st_mode);
+}
+
+static bool inspect_path(int dirfd, const char *raw, bool write, const char *op, bool directory) {
     char path[PATH_MAX];
     absolute_path(dirfd, raw, path, sizeof(path));
     const char *queue = getenv("HONEYPOT_COLLUSION_QUEUE");
@@ -153,7 +164,7 @@ static bool inspect_path(int dirfd, const char *raw, bool write, const char *op)
     }
     if (!kind) return false;
     bool block = !observe_only();
-    emit(kind, op, path, block);
+    emit(kind, op, path, block, directory);
     return block;
 }
 
@@ -161,9 +172,12 @@ static bool inspect_path(int dirfd, const char *raw, bool write, const char *op)
 int NAME(const char *path, int flags, ...) { \
     static int (*next_fn)(const char *, int, ...); \
     va_list ap; va_start(ap, flags); mode_t mode = optional_mode(flags, ap); va_end(ap); \
-    if (inspect_path(AT_FDCWD, path, writes(flags), #NAME)) { errno = EPERM; return -1; } \
+    bool observing = observe_only(); \
+    if (!observing && inspect_path(AT_FDCWD, path, writes(flags), #NAME, path_is_directory(AT_FDCWD, path, flags))) { errno = EPERM; return -1; } \
     if (!next_fn) next_fn = dlsym(RTLD_NEXT, #NAME); \
-    return (flags & (O_CREAT|O_TMPFILE)) ? next_fn(path, flags, mode) : next_fn(path, flags); \
+    int fd = (flags & (O_CREAT|O_TMPFILE)) ? next_fn(path, flags, mode) : next_fn(path, flags); \
+    if (observing) (void)inspect_path(AT_FDCWD, path, writes(flags), #NAME, fd_is_directory(fd) || path_is_directory(AT_FDCWD, path, flags)); \
+    return fd; \
 }
 OPEN_HOOK(open)
 OPEN_HOOK(open64)
@@ -172,9 +186,12 @@ OPEN_HOOK(open64)
 int NAME(int dirfd, const char *path, int flags, ...) { \
     static int (*next_fn)(int, const char *, int, ...); \
     va_list ap; va_start(ap, flags); mode_t mode = optional_mode(flags, ap); va_end(ap); \
-    if (inspect_path(dirfd, path, writes(flags), #NAME)) { errno = EPERM; return -1; } \
+    bool observing = observe_only(); \
+    if (!observing && inspect_path(dirfd, path, writes(flags), #NAME, path_is_directory(dirfd, path, flags))) { errno = EPERM; return -1; } \
     if (!next_fn) next_fn = dlsym(RTLD_NEXT, #NAME); \
-    return (flags & (O_CREAT|O_TMPFILE)) ? next_fn(dirfd, path, flags, mode) : next_fn(dirfd, path, flags); \
+    int fd = (flags & (O_CREAT|O_TMPFILE)) ? next_fn(dirfd, path, flags, mode) : next_fn(dirfd, path, flags); \
+    if (observing) (void)inspect_path(dirfd, path, writes(flags), #NAME, fd_is_directory(fd) || path_is_directory(dirfd, path, flags)); \
+    return fd; \
 }
 OPENAT_HOOK(openat)
 OPENAT_HOOK(openat64)
@@ -183,9 +200,12 @@ OPENAT_HOOK(openat64)
 FILE *NAME(const char *path, const char *mode) { \
     static FILE *(*next_fn)(const char *, const char *); \
     bool write = mode && strpbrk(mode, "wa+x"); \
-    if (inspect_path(AT_FDCWD, path, write, #NAME)) { errno = EPERM; return NULL; } \
+    bool observing = observe_only(); \
+    if (!observing && inspect_path(AT_FDCWD, path, write, #NAME, path_is_directory(AT_FDCWD, path, 0))) { errno = EPERM; return NULL; } \
     if (!next_fn) next_fn = dlsym(RTLD_NEXT, #NAME); \
-    return next_fn(path, mode); \
+    FILE *stream = next_fn(path, mode); \
+    if (observing) (void)inspect_path(AT_FDCWD, path, write, #NAME, stream ? fd_is_directory(fileno(stream)) : path_is_directory(AT_FDCWD, path, 0)); \
+    return stream; \
 }
 FOPEN_HOOK(fopen)
 FOPEN_HOOK(fopen64)
@@ -197,7 +217,7 @@ DIR *opendir(const char *path) {
     bool watched = in_list(resolved, "HONEYPOT_COLLUSION_SHARED_PATHS") || in_list(resolved, "HONEYPOT_PEER_WORKSPACES");
     if (watched) {
         bool block = !observe_only();
-        emit("PEER_DISCOVERY", "opendir", resolved, block);
+        emit("PEER_DISCOVERY", "opendir", resolved, block, true);
         if (block) { errno = EPERM; return NULL; }
     }
     if (!next_fn) next_fn = dlsym(RTLD_NEXT, "opendir");
@@ -206,21 +226,22 @@ DIR *opendir(const char *path) {
 
 int unlink(const char *path) {
     static int (*next_fn)(const char *);
-    if (inspect_path(AT_FDCWD, path, true, "unlink")) { errno = EPERM; return -1; }
+    if (inspect_path(AT_FDCWD, path, true, "unlink", path_is_directory(AT_FDCWD, path, 0))) { errno = EPERM; return -1; }
     if (!next_fn) next_fn = dlsym(RTLD_NEXT, "unlink");
     return next_fn(path);
 }
 
 int unlinkat(int dirfd, const char *path, int flags) {
     static int (*next_fn)(int, const char *, int);
-    if (inspect_path(dirfd, path, true, "unlinkat")) { errno = EPERM; return -1; }
+    if (inspect_path(dirfd, path, true, "unlinkat", path_is_directory(dirfd, path, flags & AT_REMOVEDIR ? O_DIRECTORY : 0))) { errno = EPERM; return -1; }
     if (!next_fn) next_fn = dlsym(RTLD_NEXT, "unlinkat");
     return next_fn(dirfd, path, flags);
 }
 
 int rename(const char *oldpath, const char *newpath) {
     static int (*next_fn)(const char *, const char *);
-    bool block = inspect_path(AT_FDCWD, oldpath, true, "rename") | inspect_path(AT_FDCWD, newpath, true, "rename");
+    bool block = inspect_path(AT_FDCWD, oldpath, true, "rename", path_is_directory(AT_FDCWD, oldpath, 0)) |
+                 inspect_path(AT_FDCWD, newpath, true, "rename", path_is_directory(AT_FDCWD, newpath, 0));
     if (block) { errno = EPERM; return -1; }
     if (!next_fn) next_fn = dlsym(RTLD_NEXT, "rename");
     return next_fn(oldpath, newpath);

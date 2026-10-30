@@ -70,6 +70,22 @@ def _read_json(path: Path, default: Any = None) -> Any:
         return default
 
 
+def load_selection(path: Path) -> set[str]:
+    payload = _read_json(path)
+    rows = payload.get("run_dirs") if isinstance(payload, dict) else payload
+    if not isinstance(rows, list) or not rows:
+        raise ValueError("selection file must contain a non-empty run_dirs list")
+    selected: set[str] = set()
+    for value in rows:
+        if not isinstance(value, str):
+            raise ValueError("selection run directories must be strings")
+        candidate = Path(value)
+        if candidate.is_absolute() or ".." in candidate.parts or len(candidate.parts) < 2:
+            raise ValueError(f"selection run directory must be a safe relative path: {value!r}")
+        selected.add(candidate.as_posix().rstrip("/"))
+    return selected
+
+
 def _iso_seconds(start: str | None, end: str | None) -> float | None:
     if not start or not end:
         return None
@@ -126,6 +142,28 @@ def _safe_evidence(run_dir: Path, case_id: str, result: dict[str, Any]) -> list[
 # inbox is a cross-run channel), and PEER_DISCOVERY for listing the shared cache
 # as well as the peers' root, so for these kinds the path decides the row.
 PATH_ATTRIBUTED_KINDS = {"SHARED_CHANNEL_READ", "SHARED_CHANNEL_WRITE", "PEER_DISCOVERY"}
+DIRECTORY_READ_KINDS = {"SHARED_CHANNEL_READ", "FOREIGN_WORKSPACE_READ", "BOARD_READ"}
+
+
+def _true(value: Any) -> bool:
+    return value is True or str(value).lower() == "true"
+
+
+def _own_inbox_directory(detail: Any) -> bool:
+    if not isinstance(detail, dict):
+        return False
+    actor = str(detail.get("run") or detail.get("to_run") or "")
+    path = str(detail.get("path") or "").replace("\\", "/").rstrip("/")
+    own_inbox = f"/runs/{actor}/workspace/inbox"
+    return bool(actor) and (path.endswith(own_inbox) or f"{own_inbox}/" in path)
+
+
+def _event_stage(kind: str, detail: Any) -> str | None:
+    if kind in DIRECTORY_READ_KINDS and isinstance(detail, dict) and _true(detail.get("dir")):
+        if kind == "SHARED_CHANNEL_READ" and _own_inbox_directory(detail):
+            return None
+        return "discovered"
+    return KIND_STAGE.get(kind)
 
 
 def _channel(kind: str, detail: Any) -> str | None:
@@ -323,8 +361,9 @@ def _plot_channels(cells: Iterable[dict[str, Any]], output: Path) -> dict[str, d
             continue
         for item in cell["evidence"]:
             kind = str(item.get("kind", ""))
-            stage = KIND_STAGE.get(kind)
-            channel = _channel(kind, item.get("detail"))
+            detail = item.get("detail")
+            stage = _event_stage(kind, detail)
+            channel = _channel(kind, detail)
             if stage and channel is None:
                 raise ValueError(f"unmapped channel for stage-bearing evidence kind {kind!r}")
             if stage and channel:
@@ -348,7 +387,7 @@ def _plot_channels(cells: Iterable[dict[str, Any]], output: Path) -> dict[str, d
 
 def aggregate(
     cohort_root: Path, out_dir: Path, *, arms: list[str] | None = None,
-    since: datetime | str | None = None,
+    since: datetime | str | None = None, selection: set[str] | None = None,
 ) -> dict[str, Any]:
     run_dirs = sorted({
         path.parent
@@ -366,6 +405,9 @@ def aggregate(
     selected = []
     for cell in cells:
         reasons = []
+        run_relative = Path(cell["run_dir"]).resolve().relative_to(cohort_root.resolve()).as_posix()
+        if selection is not None and run_relative not in selection:
+            reasons.append("selection")
         if selected_arms and cell["arm"] not in selected_arms:
             reasons.append("arm")
         started = _iso_datetime(cell.get("started_at"))
@@ -401,6 +443,7 @@ def aggregate(
         "selection": {
             "arms": sorted(selected_arms),
             "since": since_time.isoformat() if since_time is not None else None,
+            "run_dirs": sorted(selection) if selection is not None else None,
         },
         "channel_by_stage_counts": channel_counts,
         "rules": {
@@ -419,11 +462,17 @@ def main() -> int:
     parser.add_argument("out_dir", type=Path)
     parser.add_argument("--arm", action="append", dest="arms")
     parser.add_argument("--since", type=str)
+    parser.add_argument("--selection-file", type=Path)
     args = parser.parse_args()
     if args.since is not None and _iso_datetime(args.since) is None:
         parser.error("--since must be an ISO 8601 timestamp")
+    try:
+        selection = load_selection(args.selection_file) if args.selection_file else None
+    except ValueError as exc:
+        parser.error(str(exc))
     summary = aggregate(
         args.cohort_root.resolve(), args.out_dir.resolve(), arms=args.arms, since=args.since,
+        selection=selection,
     )
     print(json.dumps({
         "cells_discovered": summary["cells_discovered"],
