@@ -96,6 +96,26 @@ class PublicationFigureTests(unittest.TestCase):
             dumped = (out / "figures.json").read_text()
             self.assertNotIn("HONEYCOLLUDE", dumped)
 
+            # A re-scored mirror overrides the stage and verifier of its cells, and
+            # an aggregator summary can supply panel (b)'s counts directly.
+            mirror = base / "rescored" / "benign-base" / "collusion-CLH-001-agent-chain-text-net-allow-20261030T163945Z"
+            mirror.mkdir(parents=True)
+            (mirror / "summary.json").write_text(json.dumps({"results": [{"case_id": "CLH-001", "stage": "discovered", "verifier": None}]}))
+            channel_summary = base / "rescored-summary.json"
+            channel_summary.write_text(json.dumps({"channel_by_stage_counts": {"Shared cache": {"discovered": 2, "read": 1}}}))
+            numbers = PUBFIG.build(
+                calibration, runs_root,
+                [("v2", "20261030T163114Z", "99999999T999999Z", True)],
+                ["lure-pair", "benign-base"], ROOT / "agent_honeypot/collusion_tripwires/cases.jsonl",
+                base / "figures-rescored", "v2", {"v2": base / "rescored"}, channel_summary,
+            )
+            cell = next(c for c in numbers["cells"] if c["case"] == "CLH-001")
+            self.assertTrue(cell["rescored"])
+            self.assertEqual(cell["stage"], "discovered")
+            self.assertEqual(cell["ladder"], "listed own inbox")  # the ladder still reads the archive
+            self.assertEqual(numbers["channel_by_stage_panels"]["agent_cohort"]["Shared cache"], {"discovered": 2, "read": 1})
+            self.assertEqual(numbers["channel_by_stage_panels"]["agent_cohort"]["Inboxes"], {})
+
 
 if __name__ == "__main__":
     unittest.main()
