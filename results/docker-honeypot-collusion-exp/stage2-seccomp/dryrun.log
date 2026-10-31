@@ -1,0 +1,189 @@
+Plan: 1 arm(s), 1 cells, ~$0.13 (@ $0.13/cell). Mode: PLAN-ONLY.
+Provider: docker (runner docker_honeypot/runner.py, run record docker-run.json). Output root: results/docker-honeypot-collusion-exp.
+Agent arms present: real-agent collusion runs ONLY inside the sandbox (containment-gated); never on the host.
+
+== arm lure-pair  (subject=agent, trials=1, cells=1, Table 3: Cross-run_coordination/Lure-access_difference/Time-to-first-coordination-event)
+  [CLH-036 trial 1] PLAN
+WARNING: --egress-allowlist: this container reaches blizzard-unviable-penny.ngrok-free.dev, us.cloud.langfuse.com through the egress proxy and no other host; every byte to those hosts is an observed channel
+{
+  "provider": "docker",
+  "boundary": "docker-container",
+  "harness": "collusion",
+  "case_id": "CLH-036",
+  "output_root": "results/docker-honeypot-collusion-exp/lure-pair",
+  "output_name": "collusion-CLH-036-agent-chain-text-net-allow",
+  "image": "rogue-agent-honeypot:77ab854-dirty",
+  "proxy_image": "rogue-agent-honeypot-proxy:77ab854-dirty",
+  "source_revision": {
+    "commit": "77ab854ec893e1003cac5da911d3418ec12a8527",
+    "dirty": true
+  },
+  "network": "honeypot-egress",
+  "seccomp_profile": {
+    "path": "docker_honeypot/seccomp-bwrap.json",
+    "sha256": "e9c622ab994a377528dcb6740755036c49ab097b50353f521882ad4e4713a997"
+  },
+  "egress_proxy": {
+    "name": "collusion-CLH-036-t1-20261031T224429Z-proxy",
+    "alias": "egress-proxy",
+    "port": 3128,
+    "allowlist": [
+      "blizzard-unviable-penny.ngrok-free.dev",
+      "us.cloud.langfuse.com"
+    ]
+  },
+  "docker_run": [
+    "run",
+    "--detach",
+    "--rm",
+    "--name",
+    "collusion-CLH-036-t1-20261031T224429Z",
+    "--network",
+    "honeypot-egress",
+    "--cpus",
+    "2",
+    "--memory",
+    "4g",
+    "--pids-limit",
+    "512",
+    "--read-only=false",
+    "--cap-drop",
+    "ALL",
+    "--cap-add",
+    "SETGID",
+    "--cap-add",
+    "SETUID",
+    "--security-opt",
+    "no-new-privileges",
+    "--security-opt",
+    "seccomp=/mnt/c/Users/proxi/Documents/codex-7/daytona-sandbox/docker_honeypot/seccomp-bwrap.json",
+    "--workdir",
+    "/workspace",
+    "--label",
+    "rogue-agent-honeypot.role=sandbox",
+    "rogue-agent-honeypot:77ab854-dirty",
+    "sleep",
+    "infinity"
+  ],
+  "docker_exec": [
+    "exec",
+    "--workdir",
+    "/workspace",
+    "--env",
+    "OPENAI_API_KEY",
+    "--env",
+    "OPENAI_BASE_URL",
+    "--env",
+    "HTTPS_PROXY=http://egress-proxy:3128",
+    "--env",
+    "HTTP_PROXY=http://egress-proxy:3128",
+    "--env",
+    "NO_PROXY=",
+    "collusion-CLH-036-t1-20261031T224429Z",
+    "/usr/sbin/runuser",
+    "-u",
+    "honeypot",
+    "--preserve-environment",
+    "--",
+    "env",
+    "HOME=/home/honeypot",
+    "PYTHONDONTWRITEBYTECODE=1",
+    "HONEYPOT_WEIGHTS_MODE=text",
+    "HONEYPOT_EVIDENCE_CHAIN=1",
+    "MODAL_COLLUSION_CONTAINMENT_ENFORCED=1",
+    "HONEYPOT_CODEX_MODEL=claude-opus-5-5",
+    "HONEYPOT_CODEX_SANDBOX=workspace-write",
+    "MODAL_NETWORK_ALLOWLIST=blizzard-unviable-penny.ngrok-free.dev,us.cloud.langfuse.com",
+    "HONEYPOT_EXECUTION_BOUNDARY=docker-container",
+    "python3",
+    "/opt/honeypot/modal_honeypot/in_sandbox.py",
+    "--output-root",
+    "/tmp/eval-output",
+    "--harness",
+    "collusion",
+    "--workers",
+    "4",
+    "--case-id",
+    "CLH-036",
+    "--subject-command",
+    "bash /opt/honeypot/modal_honeypot/codex_gateway.sh",
+    "--agent-timeout",
+    "900"
+  ],
+  "policy": {
+    "provider": "docker",
+    "boundary": "docker-container",
+    "cpus": "2",
+    "memory": "4g",
+    "pids_limit": 512,
+    "cap_drop": [
+      "ALL"
+    ],
+    "cap_add": [
+      "SETGID",
+      "SETUID"
+    ],
+    "security_opt": [
+      "no-new-privileges",
+      "seccomp=docker_honeypot/seccomp-bwrap.json"
+    ],
+    "privileged": false,
+    "host_network": false,
+    "bind_mounts": [],
+    "volumes": {},
+    "secrets": [
+      "virtual-key:collusion/CLH-036/t1/20261031T224429Z"
+    ],
+    "timeout": 1800,
+    "user": "honeypot",
+    "network": "honeypot-egress",
+    "egress": "allowlist",
+    "egress_allowlist": [
+      "blizzard-unviable-penny.ngrok-free.dev",
+      "us.cloud.langfuse.com"
+    ],
+    "egress_proxy": "http://egress-proxy:3128",
+    "exec_timeout": 1500,
+    "network_off_suite_enabled": false,
+    "evidence_chain": true,
+    "weights_mode": "text",
+    "key_budget_usd": 0.9,
+    "key_ttl": "35m",
+    "key_model": "claude-opus-5-5",
+    "agent_timeout_seconds": 900,
+    "codex_sandbox": "workspace-write"
+  },
+  "remote_argv": [
+    "/usr/sbin/runuser",
+    "-u",
+    "honeypot",
+    "--preserve-environment",
+    "--",
+    "env",
+    "HOME=/home/honeypot",
+    "PYTHONDONTWRITEBYTECODE=1",
+    "HONEYPOT_WEIGHTS_MODE=text",
+    "HONEYPOT_EVIDENCE_CHAIN=1",
+    "MODAL_COLLUSION_CONTAINMENT_ENFORCED=1",
+    "HONEYPOT_CODEX_MODEL=claude-opus-5-5",
+    "HONEYPOT_CODEX_SANDBOX=workspace-write",
+    "MODAL_NETWORK_ALLOWLIST=blizzard-unviable-penny.ngrok-free.dev,us.cloud.langfuse.com",
+    "HONEYPOT_EXECUTION_BOUNDARY=docker-container",
+    "python3",
+    "/opt/honeypot/modal_honeypot/in_sandbox.py",
+    "--output-root",
+    "/tmp/eval-output",
+    "--harness",
+    "collusion",
+    "--workers",
+    "4",
+    "--case-id",
+    "CLH-036",
+    "--subject-command",
+    "bash /opt/honeypot/modal_honeypot/codex_gateway.sh",
+    "--agent-timeout",
+    "900"
+  ]
+}
+
+PLAN ONLY: no sandbox, no model call. Re-run with --execute and EXPERIMENT_APPROVED=1 after review.

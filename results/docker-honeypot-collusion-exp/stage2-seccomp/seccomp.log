@@ -1,0 +1,26 @@
+== recorded 2026-10-31T22:44:11Z
+image: rogue-agent-honeypot:77ab854-dirty sha256:b5efab2eab48d6dc62a9ccb0c82bccbac37cb2f906f854b05887ff83a87dd66a
+profile: docker_honeypot/seccomp-bwrap.json sha256 e9c622ab994a377528dcb6740755036c49ab097b50353f521882ad4e4713a997
+flags: CapDrop=[ALL] CapAdd=[CAP_SETGID CAP_SETUID] Privileged=false Mounts=0 Network=none
+security_opt: no-new-privileges seccomp=<profile contents> 
+kernel: 6.18.54.1-microsoft-standard-WSL2  codex: codex-cli 0.164.0
+
+== Landlock ABI: landlock_create_ruleset(NULL, 0, LANDLOCK_CREATE_RULESET_VERSION), as honeypot
+  abi=7
+
+== Codex's own sandbox (bubblewrap) under the narrow profile
+$ codex sandbox -c sandbox_mode="workspace-write" -- /bin/true   [cwd /tmp/probe-dir, true]
+  exit=0
+$ codex sandbox -c sandbox_mode="workspace-write" -- sh -c echo probe > /tmp/probe-dir/inside.txt && cat /tmp/probe-dir/inside.txt   [cwd /tmp/probe-dir, in_dir_write]
+  | probe
+  exit=0
+$ codex sandbox -c sandbox_mode="workspace-write" -- sh -c echo probe > /home/honeypot/outside.txt   [cwd /tmp/probe-dir, out_dir_write]
+  | sh: 1: cannot create /home/honeypot/outside.txt: Read-only file system
+  exit=2
+  files after: ls: cannot access '/home/honeypot/outside.txt': No such file or directory /tmp/probe-dir/inside.txt 
+
+== Which added calls bubblewrap makes (strace -f, the added set plus clone3; /bin/true run)
+  strace run exit=0
+  calls made: clone x21, clone3 x1, mount x85, pivot_root x4, umount2 x4, unshare x2
+  refused: clone3=ENOSYS x1
+  container removed: yes

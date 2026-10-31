@@ -1,0 +1,122 @@
+155   clone3({flags=CLONE_VM|CLONE_FS|CLONE_FILES|CLONE_SIGHAND|CLONE_THREAD|CLONE_SYSVSEM|CLONE_SETTLS|CLONE_PARENT_SETTID|CLONE_CHILD_CLEARTID, child_tid=0x761d2cba6990, parent_tid=0x761d2cba6990, exit_signal=0, stack=0x761d2c3a6000, stack_size=0x7ffe40, tls=0x761d2cba66c0}, 88) = -1 ENOSYS (Function not implemented)
+155   clone(child_stack=0x761d2cba5e30, flags=CLONE_VM|CLONE_FS|CLONE_FILES|CLONE_SIGHAND|CLONE_THREAD|CLONE_SYSVSEM|CLONE_SETTLS|CLONE_PARENT_SETTID|CLONE_CHILD_CLEARTID, parent_tid=[156], tls=0x761d2cba66c0, child_tidptr=0x761d2cba6990) = 156
+155   clone(child_stack=0x761d27ffee30, flags=CLONE_VM|CLONE_FS|CLONE_FILES|CLONE_SIGHAND|CLONE_THREAD|CLONE_SYSVSEM|CLONE_SETTLS|CLONE_PARENT_SETTID|CLONE_CHILD_CLEARTID, parent_tid=[157], tls=0x761d27fff6c0, child_tidptr=0x761d27fff990) = 157
+155   clone(child_stack=0x761d277fde30, flags=CLONE_VM|CLONE_FS|CLONE_FILES|CLONE_SIGHAND|CLONE_THREAD|CLONE_SYSVSEM|CLONE_SETTLS|CLONE_PARENT_SETTID|CLONE_CHILD_CLEARTID, parent_tid=[158], tls=0x761d277fe6c0, child_tidptr=0x761d277fe990) = 158
+155   clone(child_stack=0x761d26ffce30, flags=CLONE_VM|CLONE_FS|CLONE_FILES|CLONE_SIGHAND|CLONE_THREAD|CLONE_SYSVSEM|CLONE_SETTLS|CLONE_PARENT_SETTID|CLONE_CHILD_CLEARTID, parent_tid=[159], tls=0x761d26ffd6c0, child_tidptr=0x761d26ffd990) = 159
+155   clone(child_stack=0x761d267fbe30, flags=CLONE_VM|CLONE_FS|CLONE_FILES|CLONE_SIGHAND|CLONE_THREAD|CLONE_SYSVSEM|CLONE_SETTLS|CLONE_PARENT_SETTID|CLONE_CHILD_CLEARTID, parent_tid=[160], tls=0x761d267fc6c0, child_tidptr=0x761d267fc990) = 160
+155   clone(child_stack=0x761d2c324e30, flags=CLONE_VM|CLONE_FS|CLONE_FILES|CLONE_SIGHAND|CLONE_THREAD|CLONE_SYSVSEM|CLONE_SETTLS|CLONE_PARENT_SETTID|CLONE_CHILD_CLEARTID, parent_tid=[161], tls=0x761d2c3256c0, child_tidptr=0x761d2c325990) = 161
+155   clone(child_stack=0x761d25ffae30, flags=CLONE_VM|CLONE_FS|CLONE_FILES|CLONE_SIGHAND|CLONE_THREAD|CLONE_SYSVSEM|CLONE_SETTLS|CLONE_PARENT_SETTID|CLONE_CHILD_CLEARTID, parent_tid=[162], tls=0x761d25ffb6c0, child_tidptr=0x761d25ffb990) = 162
+155   clone(child_stack=0x761d257f9e30, flags=CLONE_VM|CLONE_FS|CLONE_FILES|CLONE_SIGHAND|CLONE_THREAD|CLONE_SYSVSEM|CLONE_SETTLS|CLONE_PARENT_SETTID|CLONE_CHILD_CLEARTID, parent_tid=[163], tls=0x761d257fa6c0, child_tidptr=0x761d257fa990) = 163
+155   clone(child_stack=0x761d24ff8e30, flags=CLONE_VM|CLONE_FS|CLONE_FILES|CLONE_SIGHAND|CLONE_THREAD|CLONE_SYSVSEM|CLONE_SETTLS|CLONE_PARENT_SETTID|CLONE_CHILD_CLEARTID, parent_tid=[164], tls=0x761d24ff96c0, child_tidptr=0x761d24ff9990) = 164
+155   clone(child_stack=0x761d17ffee30, flags=CLONE_VM|CLONE_FS|CLONE_FILES|CLONE_SIGHAND|CLONE_THREAD|CLONE_SYSVSEM|CLONE_SETTLS|CLONE_PARENT_SETTID|CLONE_CHILD_CLEARTID, parent_tid=[165], tls=0x761d17fff6c0, child_tidptr=0x761d17fff990) = 165
+155   clone(child_stack=NULL, flags=CLONE_CHILD_CLEARTID|CLONE_CHILD_SETTID|SIGCHLD, child_tidptr=0x761d2cbeab50) = 166
+166   clone(child_stack=0x7cafd13fe988, flags=CLONE_VM|CLONE_FS|CLONE_FILES|CLONE_SIGHAND|CLONE_THREAD|CLONE_SYSVSEM|CLONE_SETTLS|CLONE_PARENT_SETTID|CLONE_CHILD_CLEARTID|0x400000, parent_tid=[167], tls=0x7cafd13ffb38, child_tidptr=0x7cafe3efbd84) = 167
+167   clone(child_stack=0x7cafcfdfe988, flags=CLONE_VM|CLONE_FS|CLONE_FILES|CLONE_SIGHAND|CLONE_THREAD|CLONE_SYSVSEM|CLONE_SETTLS|CLONE_PARENT_SETTID|CLONE_CHILD_CLEARTID|0x400000, parent_tid=[168], tls=0x7cafcfdffb38, child_tidptr=0x7cafe3efbd84) = 168
+167   clone(child_stack=0x7cafcedfa988, flags=CLONE_VM|CLONE_FS|CLONE_FILES|CLONE_SIGHAND|CLONE_THREAD|CLONE_SYSVSEM|CLONE_SETTLS|CLONE_PARENT_SETTID|CLONE_CHILD_CLEARTID|0x400000, parent_tid=[169], tls=0x7cafcedfbb38, child_tidptr=0x7cafe3efbd84) = 169
+167   clone(child_stack=0x7cafcd3fe988, flags=CLONE_VM|CLONE_FS|CLONE_FILES|CLONE_SIGHAND|CLONE_THREAD|CLONE_SYSVSEM|CLONE_SETTLS|CLONE_PARENT_SETTID|CLONE_CHILD_CLEARTID|0x400000, parent_tid=[170], tls=0x7cafcd3ffb38, child_tidptr=0x7cafe3efbd84) = 170
+167   clone(child_stack=0x7cafcbdfe988, flags=CLONE_VM|CLONE_FS|CLONE_FILES|CLONE_SIGHAND|CLONE_THREAD|CLONE_SYSVSEM|CLONE_SETTLS|CLONE_PARENT_SETTID|CLONE_CHILD_CLEARTID|0x400000, parent_tid=[171], tls=0x7cafcbdffb38, child_tidptr=0x7cafe3efbd84) = 171
+167   clone(child_stack=0x7cafcadfa988, flags=CLONE_VM|CLONE_FS|CLONE_FILES|CLONE_SIGHAND|CLONE_THREAD|CLONE_SYSVSEM|CLONE_SETTLS|CLONE_PARENT_SETTID|CLONE_CHILD_CLEARTID|0x400000, parent_tid=[172], tls=0x7cafcadfbb38, child_tidptr=0x7cafe3efbd84) = 172
+167   clone(child_stack=0x7cafc97fe988, flags=CLONE_VM|CLONE_FS|CLONE_FILES|CLONE_SIGHAND|CLONE_THREAD|CLONE_SYSVSEM|CLONE_SETTLS|CLONE_PARENT_SETTID|CLONE_CHILD_CLEARTID|0x400000, parent_tid=[173], tls=0x7cafc97ffb38, child_tidptr=0x7cafe3efbd84) = 173
+167   clone(child_stack=0x7cafd1391c08, flags=CLONE_VM|CLONE_VFORK|SIGCHLD) = 174
+175   clone(child_stack=NULL, flags=CLONE_NEWNS|CLONE_NEWIPC|CLONE_NEWUSER|CLONE_NEWPID|CLONE_NEWNET|SIGCHLD) = 176
+176   mount(NULL, "/", NULL, MS_REC|MS_SILENT|MS_SLAVE, NULL) = 0
+176   mount("tmpfs", "/tmp", "tmpfs", MS_NOSUID|MS_NODEV, NULL) = 0
+176   mount("newroot", "newroot", NULL, MS_MGC_VAL|MS_BIND|MS_REC|MS_SILENT, NULL) = 0
+176   pivot_root("/tmp", "oldroot")     = 0
+176   mount("tmpfs", "/newroot/", "tmpfs", MS_NOSUID|MS_NODEV, "mode=0755") = 0
+176   mount("tmpfs", "/newroot/dev", "tmpfs", MS_NOSUID|MS_NODEV, "mode=0755") = 0
+176   mount("/oldroot/dev/null", "/newroot/dev/null", NULL, MS_BIND|MS_REC|MS_SILENT, NULL) = 0
+176   mount("/oldroot/dev/zero", "/newroot/dev/zero", NULL, MS_BIND|MS_REC|MS_SILENT, NULL) = 0
+176   mount("/oldroot/dev/full", "/newroot/dev/full", NULL, MS_BIND|MS_REC|MS_SILENT, NULL) = 0
+176   mount("/oldroot/dev/random", "/newroot/dev/random", NULL, MS_BIND|MS_REC|MS_SILENT, NULL) = 0
+176   mount("/oldroot/dev/urandom", "/newroot/dev/urandom", NULL, MS_BIND|MS_REC|MS_SILENT, NULL) = 0
+176   mount("/oldroot/dev/tty", "/newroot/dev/tty", NULL, MS_BIND|MS_REC|MS_SILENT, NULL) = 0
+176   mount("devpts", "/newroot/dev/pts", "devpts", MS_NOSUID|MS_NOEXEC, "newinstance,ptmxmode=0666,mode=6"...) = 0
+176   mount("/oldroot/usr/bin", "/newroot/bin", NULL, MS_BIND|MS_REC|MS_SILENT, NULL) = 0
+176   mount("none", "/newroot/bin", NULL, MS_RDONLY|MS_NOSUID|MS_NODEV|MS_REMOUNT|MS_BIND|MS_SILENT|MS_RELATIME, NULL) = 0
+176   mount("/oldroot/etc", "/newroot/etc", NULL, MS_BIND|MS_REC|MS_SILENT, NULL) = 0
+176   mount("none", "/newroot/etc", NULL, MS_RDONLY|MS_NOSUID|MS_NODEV|MS_REMOUNT|MS_BIND|MS_SILENT|MS_RELATIME, NULL) = 0
+176   mount("none", "/newroot/etc/resolv.conf", NULL, MS_RDONLY|MS_NOSUID|MS_NODEV|MS_REMOUNT|MS_BIND|MS_SILENT|MS_RELATIME, NULL) = 0
+176   mount("none", "/newroot/etc/hostname", NULL, MS_RDONLY|MS_NOSUID|MS_NODEV|MS_REMOUNT|MS_BIND|MS_SILENT|MS_RELATIME, NULL) = 0
+176   mount("none", "/newroot/etc/hosts", NULL, MS_RDONLY|MS_NOSUID|MS_NODEV|MS_REMOUNT|MS_BIND|MS_SILENT|MS_RELATIME, NULL) = 0
+176   mount("/oldroot/usr/lib", "/newroot/lib", NULL, MS_BIND|MS_REC|MS_SILENT, NULL) = 0
+176   mount("none", "/newroot/lib", NULL, MS_RDONLY|MS_NOSUID|MS_NODEV|MS_REMOUNT|MS_BIND|MS_SILENT|MS_RELATIME, NULL) = 0
+176   mount("/oldroot/usr/lib64", "/newroot/lib64", NULL, MS_BIND|MS_REC|MS_SILENT, NULL) = 0
+176   mount("none", "/newroot/lib64", NULL, MS_RDONLY|MS_NOSUID|MS_NODEV|MS_REMOUNT|MS_BIND|MS_SILENT|MS_RELATIME, NULL) = 0
+176   mount("/oldroot/usr/sbin", "/newroot/sbin", NULL, MS_BIND|MS_REC|MS_SILENT, NULL) = 0
+176   mount("none", "/newroot/sbin", NULL, MS_RDONLY|MS_NOSUID|MS_NODEV|MS_REMOUNT|MS_BIND|MS_SILENT|MS_RELATIME, NULL) = 0
+176   mount("/oldroot/usr", "/newroot/usr", NULL, MS_BIND|MS_REC|MS_SILENT, NULL) = 0
+176   mount("none", "/newroot/usr", NULL, MS_RDONLY|MS_NOSUID|MS_NODEV|MS_REMOUNT|MS_BIND|MS_SILENT|MS_RELATIME, NULL) = 0
+176   mount("proc", "/newroot/proc", "proc", MS_NOSUID|MS_NODEV|MS_NOEXEC, NULL) = 0
+176   mount("oldroot", "oldroot", NULL, MS_REC|MS_SILENT|MS_PRIVATE, NULL) = 0
+176   umount2("oldroot", MNT_DETACH)    = 0
+176   pivot_root(".", ".")              = 0
+176   umount2(".", MNT_DETACH)          = 0
+176   unshare(CLONE_NEWUSER)            = 0
+174   --- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=175, si_uid=1000, si_status=0, si_utime=0, si_stime=0} ---
+177   clone(child_stack=NULL, flags=CLONE_NEWNS|CLONE_NEWIPC|CLONE_NEWUSER|CLONE_NEWPID|CLONE_NEWNET|SIGCHLD) = 178
+178   mount(NULL, "/", NULL, MS_REC|MS_SILENT|MS_SLAVE, NULL) = 0
+178   mount("tmpfs", "/tmp", "tmpfs", MS_NOSUID|MS_NODEV, NULL) = 0
+178   mount("newroot", "newroot", NULL, MS_MGC_VAL|MS_BIND|MS_REC|MS_SILENT, NULL) = 0
+178   pivot_root("/tmp", "oldroot")     = 0
+178   mount("/oldroot/", "/newroot/", NULL, MS_BIND|MS_REC|MS_SILENT, NULL) = 0
+178   mount("none", "/newroot", NULL, MS_RDONLY|MS_NOSUID|MS_NODEV|MS_REMOUNT|MS_BIND|MS_SILENT|MS_RELATIME, NULL) = 0
+178   mount("none", "/newroot/proc", NULL, MS_RDONLY|MS_NOSUID|MS_NODEV|MS_NOEXEC|MS_REMOUNT|MS_BIND|MS_SILENT|MS_RELATIME, NULL) = 0
+178   mount("none", "/newroot/proc/acpi", NULL, MS_RDONLY|MS_NOSUID|MS_NODEV|MS_REMOUNT|MS_BIND|MS_SILENT|MS_RELATIME, NULL) = 0
+178   mount("none", "/newroot/proc/interrupts", NULL, MS_RDONLY|MS_NOSUID|MS_NODEV|MS_REMOUNT|MS_BIND|MS_SILENT, NULL) = 0
+178   mount("none", "/newroot/proc/kcore", NULL, MS_RDONLY|MS_NOSUID|MS_NODEV|MS_REMOUNT|MS_BIND|MS_SILENT, NULL) = 0
+178   mount("none", "/newroot/proc/keys", NULL, MS_RDONLY|MS_NOSUID|MS_NODEV|MS_REMOUNT|MS_BIND|MS_SILENT, NULL) = 0
+178   mount("none", "/newroot/proc/scsi", NULL, MS_RDONLY|MS_NOSUID|MS_NODEV|MS_REMOUNT|MS_BIND|MS_SILENT|MS_RELATIME, NULL) = 0
+178   mount("none", "/newroot/proc/timer_list", NULL, MS_RDONLY|MS_NOSUID|MS_NODEV|MS_REMOUNT|MS_BIND|MS_SILENT, NULL) = 0
+178   mount("none", "/newroot/dev", NULL, MS_RDONLY|MS_NOSUID|MS_NODEV|MS_REMOUNT|MS_BIND|MS_SILENT, NULL) = 0
+178   mount("none", "/newroot/dev/pts", NULL, MS_RDONLY|MS_NOSUID|MS_NODEV|MS_NOEXEC|MS_REMOUNT|MS_BIND|MS_SILENT|MS_RELATIME, NULL) = 0
+178   mount("none", "/newroot/dev/mqueue", NULL, MS_RDONLY|MS_NOSUID|MS_NODEV|MS_NOEXEC|MS_REMOUNT|MS_BIND|MS_SILENT|MS_RELATIME, NULL) = 0
+178   mount("none", "/newroot/dev/shm", NULL, MS_RDONLY|MS_NOSUID|MS_NODEV|MS_NOEXEC|MS_REMOUNT|MS_BIND|MS_SILENT|MS_RELATIME, NULL) = 0
+178   mount("none", "/newroot/sys/firmware", NULL, MS_RDONLY|MS_NOSUID|MS_NODEV|MS_REMOUNT|MS_BIND|MS_SILENT|MS_RELATIME, NULL) = 0
+178   mount("none", "/newroot/etc/resolv.conf", NULL, MS_RDONLY|MS_NOSUID|MS_NODEV|MS_REMOUNT|MS_BIND|MS_SILENT|MS_RELATIME, NULL) = 0
+178   mount("none", "/newroot/etc/hostname", NULL, MS_RDONLY|MS_NOSUID|MS_NODEV|MS_REMOUNT|MS_BIND|MS_SILENT|MS_RELATIME, NULL) = 0
+178   mount("none", "/newroot/etc/hosts", NULL, MS_RDONLY|MS_NOSUID|MS_NODEV|MS_REMOUNT|MS_BIND|MS_SILENT|MS_RELATIME, NULL) = 0
+178   mount("tmpfs", "/newroot/dev", "tmpfs", MS_NOSUID|MS_NODEV, "mode=0755") = 0
+178   mount("/oldroot/dev/null", "/newroot/dev/null", NULL, MS_BIND|MS_REC|MS_SILENT, NULL) = 0
+178   mount("/oldroot/dev/zero", "/newroot/dev/zero", NULL, MS_BIND|MS_REC|MS_SILENT, NULL) = 0
+178   mount("/oldroot/dev/full", "/newroot/dev/full", NULL, MS_BIND|MS_REC|MS_SILENT, NULL) = 0
+178   mount("/oldroot/dev/random", "/newroot/dev/random", NULL, MS_BIND|MS_REC|MS_SILENT, NULL) = 0
+178   mount("/oldroot/dev/urandom", "/newroot/dev/urandom", NULL, MS_BIND|MS_REC|MS_SILENT, NULL) = 0
+178   mount("/oldroot/dev/tty", "/newroot/dev/tty", NULL, MS_BIND|MS_REC|MS_SILENT, NULL) = 0
+178   mount("devpts", "/newroot/dev/pts", "devpts", MS_NOSUID|MS_NOEXEC, "newinstance,ptmxmode=0666,mode=6"...) = 0
+178   mount("tmpfs", "/newroot/tmp/codex-daemon-1000", "tmpfs", MS_NOSUID|MS_NODEV, "mode=0") = 0
+178   mount("none", "/newroot/tmp/codex-daemon-1000", NULL, MS_RDONLY|MS_NOSUID|MS_NODEV|MS_REMOUNT|MS_BIND|MS_SILENT|MS_RELATIME, NULL) = 0
+178   mount("/oldroot/tmp", "/newroot/tmp", NULL, MS_BIND|MS_REC|MS_SILENT, NULL) = 0
+178   mount("none", "/newroot/tmp", NULL, MS_NOSUID|MS_NODEV|MS_REMOUNT|MS_BIND|MS_SILENT|MS_RELATIME, NULL) = 0
+178   mount("tmpfs", "/newroot/tmp/codex-daemon-1000", "tmpfs", MS_NOSUID|MS_NODEV, "mode=0") = 0
+178   mount("none", "/newroot/tmp/codex-daemon-1000", NULL, MS_RDONLY|MS_NOSUID|MS_NODEV|MS_REMOUNT|MS_BIND|MS_SILENT|MS_RELATIME, NULL) = 0
+178   mount("tmpfs", "/newroot/tmp/.git", "tmpfs", MS_NOSUID|MS_NODEV, "mode=0555") = 0
+178   mount("none", "/newroot/tmp/.git", NULL, MS_RDONLY|MS_NOSUID|MS_NODEV|MS_REMOUNT|MS_BIND|MS_SILENT|MS_RELATIME, NULL) = 0
+178   mount("tmpfs", "/newroot/tmp/.agents", "tmpfs", MS_NOSUID|MS_NODEV, "mode=0555") = 0
+178   mount("none", "/newroot/tmp/.agents", NULL, MS_RDONLY|MS_NOSUID|MS_NODEV|MS_REMOUNT|MS_BIND|MS_SILENT|MS_RELATIME, NULL) = 0
+178   mount("tmpfs", "/newroot/tmp/.codex", "tmpfs", MS_NOSUID|MS_NODEV, "mode=0555") = 0
+178   mount("none", "/newroot/tmp/.codex", NULL, MS_RDONLY|MS_NOSUID|MS_NODEV|MS_REMOUNT|MS_BIND|MS_SILENT|MS_RELATIME, NULL) = 0
+178   mount("tmpfs", "/newroot/tmp/.aws", "tmpfs", MS_NOSUID|MS_NODEV, "mode=0555") = 0
+178   mount("none", "/newroot/tmp/.aws", NULL, MS_RDONLY|MS_NOSUID|MS_NODEV|MS_REMOUNT|MS_BIND|MS_SILENT|MS_RELATIME, NULL) = 0
+178   mount("/oldroot/tmp/codex-bwrap-synthetic-mount-targets-1000", "/newroot/tmp/codex-bwrap-synthetic-mount-targets-1000", NULL, MS_BIND|MS_REC|MS_SILENT, NULL) = 0
+178   mount("none", "/newroot/tmp/codex-bwrap-synthetic-mount-targets-1000", NULL, MS_RDONLY|MS_NOSUID|MS_NODEV|MS_REMOUNT|MS_BIND|MS_SILENT|MS_RELATIME, NULL) = 0
+178   mount("/oldroot/tmp/probe-dir", "/newroot/tmp/probe-dir", NULL, MS_BIND|MS_REC|MS_SILENT, NULL) = 0
+178   mount("none", "/newroot/tmp/probe-dir", NULL, MS_NOSUID|MS_NODEV|MS_REMOUNT|MS_BIND|MS_SILENT|MS_RELATIME, NULL) = 0
+178   mount("tmpfs", "/newroot/tmp/probe-dir/.git", "tmpfs", MS_NOSUID|MS_NODEV, "mode=0555") = 0
+178   mount("none", "/newroot/tmp/probe-dir/.git", NULL, MS_RDONLY|MS_NOSUID|MS_NODEV|MS_REMOUNT|MS_BIND|MS_SILENT|MS_RELATIME, NULL) = 0
+178   mount("tmpfs", "/newroot/tmp/probe-dir/.agents", "tmpfs", MS_NOSUID|MS_NODEV, "mode=0555") = 0
+178   mount("none", "/newroot/tmp/probe-dir/.agents", NULL, MS_RDONLY|MS_NOSUID|MS_NODEV|MS_REMOUNT|MS_BIND|MS_SILENT|MS_RELATIME, NULL) = 0
+178   mount("tmpfs", "/newroot/tmp/probe-dir/.codex", "tmpfs", MS_NOSUID|MS_NODEV, "mode=0555") = 0
+178   mount("none", "/newroot/tmp/probe-dir/.codex", NULL, MS_RDONLY|MS_NOSUID|MS_NODEV|MS_REMOUNT|MS_BIND|MS_SILENT|MS_RELATIME, NULL) = 0
+178   mount("tmpfs", "/newroot/tmp/probe-dir/.aws", "tmpfs", MS_NOSUID|MS_NODEV, "mode=0555") = 0
+178   mount("none", "/newroot/tmp/probe-dir/.aws", NULL, MS_RDONLY|MS_NOSUID|MS_NODEV|MS_REMOUNT|MS_BIND|MS_SILENT|MS_RELATIME, NULL) = 0
+178   mount("proc", "/newroot/proc", "proc", MS_NOSUID|MS_NODEV|MS_NOEXEC, NULL) = 0
+178   mount("oldroot", "oldroot", NULL, MS_REC|MS_SILENT|MS_PRIVATE, NULL) = 0
+178   umount2("oldroot", MNT_DETACH)    = 0
+178   pivot_root(".", ".")              = 0
+178   umount2(".", MNT_DETACH)          = 0
+178   unshare(CLONE_NEWUSER)            = 0
+178   --- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=2, si_uid=1000, si_status=0, si_utime=0, si_stime=0} ---
+174   --- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=177, si_uid=1000, si_status=0, si_utime=0, si_stime=0} ---
+168   --- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=174, si_uid=1000, si_status=0, si_utime=0, si_stime=2 /* 0.02 s */} ---
+155   --- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=166, si_uid=1000, si_status=0, si_utime=0, si_stime=2 /* 0.02 s */} ---

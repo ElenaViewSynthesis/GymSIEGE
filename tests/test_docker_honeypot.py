@@ -1,4 +1,5 @@
 import contextlib
+import hashlib
 import importlib.util
 import io
 import json
@@ -212,6 +213,115 @@ class DockerImageTests(unittest.TestCase):
         self.assertNotRegex(text, r"(?m)^(ENV|ARG) ")
 
 
+SECCOMP_BUILD = _load("docker_honeypot_build_seccomp", "docker_honeypot/build_seccomp_profile.py")
+# The author's list of calls bubblewrap needs; clone3 is left at Docker's
+# default (ENOSYS) because seccomp cannot inspect its flags.
+BWRAP_CALLS = {
+    "unshare", "clone", "clone3", "setns", "mount", "umount2", "pivot_root", "mount_setattr",
+    "open_tree", "move_mount", "fsopen", "fsconfig", "fsmount", "fspick", "sethostname",
+}
+NEVER_ADDED = {
+    "ptrace", "keyctl", "add_key", "request_key", "bpf", "perf_event_open", "kexec_load",
+    "kexec_file_load", "init_module", "finit_module", "delete_module", "process_vm_readv",
+    "process_vm_writev", "userfaultfd", "open_by_handle_at",
+}
+
+
+def _effective(profile, caps=("CAP_SETGID", "CAP_SETUID"), arch="SCMP_ARCH_X86_64"):
+    """Per syscall, the actions and argument filters that apply to this container."""
+    arches = {arch, *profile.get("archMap", [{}])[0].get("subArchitectures", [])}
+    applied = {}
+    for rule in profile["syscalls"]:
+        inc, exc = rule.get("includes", {}), rule.get("excludes", {})
+        if inc.get("caps") and not set(inc["caps"]) <= set(caps):
+            continue
+        if exc.get("caps") and set(exc["caps"]) & set(caps):
+            continue
+        names_arch = {"amd64": "SCMP_ARCH_X86_64", "x86": "SCMP_ARCH_X86", "x32": "SCMP_ARCH_X32"}
+        rule_arches = {names_arch.get(a, a) for a in inc.get("arches", [])}
+        if rule_arches and not rule_arches & arches:
+            continue
+        if {names_arch.get(a, a) for a in exc.get("arches", [])} & {arch}:
+            continue
+        for name in rule["names"]:
+            applied.setdefault(name, []).append(
+                (rule["action"], json.dumps(rule.get("args"), sort_keys=True)))
+    return applied
+
+
+class SeccompProfileTests(unittest.TestCase):
+    def setUp(self):
+        self.default_bytes = (REPO / "docker_honeypot/seccomp-default.json").read_bytes()
+        self.default = json.loads(self.default_bytes)
+        self.profile = json.loads((REPO / "docker_honeypot/seccomp-bwrap.json").read_text())
+
+    def test_the_vendored_default_is_the_recorded_upstream_file(self):
+        provenance = self.profile["x-gymsiege-provenance"]
+        self.assertEqual(hashlib.sha256(self.default_bytes).hexdigest(),
+                         provenance["default_sha256"])
+        self.assertEqual(provenance["default_sha256"],
+                         "536529b665dd0972c37bfb569f5d4ac8a53592e7b00752bc39ff063ca9864c74")
+        self.assertEqual(provenance["version"], "v0.2.3")
+
+    def test_profile_is_the_builders_output(self):
+        self.assertEqual(SECCOMP_BUILD.build(), self.profile)
+
+    def test_default_rules_are_kept_verbatim_and_only_bwrap_calls_are_added(self):
+        for key in ("defaultAction", "defaultErrnoRet", "archMap"):
+            self.assertEqual(self.profile[key], self.default[key])
+        kept = len(self.default["syscalls"])
+        self.assertEqual(self.profile["syscalls"][:kept], self.default["syscalls"])
+        added = self.profile["syscalls"][kept:]
+        for rule in added:
+            self.assertEqual(rule["action"], "SCMP_ACT_ALLOW")
+            self.assertTrue(rule.get("comment", "").startswith("bwrap"), rule)
+            # No added rule depends on a capability: they apply to this container as is.
+            self.assertNotIn("caps", rule.get("includes", {}))
+            self.assertNotIn("caps", rule.get("excludes", {}))
+        added_names = {name for rule in added for name in rule["names"]}
+        self.assertEqual(added_names, BWRAP_CALLS - {"clone3"})
+        self.assertFalse(added_names & NEVER_ADDED)
+
+    def test_effective_set_is_the_default_plus_exactly_the_bwrap_calls(self):
+        default, profile = _effective(self.default), _effective(self.profile)
+        def allowed(applied):
+            return {name for name, rules in applied.items()
+                    if any(action == "SCMP_ACT_ALLOW" for action, _ in rules)}
+
+        self.assertEqual(allowed(profile) - allowed(default), BWRAP_CALLS - {"clone", "clone3"})
+        self.assertEqual(allowed(default) - allowed(profile), set())
+        # clone was already allowed without namespace flags; it gains one rule.
+        self.assertEqual(len(profile["clone"]), len(default["clone"]) + 1)
+        # clone3 keeps the default's ENOSYS answer.
+        self.assertEqual(profile["clone3"], default["clone3"])
+        self.assertEqual(profile["clone3"][0][0], "SCMP_ACT_ERRNO")
+        for name in NEVER_ADDED:
+            self.assertEqual(profile.get(name), default.get(name), name)
+
+    def test_namespace_filters_admit_the_six_and_refuse_cgroup_and_time(self):
+        rules = {rule["names"][0]: rule for rule in self.profile["syscalls"][len(self.default["syscalls"]):]}
+        clone_mask = rules["clone"]["args"][0]
+        self.assertEqual((clone_mask["op"], clone_mask["index"]), ("SCMP_CMP_MASKED_EQ", 0))
+        six = 0x10000000 | 0x00020000 | 0x20000000 | 0x08000000 | 0x04000000 | 0x40000000
+        self.assertEqual(clone_mask["value"] & six, 0)
+        self.assertEqual(clone_mask["value"], 0x02000000)
+        unshare_mask = rules["unshare"]["args"][0]["value"]
+        self.assertEqual(unshare_mask & six, 0)
+        self.assertEqual(unshare_mask, 0x02000000 | 0x00000080)
+
+    def test_sandbox_argv_carries_the_profile_and_the_proxy_argv_does_not(self):
+        sandbox = RUNNER.sandbox_run_argv("cell", "image:tag", "honeypot-egress")
+        options = [sandbox[i + 1] for i, item in enumerate(sandbox) if item == "--security-opt"]
+        self.assertEqual(options, ["no-new-privileges", f"seccomp={RUNNER.SECCOMP_PROFILE}"])
+        self.assertTrue(Path(str(RUNNER.SECCOMP_PROFILE)).is_absolute())
+        proxy = RUNNER.proxy_run_argv("cell-proxy", "proxy:tag", ["a.example"])
+        self.assertFalse(any("seccomp" in item for item in proxy))
+        record = RUNNER.seccomp_profile_record()
+        self.assertEqual(record["path"], "docker_honeypot/seccomp-bwrap.json")
+        self.assertEqual(record["sha256"], hashlib.sha256(
+            (REPO / "docker_honeypot/seccomp-bwrap.json").read_bytes()).hexdigest())
+
+
 class EgressProxyTests(unittest.TestCase):
     ALLOW = frozenset({"tunnel.example.org", "cloud.langfuse.com"})
 
@@ -412,6 +522,7 @@ class DockerRunnerTests(unittest.TestCase):
         self.assertEqual(record["boundary"], "docker-container")
         self.assertEqual(record["image"], "rogue-agent-honeypot:abcdef1")
         self.assertEqual(record["egress_proxy_log"], "egress-proxy.log")
+        self.assertEqual(record["seccomp_profile"], RUNNER.seccomp_profile_record())
         self.assertEqual(record["termination"], "explicit-finally")
         self.assertEqual(record["remote_exit_code"], 0)
         self.assertEqual(record["virtual_key"]["spend_usd"], 0.0125)
@@ -502,6 +613,9 @@ class DockerRunnerTests(unittest.TestCase):
         self.assertEqual(plan["provider"], "docker")
         self.assertEqual(plan["network"], "honeypot-egress")
         self.assertEqual(plan["image"], "rogue-agent-honeypot:abcdef1")
+        self.assertEqual(set(plan["seccomp_profile"]), {"path", "sha256"})
+        self.assertEqual(plan["seccomp_profile"]["path"], "docker_honeypot/seccomp-bwrap.json")
+        self.assertIn(f"seccomp={RUNNER.SECCOMP_PROFILE}", plan["docker_run"])
         self.assertEqual(plan["egress_proxy"]["allowlist"],
                          ["cloud.langfuse.com", "tunnel.example.org"])
         self.assertIn("OPENAI_API_KEY", plan["docker_exec"])

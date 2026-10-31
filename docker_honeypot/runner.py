@@ -12,7 +12,9 @@ The boundary, per cell:
 * the sandbox container runs as root only long enough for ``runuser`` to drop to
   the unprivileged ``honeypot`` user; every capability is dropped except SETUID
   and SETGID (which runuser needs), no-new-privileges is set, and there are no
-  volumes, no bind mounts, no host network and no privileged mode;
+  volumes, no bind mounts, no host network and no privileged mode; its seccomp
+  profile is Docker's default plus only the namespace and mount calls Codex's
+  bubblewrap sandbox needs (docker_honeypot/seccomp-bwrap.json);
 * a real-agent cell sits on the internal network ``honeypot-egress`` (no route
   out) and reaches the world only through its own egress-proxy container, which
   is on that network and the default bridge and allows CONNECT to exactly the
@@ -29,6 +31,7 @@ is reported as such, never pooled with Modal cohorts.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import os
@@ -62,6 +65,11 @@ LABEL = "rogue-agent-honeypot.role"
 REMOTE_OUTPUT = "/tmp/eval-output"
 SECRET_ENV_NAMES = ("OPENAI_API_KEY", "OPENAI_BASE_URL")
 EGRESS_TOKENS = {"gateway", "langfuse"}
+# Docker's default seccomp profile plus only the calls Codex's bubblewrap
+# sandbox needs (docker_honeypot/build_seccomp_profile.py documents each one).
+# The sandbox container gets it; the egress proxy keeps Docker's default.
+SECCOMP_PROFILE_RELATIVE = "docker_honeypot/seccomp-bwrap.json"
+SECCOMP_PROFILE = REPO / SECCOMP_PROFILE_RELATIVE
 POLICY = {
     "provider": PROVIDER,
     "boundary": BOUNDARY,
@@ -70,7 +78,7 @@ POLICY = {
     "pids_limit": 512,
     "cap_drop": ["ALL"],
     "cap_add": ["SETGID", "SETUID"],
-    "security_opt": ["no-new-privileges"],
+    "security_opt": ["no-new-privileges", f"seccomp={SECCOMP_PROFILE_RELATIVE}"],
     "privileged": False,
     "host_network": False,
     "bind_mounts": [],
@@ -148,13 +156,23 @@ def validate_egress_spec(spec: str | None, subject_command: str | None) -> None:
         )
 
 
+def seccomp_profile_record(path: Path = SECCOMP_PROFILE) -> dict[str, str]:
+    """The sandbox's seccomp profile as the run record names it."""
+    try:
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError:
+        raise RuntimeError(f"the sandbox seccomp profile is missing: {SECCOMP_PROFILE_RELATIVE}") from None
+    return {"path": SECCOMP_PROFILE_RELATIVE, "sha256": digest}
+
+
 def sandbox_run_argv(name: str, image: str, network: str) -> list[str]:
     return [
         "run", "--detach", "--rm", "--name", name, "--network", network,
         "--cpus", POLICY["cpus"], "--memory", POLICY["memory"],
         "--pids-limit", str(POLICY["pids_limit"]), "--read-only=false",
         "--cap-drop", "ALL", "--cap-add", "SETGID", "--cap-add", "SETUID",
-        "--security-opt", "no-new-privileges", "--workdir", "/workspace",
+        "--security-opt", "no-new-privileges",
+        "--security-opt", f"seccomp={SECCOMP_PROFILE}", "--workdir", "/workspace",
         "--label", f"{LABEL}=sandbox",
         image, "sleep", "infinity",
     ]
@@ -309,6 +327,7 @@ def run(
     tags = image_tags(revision)
     if getattr(args, "image", None):
         tags["image"] = args.image
+    seccomp = seccomp_profile_record()
     runtime_policy: dict[str, object] = {
         **POLICY,
         "network": network,
@@ -356,7 +375,7 @@ def run(
             "provider": PROVIDER, "boundary": BOUNDARY, "harness": args.harness,
             "case_id": args.case_id, "output_root": str(args.output), "output_name": name,
             "image": tags["image"], "proxy_image": tags["proxy_image"] if with_proxy else None,
-            "source_revision": revision, "network": network,
+            "source_revision": revision, "network": network, "seccomp_profile": seccomp,
             "egress_proxy": {
                 "name": names["proxy"], "alias": PROXY_ALIAS, "port": PROXY_PORT,
                 "allowlist": egress_allowlist,
@@ -384,7 +403,7 @@ def run(
         "subject_mode": "agent" if agent else "scripted",
         "weights_mode": "text", "policy": runtime_policy, "started_at": stamp,
         "provider": PROVIDER, "boundary": BOUNDARY, "image": tags["image"],
-        "source_revision": revision,
+        "source_revision": revision, "seccomp_profile": seccomp,
         "egress_proxy_log": PROXY_LOG_NAME if with_proxy else None,
     }
     if key_alias is not None:
