@@ -293,6 +293,7 @@ def remote_argv(
     model: str | None = None,
     codex_sandbox: str = "danger-full-access",
     egress_allowlist: list[str] | None = None,
+    execution_boundary: str | None = None,
 ) -> list[str]:
     if demo:
         if harness is not None or case_id is not None:
@@ -337,6 +338,10 @@ def remote_argv(
         command.append("MODAL_NETWORK_OPEN=1")
     if egress_allowlist:
         command.append("MODAL_NETWORK_ALLOWLIST=" + ",".join(egress_allowlist))
+    if execution_boundary is not None:
+        # Another provider (docker_honeypot/runner.py) names its boundary; the
+        # Modal path leaves it unset and in_sandbox.py records modal-sandbox.
+        command.append(f"HONEYPOT_EXECUTION_BOUNDARY={execution_boundary}")
     if demo:
         command.append("TMPDIR=/tmp/eval-output")
     command.extend([

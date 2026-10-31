@@ -44,6 +44,16 @@ CONFIG = {
         "prefix": "NOF-",
     },
 }
+# The outer runner names the boundary it started: the Modal runner leaves the
+# variable unset, the Docker runner passes docker-container.
+EXECUTION_BOUNDARIES = {"modal-sandbox", "docker-container"}
+
+
+def execution_boundary() -> str:
+    value = os.environ.get("HONEYPOT_EXECUTION_BOUNDARY", "modal-sandbox")
+    if value not in EXECUTION_BOUNDARIES:
+        raise SystemExit(f"unknown HONEYPOT_EXECUTION_BOUNDARY: {value}")
+    return value
 
 
 def case_ids(mode: str) -> list[str]:
@@ -144,7 +154,7 @@ def run_demo(output_root: Path) -> dict[str, object]:
     (output_root / "demo.log").write_text(completed.stdout)
     summary = {
         "schema_version": "1.0",
-        "execution_boundary": "modal-sandbox",
+        "execution_boundary": execution_boundary(),
         "harness": "demo",
         "exit_code": completed.returncode,
         "passed": completed.returncode == 0,
@@ -215,7 +225,7 @@ def main() -> int:
     results.sort(key=lambda item: str(item["case_id"]))
     summary = {
         "schema_version": "1.0",
-        "execution_boundary": "modal-sandbox",
+        "execution_boundary": execution_boundary(),
         "harness": args.harness,
         "subject_mode": "agent" if args.subject_command is not None else "scripted",
         "agent_timeout_seconds": args.agent_timeout if args.subject_command is not None else None,
