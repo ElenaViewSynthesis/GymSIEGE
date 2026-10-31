@@ -1,0 +1,10 @@
+# BuildKit reads this file for docker_honeypot/Dockerfile only. The context is
+# the repository root, so deny everything (.env.local, .venv, results, keys)
+# and admit exactly the four directories the agent image copies.
+*
+!agent_honeypot/
+!model_replication_honeypot/
+!modal_honeypot/
+!tests/
+**/__pycache__
+**/*.pyc

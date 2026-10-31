@@ -44,6 +44,9 @@ results/intent-honeypot/
 # logs are already ignored above, but the artifacts.tar.gz bundles are binary
 # and must never enter history. Reproducible by re-running modal_honeypot.
 results/modal-honeypot*/
+# The Docker boundary's run output (docker_honeypot/runner.py), the same shape
+# and the same rule: cohort summaries are force-added, bundles never enter.
+results/docker-honeypot*/
 # Local collusion-suite calibration output (run_case.py --all): per-case
 # workspaces, chained events.tsv, pid/stop files, compiled preloads -- about
 # 2,500 files per run, reproducible by re-running the suite. Only the run's

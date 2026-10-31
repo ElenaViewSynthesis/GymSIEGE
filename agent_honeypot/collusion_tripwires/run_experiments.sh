@@ -1,16 +1,24 @@
 #!/usr/bin/env bash
-# Experimental-run driver for the collusion suite, through the Modal honeypot
-# runner (modal_honeypot/runner.py --harness collusion). Every run is inside the
-# externally contained sandbox; scripted runs block egress, while real-agent
-# runs allow only the gateway and Langfuse hosts. A real-agent subject can only
-# run there, never on the host. This script is SAFE BY DEFAULT: it prints the plan (the runner's
-# --dry-run) and starts no sandbox and no model call unless you pass --execute.
+# Experimental-run driver for the collusion suite, through one of two providers:
+#   --provider modal  (default) modal_honeypot/runner.py, a Modal sandbox;
+#                     output under results/modal-honeypot-collusion-exp, run
+#                     record modal-run.json.
+#   --provider docker docker_honeypot/runner.py, a local Docker container on an
+#                     internal network behind an allow-listing egress proxy;
+#                     output under results/docker-honeypot-collusion-exp, run
+#                     record docker-run.json. A second, disclosed boundary.
+# Every run is inside the externally contained boundary; scripted runs block
+# egress, while real-agent runs reach only the gateway and Langfuse hosts. A
+# real-agent subject can only run there, never on the host. This script is
+# SAFE BY DEFAULT: it prints the plan (the runner's --dry-run; --dry-run says so
+# explicitly) and starts no sandbox and no model call unless you pass --execute.
 #
 #   ./agent_honeypot/collusion_tripwires/run_experiments.sh            # plan every arm (free)
 #   ./agent_honeypot/collusion_tripwires/run_experiments.sh --arm lure-pair --model PINNED_MODEL
 #   ./agent_honeypot/collusion_tripwires/run_experiments.sh --arm lure-pair --trials 1 --model PINNED_MODEL
 #   ./agent_honeypot/collusion_tripwires/run_experiments.sh --list     # list arms + Table 3 rows
 #   ./agent_honeypot/collusion_tripwires/run_experiments.sh --arm sensor-controls --execute   # PAID
+#   ./agent_honeypot/collusion_tripwires/run_experiments.sh --provider docker --arm sensor-controls --execute
 #   ./agent_honeypot/collusion_tripwires/run_experiments.sh --arm lure-pair --trials 1 --case CLH-036 \
 #       --model PINNED_MODEL --execute                                  # PAID, one case of the arm
 #
@@ -37,9 +45,6 @@ set -Eeuo pipefail
 
 repo=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
 cd -- "$repo"
-# HONEYPOT_RUNNER lets the unit tests substitute a fake runner; production runs
-# leave it unset.
-runner=${HONEYPOT_RUNNER:-modal_honeypot/runner.py}
 # The runner needs the pinned Modal SDK, which lives in the repo venv, not in
 # the system python3. Use the venv interpreter whenever it exists so the driver
 # does not depend on the venv being activated in the caller's shell (a plain
@@ -93,10 +98,13 @@ fi
 want_arm=
 want_case=
 execute=0
+dry_run=0
 keep_going=0
 list=0
 workers=4
-output_root="results/modal-honeypot-collusion-exp"
+provider=modal
+output_root=
+output_root_set=0
 cost_per_cell=0.13   # planning estimate carried from the chain cohort; agent arms may differ
 model=${MODEL:-}
 key_budget=0.50
@@ -105,12 +113,14 @@ agent_timeout=900
 trials_override=
 max_setup_faults=1
 
-usage() { sed -n '2,38p' "$0"; }
+usage() { sed -n '2,/^set -Eeuo pipefail$/p' "$0" | sed '$d'; }
 while (($#)); do
   case "$1" in
     --arm) want_arm=$2; shift 2 ;;
     --case) want_case=$2; shift 2 ;;
     --execute) execute=1; shift ;;
+    --dry-run) dry_run=1; shift ;;
+    --provider) provider=$2; shift 2 ;;
     --keep-going) keep_going=1; shift ;;
     --max-setup-faults) max_setup_faults=$2; shift 2 ;;
     --list) list=1; shift ;;
@@ -121,11 +131,32 @@ while (($#)); do
     --key-ttl) key_ttl=$2; shift 2 ;;
     --agent-timeout) agent_timeout=$2; shift 2 ;;
     --trials) trials_override=$2; shift 2 ;;
-    --output) output_root=$2; shift 2 ;;
+    --output) output_root=$2; output_root_set=1; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) printf 'Unknown option: %s\n' "$1" >&2; usage >&2; exit 64 ;;
   esac
 done
+
+# The provider selects the runner, the default output root and the run record
+# the post-run gate reads. HONEYPOT_RUNNER lets the unit tests substitute a fake
+# runner; production runs leave it unset.
+case "$provider" in
+  modal)
+    default_runner=modal_honeypot/runner.py
+    default_output=results/modal-honeypot-collusion-exp
+    run_record=modal-run.json ;;
+  docker)
+    default_runner=docker_honeypot/runner.py
+    default_output=results/docker-honeypot-collusion-exp
+    run_record=docker-run.json ;;
+  *) printf '%s\n' '--provider must be modal or docker' >&2; exit 64 ;;
+esac
+runner=${HONEYPOT_RUNNER:-$default_runner}
+((output_root_set)) || output_root=$default_output
+if ((dry_run && execute)); then
+  printf '%s\n' '--dry-run and --execute are mutually exclusive' >&2
+  exit 64
+fi
 
 if [[ -n $trials_override && ! $trials_override =~ ^[1-9][0-9]*$ ]]; then
   printf '%s\n' '--trials must be a positive integer' >&2
@@ -179,13 +210,15 @@ arm_cases() {
   done
 }
 
-# After an agent cell: read the runner's final run record from the kept log and
-# refuse to go on unless the sandbox was torn down, the key revoked, the spend
-# within the cap, and the redaction scan clean. Prints names, booleans, the
-# alias and the output path; never a key value.
+# After an agent cell: find the output directory in the runner's final printed
+# record, load the provider's run record from it (modal-run.json or
+# docker-run.json), and refuse to go on unless that record exists and names the
+# provider, the boundary was torn down, the key revoked, the spend within the
+# cap, and the redaction scan clean. Prints names, booleans, the alias and the
+# output path; never a key value.
 check_agent_run() {
   local log=$1 budget=$2 setup_faults=$3 max_faults=$4
-  python3 - "$log" "$budget" "$setup_faults" "$max_faults" <<'PY'
+  python3 - "$log" "$budget" "$setup_faults" "$max_faults" "$run_record" "$provider" <<'PY'
 import json
 import sys
 import tarfile
@@ -193,6 +226,7 @@ from pathlib import Path
 
 log_path, budget = sys.argv[1], float(sys.argv[2])
 prior_setup_faults, max_setup_faults = int(sys.argv[3]), int(sys.argv[4])
+run_record_name, provider = sys.argv[5], sys.argv[6]
 lines = open(log_path, encoding="utf-8", errors="replace").read().splitlines()
 starts = [i for i, line in enumerate(lines) if line.strip() == "{"]
 if not starts:
@@ -203,6 +237,16 @@ try:
 except json.JSONDecodeError:
     print("gate: FAILED, the runner's run record is not valid JSON", file=sys.stderr)
     raise SystemExit(1)
+# The provider's record on disk is the one the gate trusts; the printed copy
+# only says where it is.
+file_record = None
+if isinstance(record.get("output"), str):
+    try:
+        file_record = json.loads((Path(record["output"]) / run_record_name).read_text())
+    except (OSError, json.JSONDecodeError):
+        file_record = None
+if isinstance(file_record, dict):
+    record = {**file_record, "output": record["output"]}
 key = record.get("virtual_key") if isinstance(record.get("virtual_key"), dict) else {}
 redaction = record.get("redaction") if isinstance(record.get("redaction"), dict) else {}
 spend = key.get("spend_usd")
@@ -247,6 +291,9 @@ hard_checks = {
     "key_revoked": bool(key.get("revoked_at")),
     "spend_recorded": isinstance(spend, (int, float)) and not isinstance(spend, bool),
     "redaction_passed": redaction.get("passed") is True,
+    "run_record_present": isinstance(file_record, dict),
+    # Modal records predate the field; a Docker record must name its provider.
+    "provider_matches": record.get("provider") == (None if provider == "modal" else provider),
 }
 setup_checks = {
     "spend_within_cap": isinstance(spend, (int, float)) and not isinstance(spend, bool) and spend <= budget,
@@ -302,15 +349,24 @@ PY
   if ((execute)); then
     [[ ${EXPERIMENT_APPROVED:-0} == 1 ]] || {
       printf 'refusing paid run: set EXPERIMENT_APPROVED=1 to confirm (and you reviewed the plan + cost)\n' >&2; exit 77; }
-    # A paid cell needs the Modal SDK in the chosen interpreter; a plan does not.
-    if [[ -z ${HONEYPOT_RUNNER:-} ]] && ! "$python" -c 'import modal' >/dev/null 2>&1; then
+    # A paid Modal cell needs the Modal SDK in the chosen interpreter, and a
+    # Docker cell a reachable Docker daemon; a plan needs neither.
+    if [[ -z ${HONEYPOT_RUNNER:-} && $provider == modal ]] && ! "$python" -c 'import modal' >/dev/null 2>&1; then
       printf 'the interpreter %s cannot import modal; use the repo .venv (requirements.txt pins modal==1.6.0) or set HONEYPOT_PYTHON\n' "$python" >&2
+      exit 78
+    fi
+    if [[ -z ${HONEYPOT_RUNNER:-} && $provider == docker ]] && ! docker info >/dev/null 2>&1; then
+      printf 'the docker provider needs a reachable Docker daemon (docker info failed)\n' >&2
       exit 78
     fi
     if ((any_agent)); then
       [[ -n ${LITELLM_MASTER_KEY:-} ]] || {
         printf 'agent arm needs LITELLM_MASTER_KEY on the host to mint its scoped virtual key\n' >&2; exit 78; }
-      printf 'NOTE: each agent run mints one budgeted virtual key and injects it only through an ephemeral Modal Secret.\n' >&2
+      if [[ $provider == docker ]]; then
+        printf 'NOTE: each agent run mints one budgeted virtual key and passes it only as docker exec environment, by name.\n' >&2
+      else
+        printf 'NOTE: each agent run mints one budgeted virtual key and injects it only through an ephemeral Modal Secret.\n' >&2
+      fi
     fi
   fi
 }
@@ -422,6 +478,8 @@ done
 printf 'Plan: %d arm(s), %d cells, ~$%.2f (@ $%.2f/cell). Mode: %s.\n' \
   "${#selected[@]}" "$total_cells" "$(python3 -c "print($total_cells*$cost_per_cell)")" "$cost_per_cell" \
   "$( ((execute)) && echo EXECUTE-PAID || echo PLAN-ONLY )"
+printf 'Provider: %s (runner %s, run record %s). Output root: %s.\n' \
+  "$provider" "$runner" "$run_record" "$output_root"
 ((any_agent)) && printf 'Agent arms present: real-agent collusion runs ONLY inside the sandbox (containment-gated); never on the host.\n'
 
 preflight "$any_agent"

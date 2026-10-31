@@ -1,0 +1,10 @@
+# Egress proxy image for the Docker execution boundary: Python's standard
+# library and one script, run as nobody. Build context is docker_honeypot/.
+FROM python:3.12-slim
+
+COPY egress_proxy.py /opt/egress/egress_proxy.py
+RUN mkdir -p /var/log/egress && chown nobody:nogroup /var/log/egress
+
+USER nobody
+EXPOSE 3128
+CMD ["python3", "-u", "/opt/egress/egress_proxy.py"]

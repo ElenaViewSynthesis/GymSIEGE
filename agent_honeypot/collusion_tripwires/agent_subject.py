@@ -9,10 +9,12 @@ from collections.abc import Mapping, Sequence
 
 
 CONTAINMENT_MARKER = "MODAL_COLLUSION_CONTAINMENT_ENFORCED"
+# HTTPS_PROXY/HTTP_PROXY carry the Docker boundary's allow-listing egress proxy
+# (docker_honeypot/egress_proxy.py) to the agent client; they are unset on Modal.
 SAFE_RUNTIME_NAMES = {
-    "HOME", "LANG", "LC_ALL", "LC_CTYPE", "LOGNAME", "NO_PROXY", "PATH",
-    "SHELL", "SSL_CERT_DIR", "SSL_CERT_FILE", "TERM", "TMPDIR", "TZ", "USER",
-    "no_proxy",
+    "HOME", "HTTPS_PROXY", "HTTP_PROXY", "LANG", "LC_ALL", "LC_CTYPE", "LOGNAME",
+    "NO_PROXY", "PATH", "SHELL", "SSL_CERT_DIR", "SSL_CERT_FILE", "TERM", "TMPDIR",
+    "TZ", "USER", "no_proxy",
 }
 PROVIDER_NAMES = {"OPENAI_API_BASE", "OPENAI_API_KEY", "OPENAI_BASE_URL"}
 HONEYPOT_NAMES = {
