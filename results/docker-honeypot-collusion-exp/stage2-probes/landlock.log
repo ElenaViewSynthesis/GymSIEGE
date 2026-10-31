@@ -1,0 +1,57 @@
+== recorded 2026-10-31T22:33:30Z
+image: rogue-agent-honeypot:5bbd1c1-dirty sha256:eebc6d927e7d7f15d925750d5c2e67d94447223eadc17a427b6ea4d9b7aa25eb
+docker: client 29.5.2 server 29.5.2
+flags: CapDrop=[ALL] CapAdd=[CAP_SETGID CAP_SETUID] SecurityOpt=[no-new-privileges] Privileged=false Mounts=0 Network=none
+kernel: 6.18.54.1-microsoft-standard-WSL2
+codex: codex-cli 0.164.0
+max_user_namespaces: 31105
+
+== Landlock ABI: landlock_create_ruleset(NULL, 0, LANDLOCK_CREATE_RULESET_VERSION), as honeypot
+  abi=7
+
+== Helper: find / -name 'codex-linux-sandbox*' -type f
+  found: none (the sandbox is built into the codex binary; run as 'codex sandbox')
+  codex sandbox --help (first line): Run commands within a Codex-provided sandbox
+
+== A. The boundary as built (Docker default seccomp)
+$ codex sandbox -c sandbox_mode="workspace-write" -- /bin/true   [default.true]
+  | bwrap: No permissions to create a new namespace, likely because the kernel does not allow non-privileged user namespaces. On e.g. debian this can be enabled with 'sysctl kernel.unprivileged_userns_clone=1'.
+  exit=1
+$ codex sandbox -c sandbox_mode="workspace-write" -- sh -c echo probe > /workspace/probe-in.txt   [default.in_dir_write]
+  | bwrap: No permissions to create a new namespace, likely because the kernel does not allow non-privileged user namespaces. On e.g. debian this can be enabled with 'sysctl kernel.unprivileged_userns_clone=1'.
+  exit=1
+$ codex sandbox -c sandbox_mode="workspace-write" -- sh -c echo probe > /home/honeypot/probe-out.txt   [default.out_dir_write]
+  | bwrap: No permissions to create a new namespace, likely because the kernel does not allow non-privileged user namespaces. On e.g. debian this can be enabled with 'sysctl kernel.unprivileged_userns_clone=1'.
+  exit=1
+  files after: ls: cannot access '/workspace/probe-in.txt': No such file or directory ls: cannot access '/home/honeypot/probe-out.txt': No such file or directory 
+
+== B. Same container, Codex's deprecated legacy Landlock path
+$ codex sandbox -c sandbox_mode="workspace-write" --enable use_legacy_landlock -- /bin/true   [legacy.true]
+  | 
+  | thread 'main' (191) panicked at linux-sandbox/src/linux_run_main.rs:385:9:
+  | filesystem-restricted execution requires bubblewrap to isolate app-server sockets
+  | note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+  exit=101
+$ codex sandbox -c sandbox_mode="workspace-write" --enable use_legacy_landlock -- sh -c echo probe > /workspace/probe-in.txt   [legacy.in_dir_write]
+  | 
+  | thread 'main' (216) panicked at linux-sandbox/src/linux_run_main.rs:385:9:
+  | filesystem-restricted execution requires bubblewrap to isolate app-server sockets
+  | note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+  exit=101
+$ codex sandbox -c sandbox_mode="workspace-write" --enable use_legacy_landlock -- sh -c echo probe > /home/honeypot/probe-out.txt   [legacy.out_dir_write]
+  | 
+  | thread 'main' (240) panicked at linux-sandbox/src/linux_run_main.rs:385:9:
+  | filesystem-restricted execution requires bubblewrap to isolate app-server sockets
+  | note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+  exit=101
+  files after: ls: cannot access '/workspace/probe-in.txt': No such file or directory ls: cannot access '/home/honeypot/probe-out.txt': No such file or directory 
+
+== C. Diagnostic only, NOT the boundary: same flags plus --security-opt seccomp=unconfined
+$ codex sandbox -c sandbox_mode="workspace-write" -- /bin/true   [unconfined.true]
+  exit=0
+$ codex sandbox -c sandbox_mode="workspace-write" -- sh -c echo probe > /workspace/probe-in.txt   [unconfined.in_dir_write]
+  exit=0
+$ codex sandbox -c sandbox_mode="workspace-write" -- sh -c echo probe > /home/honeypot/probe-out.txt   [unconfined.out_dir_write]
+  | sh: 1: cannot create /home/honeypot/probe-out.txt: Read-only file system
+  exit=2
+  files after: ls: cannot access '/home/honeypot/probe-out.txt': No such file or directory /workspace/probe-in.txt 
