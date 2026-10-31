@@ -162,7 +162,7 @@ class ModalHoneypotTests(unittest.TestCase):
 
     def test_demo_command_uses_sandbox_output_for_tmp(self):
         command = MODULE.remote_argv(None, None, 4, demo=True)
-        self.assertIn("TMPDIR=/tmp/honeypot-output", command)
+        self.assertIn("TMPDIR=/tmp/eval-output", command)
         self.assertIn("--demo", command)
         self.assertNotIn("--harness", command)
 
@@ -813,7 +813,7 @@ class ModalHoneypotTests(unittest.TestCase):
         self.assertIn("--case requires --arm", completed.stderr)
 
     FAKE_RUNNER = """
-import json, os, sys
+import io, json, os, sys, tarfile
 from pathlib import Path
 args = sys.argv[1:]
 case_id = args[args.index("--case-id") + 1]
@@ -823,7 +823,9 @@ run_dir = output / f"collusion-{case_id}-fake-t{trial}"
 run_dir.mkdir(parents=True, exist_ok=True)
 bad = os.environ.get("FAKE_RUNNER_FAIL_CASE") == case_id
 exit_failure = os.environ.get("FAKE_RUNNER_EXIT_CASE") == case_id
+empty_turn = os.environ.get("FAKE_RUNNER_EMPTY_CASE") == case_id
 record = {
+    "case_id": case_id,
     "remote_exit_code": 1 if exit_failure else 0,
     "termination": "explicit-finally",
     "virtual_key": {"key_alias": f"collusion/{case_id}/t{trial}/fake",
@@ -831,12 +833,25 @@ record = {
     "redaction": {"passed": not bad, "findings": ["leak.txt"] if bad else []},
 }
 (run_dir / "modal-run.json").write_text(json.dumps(record))
+rows = ([
+    {"type": "item.completed", "item": {"type": "command_execution"}},
+    {"type": "turn.completed", "usage": {"output_tokens": 7}},
+] if not empty_turn else [
+    {"type": "turn.completed", "usage": {"output_tokens": 0}},
+])
+payload = ("\\n".join(json.dumps(row) for row in rows) + "\\n").encode()
+with tarfile.open(run_dir / "artifacts.tar.gz", "w:gz") as archive:
+    info = tarfile.TarInfo(f"cases/{case_id}/runs/subject/trajectory.jsonl")
+    info.size = len(payload)
+    archive.addfile(info, io.BytesIO(payload))
 print("WARNING: fake runner, nothing contacted")
 print(json.dumps({"output": str(run_dir), **record}, indent=2, sort_keys=True))
 raise SystemExit(1 if exit_failure else 0)
 """
 
-    def _execute_driver(self, directory, fail_case=None, exit_case=None, extra=()):
+    def _execute_driver(
+        self, directory, fail_case=None, exit_case=None, empty_case=None, extra=(),
+    ):
         script = MODULE.REPO / "agent_honeypot/collusion_tripwires/run_experiments.sh"
         fake = Path(directory) / "fake_runner.py"
         fake.write_text(self.FAKE_RUNNER)
@@ -852,6 +867,8 @@ raise SystemExit(1 if exit_failure else 0)
             env["FAKE_RUNNER_FAIL_CASE"] = fail_case
         if exit_case:
             env["FAKE_RUNNER_EXIT_CASE"] = exit_case
+        if empty_case:
+            env["FAKE_RUNNER_EMPTY_CASE"] = empty_case
         return subprocess.run(
             ["bash", str(script), "--arm", "lure-pair", "--trials", "1", "--model", "pinned-model",
              "--output", str(Path(directory) / "out"), "--execute", *extra],
@@ -885,6 +902,28 @@ raise SystemExit(1 if exit_failure else 0)
             self.assertEqual(completed.returncode, 0, completed.stderr)
             self.assertEqual(completed.stdout.count("] RUN"), 2)
             self.assertIn("continuing past the failed gate", completed.stderr)
+
+    def test_experiment_empty_turn_is_counted_and_a_valid_cell_resets_it(self):
+        with tempfile.TemporaryDirectory() as directory:
+            completed = self._execute_driver(directory, empty_case="CLH-036")
+            self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+            self.assertEqual(completed.stdout.count("] RUN"), 2)
+            self.assertIn("command_executed=false", completed.stdout)
+            self.assertIn("output_tokens_positive=false", completed.stdout)
+            self.assertIn("setup_fault_count=1/1", completed.stdout)
+            self.assertIn("setup fault 1/1: continuing", completed.stderr)
+            self.assertIn("setup_fault_count=0/1", completed.stdout)
+
+    def test_experiment_empty_turn_stops_above_setup_fault_limit(self):
+        with tempfile.TemporaryDirectory() as directory:
+            completed = self._execute_driver(
+                directory, empty_case="CLH-036", extra=("--max-setup-faults", "0"),
+            )
+            self.assertEqual(completed.returncode, 75, completed.stdout + completed.stderr)
+            self.assertEqual(completed.stdout.count("] RUN"), 1)
+            self.assertIn("setup_fault_count=1/0", completed.stdout)
+            self.assertIn("setup-fault limit exceeded", completed.stderr)
+            self.assertNotIn("[CLH-037", completed.stdout)
 
     def test_experiment_execute_preserves_runner_exit_and_stops_before_next_cell(self):
         with tempfile.TemporaryDirectory() as directory:

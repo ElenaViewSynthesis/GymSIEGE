@@ -37,7 +37,7 @@ class ArchivedCohortRescoreTests(unittest.TestCase):
     def test_empty_archived_workspace_directories_come_from_paths_manifest(self):
         with tempfile.TemporaryDirectory() as directory:
             case_root = Path(directory)
-            original = "/tmp/honeypot-output/cases/CLH-001"
+            original = "/tmp/eval-output/cases/CLH-001"
             (case_root / "paths.json").write_text(
                 '{"shared":"%s/shared","runs":{"subject":{"workspace":"%s/runs/subject/workspace"}}}'
                 % (original, original)

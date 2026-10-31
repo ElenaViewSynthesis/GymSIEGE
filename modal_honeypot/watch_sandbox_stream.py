@@ -14,7 +14,7 @@ import sys
 import time
 
 DEFAULT_APP = "rogue-agent-honeypots"
-OUTPUT_ROOT = "/tmp/honeypot-output"
+OUTPUT_ROOT = "/tmp/eval-output"
 
 REDACTIONS = [
     (re.compile(r"sk-[A-Za-z0-9_-]{8,}"), "[REDACTED-KEY]"),

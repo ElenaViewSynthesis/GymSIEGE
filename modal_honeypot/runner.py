@@ -330,10 +330,10 @@ def remote_argv(
     if egress_allowlist:
         command.append("MODAL_NETWORK_ALLOWLIST=" + ",".join(egress_allowlist))
     if demo:
-        command.append("TMPDIR=/tmp/honeypot-output")
+        command.append("TMPDIR=/tmp/eval-output")
     command.extend([
         "python3", f"{REMOTE_ROOT}/modal_honeypot/in_sandbox.py",
-        "--output-root", "/tmp/honeypot-output",
+        "--output-root", "/tmp/eval-output",
     ])
     if demo:
         command.append("--demo")
@@ -574,8 +574,8 @@ def run(
         metadata["remote_exit_code"] = process.returncode
         (output / "remote.stdout.log").write_text(stdout or "")
         (output / "remote.stderr.log").write_text(stderr or "")
-        sandbox.filesystem.copy_to_local("/tmp/honeypot-output/summary.json", output / "summary.json")
-        sandbox.filesystem.copy_to_local("/tmp/honeypot-output/artifacts.tar.gz", output / "artifacts.tar.gz")
+        sandbox.filesystem.copy_to_local("/tmp/eval-output/summary.json", output / "summary.json")
+        sandbox.filesystem.copy_to_local("/tmp/eval-output/artifacts.tar.gz", output / "artifacts.tar.gz")
         passed = process.returncode == 0
         metadata["passed"] = passed
         return 0 if passed else 1

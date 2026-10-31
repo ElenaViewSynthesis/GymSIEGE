@@ -26,7 +26,11 @@
 # driver stops at the first failed cell, and after each agent cell it reads the
 # runner's run record and refuses to continue unless the sandbox terminated
 # through the explicit finally, the virtual key was revoked, its spend is within
-# the cap, and the redaction scan passed. --keep-going restores the old
+# the cap, the redaction scan passed, and the archived turn executed a command
+# and produced output tokens. Empty turns are setup faults; consecutive setup
+# faults up to --max-setup-faults (default 1) are skipped before the next one
+# stops the arm.
+# --keep-going restores the old
 # continue-past-failures behaviour for scripted calibration sweeps. The gate
 # prints field names, booleans and the key alias only, never a key value.
 set -Eeuo pipefail
@@ -99,14 +103,16 @@ key_budget=0.50
 key_ttl=
 agent_timeout=900
 trials_override=
+max_setup_faults=1
 
-usage() { sed -n '2,20p' "$0"; }
+usage() { sed -n '2,38p' "$0"; }
 while (($#)); do
   case "$1" in
     --arm) want_arm=$2; shift 2 ;;
     --case) want_case=$2; shift 2 ;;
     --execute) execute=1; shift ;;
     --keep-going) keep_going=1; shift ;;
+    --max-setup-faults) max_setup_faults=$2; shift 2 ;;
     --list) list=1; shift ;;
     --workers) workers=$2; shift 2 ;;
     --subject-command) SUBJECT_CMD=$2; shift 2 ;;
@@ -127,6 +133,10 @@ if [[ -n $trials_override && ! $trials_override =~ ^[1-9][0-9]*$ ]]; then
 fi
 if [[ ! $agent_timeout =~ ^[1-9][0-9]*$ ]]; then
   printf '%s\n' '--agent-timeout must be a positive integer' >&2
+  exit 64
+fi
+if [[ ! $max_setup_faults =~ ^[0-9]+$ ]]; then
+  printf '%s\n' '--max-setup-faults must be a non-negative integer' >&2
   exit 64
 fi
 if [[ -n $want_case ]]; then
@@ -174,12 +184,15 @@ arm_cases() {
 # within the cap, and the redaction scan clean. Prints names, booleans, the
 # alias and the output path; never a key value.
 check_agent_run() {
-  local log=$1 budget=$2
-  python3 - "$log" "$budget" <<'PY'
+  local log=$1 budget=$2 setup_faults=$3 max_faults=$4
+  python3 - "$log" "$budget" "$setup_faults" "$max_faults" <<'PY'
 import json
 import sys
+import tarfile
+from pathlib import Path
 
 log_path, budget = sys.argv[1], float(sys.argv[2])
+prior_setup_faults, max_setup_faults = int(sys.argv[3]), int(sys.argv[4])
 lines = open(log_path, encoding="utf-8", errors="replace").read().splitlines()
 starts = [i for i, line in enumerate(lines) if line.strip() == "{"]
 if not starts:
@@ -193,20 +206,72 @@ except json.JSONDecodeError:
 key = record.get("virtual_key") if isinstance(record.get("virtual_key"), dict) else {}
 redaction = record.get("redaction") if isinstance(record.get("redaction"), dict) else {}
 spend = key.get("spend_usd")
-checks = {
+command_executed = False
+output_tokens_positive = False
+archive_error = None
+try:
+    output = Path(record["output"])
+    archive_path = output / "artifacts.tar.gz"
+    case_id = str(record["case_id"])
+    prefix = f"cases/{case_id}/runs/"
+    with tarfile.open(archive_path, "r:gz") as archive:
+        member_names = [
+            name for name in archive.getnames()
+            if name.startswith(prefix) and name.endswith("/trajectory.jsonl")
+        ]
+        if not member_names:
+            raise FileNotFoundError(f"{prefix}<subject>/trajectory.jsonl")
+        for member_name in member_names:
+            member = archive.extractfile(member_name)
+            if member is None:
+                continue
+            for raw in member:
+                try:
+                    row = json.loads(raw)
+                except (UnicodeDecodeError, json.JSONDecodeError):
+                    continue
+                item = row.get("item") if isinstance(row.get("item"), dict) else {}
+                if row.get("type") == "command_execution" or item.get("type") == "command_execution":
+                    command_executed = True
+                usage = row.get("usage") if row.get("type") == "turn.completed" else None
+                if isinstance(usage, dict):
+                    value = usage.get("output_tokens")
+                    if isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0:
+                        output_tokens_positive = True
+except (KeyError, OSError, tarfile.TarError) as exc:
+    archive_error = type(exc).__name__
+
+hard_checks = {
     "remote_exit_zero": record.get("remote_exit_code") == 0,
     "termination_explicit_finally": record.get("termination") == "explicit-finally",
     "key_revoked": bool(key.get("revoked_at")),
     "spend_recorded": isinstance(spend, (int, float)) and not isinstance(spend, bool),
-    "spend_within_cap": isinstance(spend, (int, float)) and not isinstance(spend, bool) and spend <= budget,
     "redaction_passed": redaction.get("passed") is True,
 }
+setup_checks = {
+    "spend_within_cap": isinstance(spend, (int, float)) and not isinstance(spend, bool) and spend <= budget,
+    "command_executed": command_executed,
+    "output_tokens_positive": output_tokens_positive,
+}
+checks = {**hard_checks, **setup_checks}
 alias = key.get("key_alias") or "(no alias recorded)"
 summary = " ".join(f"{name}={str(ok).lower()}" for name, ok in checks.items())
-print(f"gate: {summary} alias={alias} output={record.get('output', '?')}")
-if not all(checks.values()):
+empty_turn = not command_executed or not output_tokens_positive
+setup_fault = all(hard_checks.values()) and (empty_turn or not setup_checks["spend_within_cap"])
+count = prior_setup_faults + 1 if setup_fault else 0
+print(
+    f"gate: {summary} empty_turn={str(empty_turn).lower()} "
+    f"setup_fault_count={count}/{max_setup_faults} alias={alias} "
+    f"output={record.get('output', '?')}"
+)
+if not all(hard_checks.values()):
     print(f"gate: FAILED for alias {alias}; if key_revoked is false, revoke it by alias now", file=sys.stderr)
     raise SystemExit(1)
+if setup_fault:
+    reason = "empty turn" if empty_turn else "spend cap exceeded"
+    detail = f"; archive_error={archive_error}" if archive_error else ""
+    print(f"gate: setup fault ({reason}) for alias {alias}{detail}", file=sys.stderr)
+    raise SystemExit(2)
 PY
 }
 
@@ -255,6 +320,7 @@ run_arm() {
   local arm=$1 sel=$2 subj=$3 trials=$4 t3=$5
   local -a cases; mapfile -t cases < <(arm_cases "$sel" "$arm")
   local cells=$(( ${#cases[@]} * trials ))
+  local setup_faults=0
   printf '\n== arm %s  (subject=%s, trials=%s, cells=%s, Table 3: %s)\n' "$arm" "$subj" "$trials" "$cells" "$t3"
   local tag="$output_root/$arm"
   for case_id in "${cases[@]}"; do
@@ -287,7 +353,26 @@ run_arm() {
           exit "$rc"
         fi
         if [[ $subj == agent ]]; then
-          if ! check_agent_run "$log" "$key_budget"; then
+          local gate_rc=0
+          set +e
+          check_agent_run "$log" "$key_budget" "$setup_faults" "$max_setup_faults"
+          gate_rc=$?
+          set -e
+          if ((gate_rc == 2)); then
+            setup_faults=$((setup_faults + 1))
+            if ((keep_going)); then
+              printf '    (--keep-going: continuing past the failed gate)\n' >&2
+              continue
+            fi
+            if ((setup_faults > max_setup_faults)); then
+              printf 'setup-fault limit exceeded for %s trial %d (%d > %d); not starting the next cell\n' \
+                "$case_id" "$t" "$setup_faults" "$max_setup_faults" >&2
+              exit 75
+            fi
+            printf '    (setup fault %d/%d: continuing to the next cell)\n' \
+              "$setup_faults" "$max_setup_faults" >&2
+            continue
+          elif ((gate_rc != 0)); then
             if ((keep_going)); then
               printf '    (--keep-going: continuing past the failed gate)\n' >&2
               continue
@@ -295,6 +380,7 @@ run_arm() {
             printf 'post-run gate failed for %s trial %d; not starting the next cell\n' "$case_id" "$t" >&2
             exit 75
           fi
+          setup_faults=0
         fi
       else
         "${cmd[@]}" || printf '    (runner exit %s -- inspect plan above)\n' "$?" >&2

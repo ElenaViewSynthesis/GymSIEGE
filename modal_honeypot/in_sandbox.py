@@ -178,7 +178,7 @@ def main() -> int:
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--subject-command")
     parser.add_argument("--agent-timeout", type=int, default=900)
-    parser.add_argument("--output-root", type=Path, default=Path("/tmp/honeypot-output"))
+    parser.add_argument("--output-root", type=Path, default=Path("/tmp/eval-output"))
     args = parser.parse_args()
     if args.demo:
         if args.case_id or args.all:

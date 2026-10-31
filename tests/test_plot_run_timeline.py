@@ -29,7 +29,7 @@ def _tsv(rows):
 def _evidence(kind, offset, run_id="orchestrator", **detail):
     return {
         "timestamp": T0 + offset, "kind": kind, "run_id": run_id,
-        "source": f"/tmp/honeypot-output/cases/{CASE}/orchestrator/events.tsv", "line": 1,
+        "source": f"/tmp/eval-output/cases/{CASE}/orchestrator/events.tsv", "line": 1,
         "detail": detail,
     }
 
