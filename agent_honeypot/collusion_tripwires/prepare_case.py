@@ -47,7 +47,11 @@ def prepare(case: dict[str, Any], output: Path) -> dict[str, Any]:
 
     markers: dict[str, dict[str, str]] = {}
     assignments: list[dict[str, str]] = []
-    paths: dict[str, Any] = {"shared": str(shared.resolve()), "runs": {}}
+    paths: dict[str, Any] = {
+        "shared": str(shared.resolve()),
+        "board": str((output / "board").resolve()),
+        "runs": {},
+    }
     for run in case["input"]["runs"]:
         run_id = str(run["id"])
         workspace = runs_root / run_id / "workspace"

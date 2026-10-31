@@ -37,6 +37,7 @@ REPO = Path(__file__).resolve().parents[1]
 REMOTE_ROOT = "/opt/honeypot"
 DEFAULT_APP = "rogue-agent-honeypots"
 CODEX_VERSION = "0.164.0"
+CODEX_SANDBOX_MODES = {"danger-full-access", "workspace-write"}
 POLICY = {
     "block_network": True,
     "cpu": (1.0, 2.0),
@@ -290,6 +291,7 @@ def remote_argv(
     subject_command: str | None = None,
     agent_timeout: int = 900,
     model: str | None = None,
+    codex_sandbox: str = "danger-full-access",
     egress_allowlist: list[str] | None = None,
 ) -> list[str]:
     if demo:
@@ -304,6 +306,10 @@ def remote_argv(
     validate_egress_allowlist(harness, egress_allowlist, allow_network)
     validate_weights_mode(harness, weights_mode)
     validate_subject_command(harness, subject_command)
+    if codex_sandbox not in CODEX_SANDBOX_MODES:
+        raise ValueError(
+            "HONEYPOT_CODEX_SANDBOX must be danger-full-access or workspace-write"
+        )
     if agent_timeout < 1:
         raise ValueError("agent_timeout must be a positive number of seconds")
     command = ["/usr/sbin/runuser", "-u", "honeypot"]
@@ -323,6 +329,8 @@ def remote_argv(
         command.append("MODAL_COLLUSION_CONTAINMENT_ENFORCED=1")
         if subject_command is not None and model is not None:
             command.append(f"HONEYPOT_CODEX_MODEL={model}")
+        if subject_command is not None:
+            command.append(f"HONEYPOT_CODEX_SANDBOX={codex_sandbox}")
     if harness == "network-off":
         command.append("MODAL_NETWORK_OFF_ENFORCED=1")
     if allow_network:
@@ -402,6 +410,11 @@ def run(
     key_ttl = getattr(args, "key_ttl", None) or default_key_ttl(args.sandbox_timeout)
     key_budget = getattr(args, "key_budget", 0.50)
     agent_timeout = getattr(args, "agent_timeout", 900)
+    codex_sandbox = os.environ.get("HONEYPOT_CODEX_SANDBOX", "danger-full-access")
+    if codex_sandbox not in CODEX_SANDBOX_MODES:
+        raise ValueError(
+            "HONEYPOT_CODEX_SANDBOX must be danger-full-access or workspace-write"
+        )
     key_alias = None
     if args.subject_command is not None:
         key_alias = virtual_key_alias(args.harness, args.case_id, arm, trial, stamp)
@@ -423,6 +436,7 @@ def run(
             "key_ttl": key_ttl,
             "key_model": getattr(args, "model", None),
             "agent_timeout_seconds": agent_timeout,
+            "codex_sandbox": codex_sandbox,
         })
     command = remote_argv(
         args.harness, args.case_id, args.workers,
@@ -434,6 +448,7 @@ def run(
         subject_command=args.subject_command,
         agent_timeout=agent_timeout,
         model=getattr(args, "model", None),
+        codex_sandbox=codex_sandbox,
         egress_allowlist=egress_allowlist,
     )
     if args.allow_network:

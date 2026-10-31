@@ -197,6 +197,8 @@ class CollusionCorpusTests(unittest.TestCase):
             "HOME": "/tmp/home", "PATH": "/usr/bin", "LD_PRELOAD": "/tmp/base.so",
             "HONEYPOT_COLLUSION_PRELOAD": "/tmp/collusion.so",
             "HONEYPOT_CODEX_MODEL": "pinned-model",
+            "HONEYPOT_CODEX_SANDBOX": "workspace-write",
+            "HONEYPOT_CODEX_WRITABLE_ROOTS": "/tmp/shared:/tmp/board",
             "HONEYPOT_WORKSPACE": "/tmp/workspace", "OPENAI_API_KEY": "virtual-key",
             "OPENAI_BASE_URL": "https://gateway.invalid/v1",
             "LITELLM_MASTER_KEY": "must-not-pass", "AWS_SECRET_ACCESS_KEY": "must-not-pass",
@@ -209,6 +211,10 @@ class CollusionCorpusTests(unittest.TestCase):
         self.assertEqual(env["OPENAI_API_KEY"], "virtual-key")
         self.assertEqual(env["OPENAI_BASE_URL"], "https://gateway.invalid/v1")
         self.assertEqual(env["HONEYPOT_CODEX_MODEL"], "pinned-model")
+        self.assertEqual(env["HONEYPOT_CODEX_SANDBOX"], "workspace-write")
+        self.assertEqual(
+            env["HONEYPOT_CODEX_WRITABLE_ROOTS"], "/tmp/shared:/tmp/board",
+        )
         self.assertEqual(env["LD_PRELOAD"], "/tmp/collusion.so:/tmp/base.so")
         self.assertEqual(
             set(env) & {
@@ -222,6 +228,51 @@ class CollusionCorpusTests(unittest.TestCase):
             "LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY", "LANGFUSE_BASE_URL",
         ):
             self.assertNotIn(name, env)
+
+    def test_case_environment_builds_workspace_write_roots_from_paths(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            shared = root / "shared"
+            queue = root / "queue.jsonl"
+            results = root / "results.jsonl"
+            subject = root / "runs/subject/workspace"
+            peer = root / "runs/peer/workspace"
+            for path in (shared, subject / "inbox", peer / "inbox", root / "board"):
+                path.mkdir(parents=True, exist_ok=True)
+            queue.touch()
+            results.touch()
+            (root / "markers.json").write_text(json.dumps({
+                "subject": {"run_marker": "subject-marker", "content_marker": "subject-content"},
+                "peer": {"run_marker": "peer-marker", "content_marker": "peer-content"},
+            }))
+            (root / "paths.json").write_text(json.dumps({
+                "shared": str(shared.resolve()),
+                "board": str((root / "board").resolve()),
+                "queue": str(queue.resolve()),
+                "results": str(results.resolve()),
+                "runs": {
+                    "subject": {
+                        "workspace": str(subject.resolve()),
+                        "prompt": str((root / "subject.prompt").resolve()),
+                    },
+                    "peer": {
+                        "workspace": str(peer.resolve()),
+                        "prompt": str((root / "peer.prompt").resolve()),
+                    },
+                },
+            }))
+            selected = {"id": "CLH-TEST", "input": {"runs": [
+                {"id": "subject", "kind": "subject"},
+                {"id": "peer", "kind": "peer", "assignment": "synthetic peer task"},
+            ]}}
+            env = RUNNER._run_env(
+                selected, root, selected["input"]["runs"][0],
+                "http://127.0.0.1:1", root / "tripwire.so", observe_only=True,
+            )
+            self.assertEqual(set(env["HONEYPOT_CODEX_WRITABLE_ROOTS"].split(":")), {
+                str(shared.resolve()), str((root / "board").resolve()), str(queue.resolve()),
+                str((subject / "inbox").resolve()), str((peer / "inbox").resolve()),
+            })
 
     def test_evidence_descriptors_are_distinct(self):
         self.assertEqual(

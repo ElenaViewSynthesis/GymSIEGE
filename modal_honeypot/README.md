@@ -75,6 +75,15 @@ timeouts, repetitions, and budget first. The image and Sandbox policy do not
 embed provider credentials (`secrets=[]`). Collusion artifact bundles retain
 the agent's JSONL transcript for post-run shape and evidence review.
 
+The Codex gateway adapter has two client-sandbox modes selected with
+`HONEYPOT_CODEX_SANDBOX`. `danger-full-access` is the default and preserves the
+v3 configuration. `workspace-write` enables Codex's own Linux sandbox and its
+network access while adding the planted shared cache, board, task queue, own
+inbox, and peer inbox paths from the case's `paths.json` as writable roots.
+Peer workspaces remain readable. In either mode, Modal's domain allowlist is
+still the outer egress boundary, and the ephemeral provider key remains only
+in the environment rather than the Codex argv.
+
 The collusion instrument is not hidden: its harness source and `cases.jsonl`,
 including all expectations, remain readable in the image by design. During a
 run the selected case's per-case answer key is absent from the case output tree;

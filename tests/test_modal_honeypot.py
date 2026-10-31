@@ -112,6 +112,17 @@ class ModalHoneypotTests(unittest.TestCase):
         ])
         self.assertIn("--preserve-environment", command[:5])
         self.assertIn("HONEYPOT_CODEX_MODEL=pinned-model", command)
+        self.assertIn("HONEYPOT_CODEX_SANDBOX=danger-full-access", command)
+        workspace_write = MODULE.remote_argv(
+            "collusion", "CLH-036", 1, subject_command="codex exec --json prompt",
+            model="pinned-model", codex_sandbox="workspace-write",
+        )
+        self.assertIn("HONEYPOT_CODEX_SANDBOX=workspace-write", workspace_write)
+        with self.assertRaisesRegex(ValueError, "HONEYPOT_CODEX_SANDBOX"):
+            MODULE.remote_argv(
+                "collusion", "CLH-036", 1, subject_command="true",
+                codex_sandbox="invalid",
+            )
         self.assertNotIn("--preserve-environment", MODULE.remote_argv("collusion", "CLH-036", 1))
         with self.assertRaises(ValueError):
             MODULE.remote_argv("agent", "APH-176", 1, subject_command="true")
@@ -724,6 +735,61 @@ class ModalHoneypotTests(unittest.TestCase):
         self.assertLess(adapter.index("2>&1"), adapter.index("redact_stream.py"))
         self.assertLess(adapter.index("redact_stream.py"), adapter.index("| tee"))
         self.assertNotIn("LANGFUSE_", adapter)
+
+    def test_codex_gateway_workspace_write_argv_has_roots_but_not_key(self):
+        adapter = MODULE.REPO / "modal_honeypot/codex_gateway.sh"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            bin_dir = root / "bin"
+            bin_dir.mkdir()
+            argv_log = root / "codex.argv"
+            fake_codex = bin_dir / "codex"
+            fake_codex.write_text(
+                "#!/bin/sh\n"
+                "printf '%s\\n' \"$@\" > \"$CODEX_ARGV_LOG\"\n"
+                "printf '%s\\n' '{\"type\":\"turn.completed\",\"usage\":{\"output_tokens\":1}}'\n"
+            )
+            fake_codex.chmod(0o755)
+            fake_python = bin_dir / "python3"
+            fake_python.write_text(
+                "#!/bin/sh\n"
+                f"if [ \"$1\" = - ]; then exec {sys.executable} \"$@\"; fi\n"
+                "exec cat\n"
+            )
+            fake_python.chmod(0o755)
+            workspace = root / "workspace"
+            workspace.mkdir()
+            prompt = root / "prompt.txt"
+            prompt.write_text("synthetic task\n")
+            transcript = root / "trajectory.jsonl"
+            roots = [root / name for name in ("shared", "board", "queue", "own-inbox", "peer-inbox")]
+            for item in roots:
+                item.mkdir()
+            fake_key = "unit-ephemeral-provider-key"
+            completed = subprocess.run(
+                ["bash", str(adapter)],
+                env={
+                    **os.environ,
+                    "PATH": f"{bin_dir}:{os.environ['PATH']}",
+                    "CODEX_ARGV_LOG": str(argv_log),
+                    "OPENAI_API_KEY": fake_key,
+                    "OPENAI_BASE_URL": "https://gateway.invalid/v1",
+                    "HONEYPOT_CODEX_MODEL": "pinned-model",
+                    "HONEYPOT_CODEX_SANDBOX": "workspace-write",
+                    "HONEYPOT_CODEX_WRITABLE_ROOTS": ":".join(map(str, roots)),
+                    "HONEYPOT_COLLUSION_PROMPT_FILE": str(prompt),
+                    "HONEYPOT_COLLUSION_TRANSCRIPT": str(transcript),
+                    "HONEYPOT_WORKSPACE": str(workspace),
+                },
+                text=True, capture_output=True, check=False,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            argv = argv_log.read_text()
+            self.assertIn('sandbox_mode="workspace-write"', argv)
+            self.assertIn("sandbox_workspace_write.network_access=true", argv)
+            for item in roots:
+                self.assertIn(str(item), argv)
+            self.assertNotIn(fake_key, argv)
 
     def test_codex_gateway_redaction_filter_uses_environment_key(self):
         script = MODULE.REPO / "modal_honeypot/redact_stream.py"

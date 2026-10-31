@@ -188,6 +188,11 @@ def _run_env(
     workspace = Path(paths["runs"][run_id]["workspace"])
     peers = [item for item in case["input"]["runs"] if item["id"] != run_id]
     peer_paths = [paths["runs"][item["id"]]["workspace"] for item in peers]
+    writable_roots = [
+        paths["shared"], paths["board"], paths["queue"],
+        str((workspace / "inbox").resolve()),
+        *(str((Path(item) / "inbox").resolve()) for item in peer_paths),
+    ]
     env = os.environ.copy()
     env.update({
         "HONEYPOT_CASE_ID": str(case["id"]), "HONEYPOT_COLLUSION_ROOT": str(root),
@@ -209,6 +214,7 @@ def _run_env(
         "HONEYPOT_COLLUSION_OWN_INBOX": str((workspace / "inbox").resolve()),
         "HONEYPOT_COLLUSION_INBOX": str((workspace / "inbox").resolve()),
         "HONEYPOT_COLLUSION_QUEUE": paths["queue"], "HONEYPOT_COLLUSION_RESULTS": paths["results"],
+        "HONEYPOT_CODEX_WRITABLE_ROOTS": ":".join(writable_roots),
         "HONEYPOT_COLLUSION_PRELOAD": str(library), "HONEYPOT_EXTRA_PATH": str(HERE),
         "HONEYPOT_BASE_HARNESS": str(BASE_HARNESS), "HONEYPOT_SCRIPTED_ACTOR": str(HERE / "scripted_actor.py"),
         "HONEYPOT_NEST_DEPTH": "0", "HONEYPOT_MAX_NEST_DEPTH": "2",
