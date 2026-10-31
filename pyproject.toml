@@ -9,6 +9,8 @@ python_files = ["test_*.py"]
 addopts = "-ra"
 
 [tool.ruff]
+# Same floor as requirements.txt; install with `pip install -r requirements.txt`.
+required-version = ">=0.17.3"
 target-version = "py312"
 line-length = 100
 extend-exclude = [

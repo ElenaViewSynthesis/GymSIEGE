@@ -42,6 +42,12 @@ scipy>=1.10.0
 # not pinned: it never touches what an experiment measures.
 pytest>=8.0.0
 
+# Linter, configured in pyproject.toml ([tool.ruff]); run it from the venv as
+# `.venv/bin/ruff check .`. Floored like pytest: it never touches what an
+# experiment measures. pyproject.toml's required-version holds the same floor,
+# so an older ruff on PATH refuses to run rather than lint by other rules.
+ruff>=0.17.3
+
 # Observability for the one LLM call this repo makes directly from the local
 # process (solver_agent.py's vision-screenshot fallback) -- everything else
 # runs as an upstream script inside a Daytona sandbox, out of reach here.
