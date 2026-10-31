@@ -69,11 +69,12 @@ def walk(observation):
 
 
 class LangfuseIngestTests(unittest.TestCase):
-    def _plan_with_gateway_alias(self, alias="collusion/CLH-036/t1/stamp"):
+    def _plan_with_gateway_alias(self, alias="collusion/CLH-036/t1/stamp",
+                                 record_name="modal-run.json"):
         with tempfile.TemporaryDirectory() as directory:
             copied = Path(directory) / "CLH-036"
             shutil.copytree(COLLUSION_RUN / "CLH-036", copied)
-            (copied / "modal-run.json").write_text(json.dumps({
+            (copied / record_name).write_text(json.dumps({
                 "arm": "lure-pair",
                 "trial": 1,
                 "virtual_key": {"key_alias": alias},
@@ -118,6 +119,14 @@ class LangfuseIngestTests(unittest.TestCase):
         self.assertEqual(plan.root.metadata["gateway_key_alias"], alias)
         self.assertEqual(plan.root.metadata["session_id_source"], "key_alias")
         self.assertIn(alias, json.dumps(ingest.asdict(plan), sort_keys=True))
+
+    def test_docker_run_record_supplies_the_session_alias(self):
+        alias = "collusion/CLH-036/t1/docker-stamp"
+        plan = self._plan_with_gateway_alias(alias, record_name="docker-run.json")
+        self.assertEqual(plan.session_id, alias)
+        self.assertEqual(plan.attributes["gateway_key_alias"], alias)
+        self.assertEqual(plan.root.metadata["session_id_source"], "key_alias")
+        self.assertEqual(ingest.RUN_RECORD_NAMES, ("modal-run.json", "docker-run.json"))
 
     def test_gateway_usage_helper_filters_alias_and_sums_tokens(self):
         alias = "collusion/CLH-036/t1/stamp"

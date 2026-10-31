@@ -170,7 +170,8 @@ def rescore(cohort_root: Path, out_dir: Path, selection_path: Path) -> dict[str,
         for relative_text in sorted(selection):
             relative = Path(relative_text)
             run_dir = cohort_root / relative
-            modal = _read_json(run_dir / "modal-run.json")
+            record_path = COHORT.run_record_path(run_dir)
+            modal = _read_json(record_path)
             summary = _read_json(run_dir / "summary.json")
             original = summary["results"][0]
             case_id = str(original.get("case_id") or modal.get("case_id"))
@@ -197,7 +198,9 @@ def rescore(cohort_root: Path, out_dir: Path, selection_path: Path) -> dict[str,
             rescored_summary["results"][0] = _rescored_result(original, report)
             mirror = mirror_root / relative
             mirror.mkdir(parents=True, exist_ok=True)
-            (mirror / "modal-run.json").write_text(json.dumps(modal, indent=2, sort_keys=True) + "\n")
+            # The mirror keeps the source's record name, so aggregate_cohort and
+            # the figures read a re-scored Docker tree as they read the original.
+            (mirror / record_path.name).write_text(json.dumps(modal, indent=2, sort_keys=True) + "\n")
             (mirror / "summary.json").write_text(json.dumps(rescored_summary, indent=2, sort_keys=True) + "\n")
             before[str(original.get("stage") or "none")] += 1
             after[report["observed_stage"]] += 1

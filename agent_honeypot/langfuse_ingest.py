@@ -130,6 +130,20 @@ def _read_json(path: Path, default: Any = None) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+# The runner's record beside the archive: modal_honeypot/runner.py writes
+# modal-run.json, docker_honeypot/runner.py docker-run.json. Kept in step with
+# collusion_tripwires/aggregate_cohort.py RUN_RECORD_NAMES, which is not
+# imported here because it pulls in matplotlib.
+RUN_RECORD_NAMES = ("modal-run.json", "docker-run.json")
+
+
+def _read_run_record(outer: Path) -> Any:
+    for name in RUN_RECORD_NAMES:
+        if (outer / name).is_file():
+            return _read_json(outer / name, {})
+    return {}
+
+
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
     if not path.is_file():
         return []
@@ -739,7 +753,7 @@ def _redact_plan(plan: TracePlan, redactor: MarkerRedactor) -> TracePlan:
 def build_trace_plans(source: Path, *, case_id: str | None = None) -> list[TracePlan]:
     source = Path(source)
     with _materialize(source, case_id) as (root, outer):
-        modal = _read_json(outer / "modal-run.json", {})
+        modal = _read_run_record(outer)
         summary = _read_json(outer / "summary.json", _read_json(root / "summary.json", {}))
         modal = modal if isinstance(modal, dict) else {}
         summary = summary if isinstance(summary, dict) else {}

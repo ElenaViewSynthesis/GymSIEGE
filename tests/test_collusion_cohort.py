@@ -19,7 +19,7 @@ class CollusionCohortTests(unittest.TestCase):
               observable=True, timeout=False, evidence=None, verifier=None,
               arm="lure-pair", started_at="2026-10-29T09:00:00Z",
               run_wall_seconds=7.25, write_summary=True, write_modal=True,
-              empty_summary=False):
+              empty_summary=False, record_name="modal-run.json", provider=None):
         run = root / name
         run.mkdir()
         result_exit = 124 if timeout else exit_code
@@ -46,10 +46,54 @@ class CollusionCohortTests(unittest.TestCase):
             },
             "redaction": {"passed": True},
         }
+        if provider is not None:
+            modal.update({"provider": provider, "boundary": f"{provider}-container"})
         if write_summary:
             (run / "summary.json").write_text(json.dumps(summary))
         if write_modal:
-            (run / "modal-run.json").write_text(json.dumps(modal))
+            (run / record_name).write_text(json.dumps(modal))
+
+    def test_docker_run_record_is_read_and_never_pooled_with_modal(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "cohort"
+            out = Path(directory) / "aggregate"
+            root.mkdir()
+            self._cell(root, "modal-cell", "CLH-036", 1, stage="read")
+            self._cell(root, "docker-cell", "CLH-036", 2, stage="acted",
+                       record_name="docker-run.json", provider="docker")
+            # A Docker cell whose run left no record is still labelled, not skipped.
+            self._cell(root, "docker-missing", "CLH-037", 1, write_modal=False)
+
+            summary = COHORT.aggregate(root, out)
+
+            self.assertEqual(summary["cells_discovered"], 3)
+            by_provider = {
+                stratum["provider"]: stratum for stratum in summary["strata"]
+                if stratum["model"] == "test-model"
+            }
+            self.assertEqual(set(by_provider), {"modal", "docker"})
+            self.assertEqual(by_provider["docker"]["metrics"]["valid_cells"], 1)
+            self.assertEqual(by_provider["docker"]["metrics"]["stage_counts"], {"acted": 1})
+            self.assertEqual(by_provider["modal"]["metrics"]["stage_counts"], {"read": 1})
+            self.assertTrue(by_provider["docker"]["label"].endswith(", docker"))
+            self.assertEqual(by_provider["modal"]["label"], "lure-pair\ntest-model, $0.5")
+            reasons = [
+                row["reasons"] for stratum in summary["strata"]
+                for row in stratum["metrics"]["exclusions"]
+            ]
+            self.assertIn(["missing run record"], reasons)
+            self.assertEqual(summary["rules"]["pooling"],
+                             "none across arms, models, budgets, or providers")
+
+    def test_run_record_lookup_prefers_whichever_record_exists(self):
+        with tempfile.TemporaryDirectory() as directory:
+            run = Path(directory)
+            self.assertEqual(COHORT.run_record_path(run).name, "modal-run.json")
+            self.assertIsNone(COHORT.read_run_record(run))
+            (run / "docker-run.json").write_text('{"provider": "docker"}')
+            self.assertEqual(COHORT.run_record_path(run).name, "docker-run.json")
+            self.assertEqual(COHORT.run_provider(COHORT.read_run_record(run)), "docker")
+            self.assertEqual(COHORT.run_provider({}), "modal")
 
     def test_four_cell_cohort_rates_exclusions_and_figures(self):
         with tempfile.TemporaryDirectory() as directory:

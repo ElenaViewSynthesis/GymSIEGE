@@ -70,6 +70,30 @@ def _read_json(path: Path, default: Any = None) -> Any:
         return default
 
 
+# The runner's record beside summary.json: modal_honeypot/runner.py writes
+# modal-run.json, docker_honeypot/runner.py writes docker-run.json (the same
+# fields plus provider and boundary). Every reader finds it through here.
+RUN_RECORD_NAMES = ("modal-run.json", "docker-run.json")
+
+
+def run_record_path(run_dir: Path) -> Path:
+    """The run record in run_dir; the Modal name when neither exists."""
+    for name in RUN_RECORD_NAMES:
+        candidate = run_dir / name
+        if candidate.is_file():
+            return candidate
+    return run_dir / RUN_RECORD_NAMES[0]
+
+
+def read_run_record(run_dir: Path, default: Any = None) -> Any:
+    return _read_json(run_record_path(run_dir), default)
+
+
+def run_provider(record: dict[str, Any]) -> str:
+    """Modal records predate the provider field."""
+    return str(record.get("provider") or "modal")
+
+
 def load_selection(path: Path) -> set[str]:
     payload = _read_json(path)
     rows = payload.get("run_dirs") if isinstance(payload, dict) else payload
@@ -218,7 +242,7 @@ def _exclusion_reasons(
 
 
 def _cell(run_dir: Path) -> dict[str, Any]:
-    modal_loaded = _read_json(run_dir / "modal-run.json")
+    modal_loaded = read_run_record(run_dir)
     summary_loaded = _read_json(run_dir / "summary.json")
     modal_valid = isinstance(modal_loaded, dict)
     summary_valid = isinstance(summary_loaded, dict)
@@ -250,6 +274,7 @@ def _cell(run_dir: Path) -> dict[str, Any]:
         stage = "none"
     return {
         "run_dir": str(run_dir), "alias": alias, "arm": str(modal.get("arm") or run_dir.parent.name),
+        "provider": run_provider(modal),
         "started_at": modal.get("started_at") or virtual.get("minted_at"),
         "case_id": case_id, "trial": modal.get("trial"),
         "model": modal.get("model") or policy.get("key_model") or "unknown",
@@ -391,7 +416,7 @@ def aggregate(
 ) -> dict[str, Any]:
     run_dirs = sorted({
         path.parent
-        for pattern in ("modal-run.json", "summary.json")
+        for pattern in (*RUN_RECORD_NAMES, "summary.json")
         for path in cohort_root.rglob(pattern)
     })
     cells = [_cell(run_dir) for run_dir in run_dirs]
@@ -419,18 +444,23 @@ def aggregate(
             })
         else:
             selected.append(cell)
-    grouped: dict[tuple[str, str, Any], list[dict[str, Any]]] = defaultdict(list)
+    # Execution boundaries are never pooled: a Docker cell and a Modal cell of the
+    # same arm, model and budget land in separate strata.
+    grouped: dict[tuple[str, str, Any, str], list[dict[str, Any]]] = defaultdict(list)
     for cell in selected:
-        grouped[(cell["arm"], str(cell["model"]), cell["budget_usd"])].append(cell)
+        grouped[(cell["arm"], str(cell["model"]), cell["budget_usd"], cell["provider"])].append(cell)
     strata = []
-    for (arm, model, budget), rows in sorted(grouped.items(), key=lambda item: tuple(map(str, item[0]))):
+    for (arm, model, budget, provider), rows in sorted(
+        grouped.items(), key=lambda item: tuple(map(str, item[0])),
+    ):
         cases = {
             case_id: _metrics([row for row in rows if row["case_id"] == case_id])
             for case_id in sorted({row["case_id"] for row in rows})
         }
+        boundary = "" if provider == "modal" else f", {provider}"
         strata.append({
-            "arm": arm, "model": model, "budget_usd": budget,
-            "label": f"{arm}\n{model}, ${budget}", "metrics": _metrics(rows),
+            "arm": arm, "model": model, "budget_usd": budget, "provider": provider,
+            "label": f"{arm}\n{model}, ${budget}{boundary}", "metrics": _metrics(rows),
             "cases": cases, "lure_access_difference": _lure_difference(rows),
         })
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -447,7 +477,7 @@ def aggregate(
         },
         "channel_by_stage_counts": channel_counts,
         "rules": {
-            "pooling": "none across arms, models, or budgets",
+            "pooling": "none across arms, models, budgets, or providers",
             "sensor_controls_in_rates": False,
             "marker_values_read": False,
         },

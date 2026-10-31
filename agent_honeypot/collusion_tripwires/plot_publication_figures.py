@@ -176,7 +176,7 @@ def load_cohort(runs_root: Path, label: str, since: str, until: str, arms: list[
             stamp = run_dir.name.rsplit("-", 1)[-1]
             if not (since <= stamp < until):
                 continue
-            modal = _read_json(run_dir / "modal-run.json", {})
+            modal = COHORT.read_run_record(run_dir, {})
             summary = _read_json(run_dir / "summary.json", {})
             rescored = False
             if rescored_root is not None:
@@ -216,7 +216,8 @@ def load_cohort(runs_root: Path, label: str, since: str, until: str, arms: list[
             passed = verifier.get("passed") if isinstance(verifier, dict) and verifier.get("status") == "implemented" else None
             virtual = modal.get("virtual_key") if isinstance(modal.get("virtual_key"), dict) else {}
             cells.append({
-                "cohort": label, "arm": arm, "case": case_id, "category": cases.get(case_id, {}).get("category", ""),
+                "cohort": label, "arm": arm, "provider": COHORT.run_provider(modal),
+                "case": case_id, "category": cases.get(case_id, {}).get("category", ""),
                 "trial": modal.get("trial"), "alias": virtual.get("key_alias") or run_dir.name,
                 "stage": stage, "ladder": LADDER[level], "ladder_level": level, "rescored": rescored,
                 "listing_observable": listing_observable, "blocked_attempts": blocked,

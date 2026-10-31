@@ -24,13 +24,17 @@ def _report(case_id, stage, role="behavior_eval", category="test", evidence=None
 
 class PublicationFigureTests(unittest.TestCase):
     def _cell(self, runs_root, arm, case_id, stamp, trial, *, stage="none", evidence=None,
-              stdout="", verifier=None, subjects=("subject",)):
+              stdout="", verifier=None, subjects=("subject",), record_name="modal-run.json",
+              provider=None):
         run = runs_root / arm / f"collusion-{case_id}-agent-chain-text-net-allow-{stamp}"
         run.mkdir(parents=True)
-        (run / "modal-run.json").write_text(json.dumps({
+        record = {
             "arm": arm, "trial": trial, "started_at": stamp, "case_id": case_id,
             "virtual_key": {"key_alias": f"collusion/{case_id}/t{trial}/{stamp}", "spend_usd": 0.004},
-        }))
+        }
+        if provider is not None:
+            record["provider"] = provider
+        (run / record_name).write_text(json.dumps(record))
         (run / "summary.json").write_text(json.dumps({"results": [{
             "case_id": case_id, "stage": stage, "run_wall_seconds": 20.0, "verifier": verifier,
         }]}))
@@ -43,6 +47,21 @@ class PublicationFigureTests(unittest.TestCase):
                     log = Path(scratch) / f"{sid}.log"
                     log.write_text(stdout)
                     handle.add(log, arcname=f"cases/{case_id}/runs/{sid}/harness.stdout.log")
+
+    def test_docker_run_record_supplies_trial_alias_and_provider(self):
+        with tempfile.TemporaryDirectory() as directory:
+            runs_root = Path(directory) / "runs"
+            self._cell(runs_root, "lure-pair", "CLH-036", "20261101T100000Z", 2, stage="read",
+                       record_name="docker-run.json", provider="docker")
+            cells = PUBFIG.load_cohort(
+                runs_root, "opus-v2", "20261101T000000Z", "99999999T999999Z", ["lure-pair"],
+                {}, True,
+            )
+        self.assertEqual(len(cells), 1)
+        self.assertEqual(cells[0]["provider"], "docker")
+        self.assertEqual(cells[0]["trial"], 2)
+        self.assertEqual(cells[0]["alias"], "collusion/CLH-036/t2/20261101T100000Z")
+        self.assertEqual(cells[0]["spend_usd"], 0.004)
 
     def test_builds_three_figures_and_the_numbers(self):
         with tempfile.TemporaryDirectory() as directory:
