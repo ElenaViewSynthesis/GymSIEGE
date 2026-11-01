@@ -128,6 +128,49 @@ class LangfuseIngestTests(unittest.TestCase):
         self.assertEqual(plan.root.metadata["session_id_source"], "key_alias")
         self.assertEqual(ingest.RUN_RECORD_NAMES, ("modal-run.json", "docker-run.json"))
 
+    def test_docker_cell_trace_names_its_boundary_and_provenance(self):
+        alias = "collusion/CLH-036/t1/docker-stamp"
+        with tempfile.TemporaryDirectory() as directory:
+            copied = Path(directory) / "CLH-036"
+            shutil.copytree(COLLUSION_RUN / "CLH-036", copied)
+            (copied / "docker-run.json").write_text(json.dumps({
+                "arm": "lure-pair", "trial": 1, "harness": "collusion", "subject_mode": "agent",
+                "provider": "docker", "boundary": "docker-container",
+                "image": "rogue-agent-honeypot:abcdef1", "image_id": "sha256:" + "a" * 64,
+                "seccomp_profile": {"path": "docker_honeypot/seccomp-bwrap.json", "sha256": "b" * 64},
+                "source_revision": {"commit": "c" * 40, "dirty": False},
+                "virtual_key": {"key_alias": alias},
+            }))
+            (copied / "egress-proxy.log").write_text("".join(json.dumps(row) + "\n" for row in (
+                {"target": "gateway.invalid:443", "decision": "allowed", "bytes_up": 1, "bytes_down": 2},
+                {"target": "gateway.invalid:443", "decision": "allowed", "bytes_up": 1, "bytes_down": 2},
+                {"target": "chatgpt.com:443", "decision": "refused", "bytes_up": 0, "bytes_down": 0},
+            )))
+            workspace = "/tmp/eval-output/cases/CLH-036/runs/subject/workspace"
+            (copied / "runs/subject/codex-session.jsonl").write_text("".join(json.dumps(row) + "\n" for row in (
+                {"type": "session_meta", "payload": {"cwd": workspace, "cli_version": "0.164.0"}},
+                {"type": "response_item", "payload": {"type": "message", "role": "developer", "content": [
+                    {"type": "input_text", "text": "`sandbox_mode` is `workspace-write`: edits allowed."}]}},
+                {"type": "turn_context", "payload": {"sandbox_policy": {
+                    "type": "workspace-write", "network_access": True}}},
+            )))
+            plan = ingest.build_trace_plans(copied)[0]
+        self.assertIn("boundary=docker-container", plan.tags)
+        self.assertEqual(plan.attributes["provider"], "docker")
+        self.assertEqual(plan.attributes["boundary"], "docker-container")
+        metadata = plan.root.metadata
+        self.assertEqual((metadata["provider"], metadata["boundary"]), ("docker", "docker-container"))
+        self.assertEqual(metadata["image"], "rogue-agent-honeypot:abcdef1")
+        self.assertEqual(metadata["seccomp_profile"]["path"], "docker_honeypot/seccomp-bwrap.json")
+        self.assertEqual(metadata["egress"], {
+            "allowed": {"gateway.invalid:443": 2}, "refused": {"chatgpt.com:443": 1},
+        })
+        self.assertEqual(metadata["codex_sessions"]["subject"], {
+            "cwd": workspace, "cli_version": "0.164.0", "sandbox_mode": "workspace-write",
+            "sandbox_policy": "workspace-write", "network_access": True,
+        })
+        self.assertEqual(plan.session_id, alias)
+
     def test_canaries_and_the_task_digest_never_reach_a_trace(self):
         digest = "d" * 64
         notes = "HONEYCANARY_CLH-036_subject_notes_0123456789abcdef"
@@ -157,6 +200,53 @@ class LangfuseIngestTests(unittest.TestCase):
         for value in (digest, notes, readme):
             self.assertNotIn(value, text)
         self.assertIn("MARKER_", text)
+
+    def test_modal_and_local_runs_keep_their_own_boundary(self):
+        modal = self._plan_with_gateway_alias()
+        self.assertIn("boundary=modal-sandbox", modal.tags)
+        self.assertEqual(modal.attributes["provider"], "modal")
+        self.assertNotIn("egress", modal.root.metadata)
+        self.assertNotIn("image", modal.root.metadata)
+        local = ingest.build_trace_plans(COLLUSION_RUN, case_id="CLH-036")[0]
+        self.assertEqual(local.attributes["provider"], "local")
+        self.assertIn("boundary=local-scripted-no-model-no-network", local.tags)
+
+    def test_gateway_wait_retries_until_a_generation_is_visible(self):
+        alias = "collusion/CLH-036/t1/stamp"
+
+        class LateObservations:
+            def __init__(self, empty_calls):
+                self.calls, self.empty_calls = 0, empty_calls
+
+            def get_many(self, **kwargs):
+                self.calls += 1
+                data = [] if self.calls <= self.empty_calls else [
+                    {"metadata": {"attributes.litellm.key_alias": alias}, "usageDetails": {"total": 9}},
+                ]
+                return {"data": data, "meta": {"cursor": None}}
+
+        now = [0.0]
+        sleeps = []
+
+        def sleep(seconds):
+            sleeps.append(seconds)
+            now[0] += seconds
+
+        plan = self._plan_with_gateway_alias(alias)
+        late = LateObservations(empty_calls=2)
+        self.assertTrue(ingest.wait_for_gateway_generations(
+            plan, late, timeout=60, interval=5, sleep=sleep, clock=lambda: now[0]))
+        self.assertEqual(late.calls, 3)
+        self.assertEqual(sleeps, [5, 5])
+        self.assertEqual(plan.root.metadata["gateway_generation_count"], 1)
+        # None ever visible: gives up at the timeout with the last (empty) join recorded.
+        plan = self._plan_with_gateway_alias(alias)
+        now[0], sleeps[:] = 0.0, []
+        self.assertFalse(ingest.wait_for_gateway_generations(
+            plan, LateObservations(empty_calls=10**6), timeout=12, interval=5,
+            sleep=sleep, clock=lambda: now[0]))
+        self.assertEqual(plan.root.metadata["gateway_generation_count"], 0)
+        self.assertLessEqual(sum(sleeps), 15)
 
     def test_gateway_usage_helper_filters_alias_and_sums_tokens(self):
         alias = "collusion/CLH-036/t1/stamp"

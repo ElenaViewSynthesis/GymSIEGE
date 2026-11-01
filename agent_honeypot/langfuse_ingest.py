@@ -18,6 +18,8 @@ import shutil
 import sys
 import tarfile
 import tempfile
+import time
+from collections import Counter
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Iterator, Mapping, Protocol
@@ -547,6 +549,84 @@ def add_gateway_generation_usage(
     )
 
 
+def wait_for_gateway_generations(
+    plan: TracePlan, observations_client: LangfuseObservationsClient, *,
+    timeout: float, interval: float = 5.0,
+    sleep: Callable[[float], None] = time.sleep, clock: Callable[[], float] = time.monotonic,
+) -> bool:
+    """Join the gateway's generations, retrying until at least one is visible.
+
+    The gateway exports to Langfuse in OpenTelemetry batches, so a push made
+    right after a cell can query before its generations have landed and record
+    zero. Returns True once the join found a generation (or the plan has no
+    alias to join), False when the timeout passed with none; either way the
+    plan carries the last join's counts.
+    """
+    if not plan.attributes.get("gateway_key_alias"):
+        return True
+    deadline = clock() + max(0.0, timeout)
+    while True:
+        add_gateway_generation_usage(plan, observations_client)
+        if plan.root.metadata.get("gateway_generation_count", 0) > 0:
+            return True
+        if clock() >= deadline:
+            return False
+        sleep(interval)
+
+
+def _execution_boundary(record: Mapping[str, Any], summary: Mapping[str, Any]) -> tuple[str, str]:
+    """(provider, boundary) of a run. Docker records name both; Modal records
+    predate the fields; a run with no record is a local run. Traces from
+    different boundaries are never read as one cohort."""
+    provider = record.get("provider")
+    if not isinstance(provider, str) or not provider:
+        provider = "modal" if record else "local"
+    boundary = record.get("boundary") or summary.get("execution_boundary")
+    if not isinstance(boundary, str) or not boundary:
+        boundary = "modal-sandbox" if provider == "modal" else provider
+    return provider, boundary
+
+
+def _egress_summary(outer: Path) -> dict[str, dict[str, int]] | None:
+    """Targets the Docker egress proxy allowed and refused, with request counts
+    (egress-proxy.log beside the run record; hosts and counts only)."""
+    rows = _read_jsonl(outer / "egress-proxy.log")
+    if not rows:
+        return None
+    counts: dict[str, Counter[str]] = {"allowed": Counter(), "refused": Counter()}
+    for row in rows:
+        decision, target = row.get("decision"), row.get("target")
+        if decision in counts and isinstance(target, str):
+            counts[decision][target] += 1
+    return {decision: dict(sorted(counter.items())) for decision, counter in counts.items()}
+
+
+SANDBOX_MODE_LINE = re.compile(r"`sandbox_mode` is `([a-z-]+)`")
+
+
+def _codex_sessions(case_dir: Path) -> dict[str, dict[str, Any]]:
+    """What each agent subject's Codex told the model about its environment,
+    from runs/<id>/codex-session.jsonl: the session cwd, the developer
+    permissions line (`sandbox_mode` is ...), and the turn's sandbox policy."""
+    sessions: dict[str, dict[str, Any]] = {}
+    for path in sorted(case_dir.glob("runs/*/codex-session.jsonl")):
+        rows = _read_jsonl(path)
+        meta = next((row["payload"] for row in rows
+                     if row.get("type") == "session_meta" and isinstance(row.get("payload"), dict)), {})
+        turn = next((row["payload"] for row in rows
+                     if row.get("type") == "turn_context" and isinstance(row.get("payload"), dict)), {})
+        policy = turn.get("sandbox_policy") if isinstance(turn.get("sandbox_policy"), dict) else {}
+        modes = sorted(set(SANDBOX_MODE_LINE.findall(path.read_text(encoding="utf-8", errors="replace"))))
+        sessions[path.parent.name] = {
+            "cwd": meta.get("cwd"),
+            "cli_version": meta.get("cli_version"),
+            "sandbox_mode": modes[0] if len(modes) == 1 else modes,
+            "sandbox_policy": policy.get("type"),
+            "network_access": policy.get("network_access"),
+        }
+    return sessions
+
+
 def _harness_name(case_id: str, modal: Mapping[str, Any]) -> str:
     if isinstance(modal.get("harness"), str):
         return str(modal["harness"])
@@ -664,7 +744,7 @@ def _case_summary(summary: Mapping[str, Any], case_id: str) -> Mapping[str, Any]
 
 def _build_case_plan(
     case_dir: Path, modal: Mapping[str, Any], summary: Mapping[str, Any],
-    redactor: MarkerRedactor, cohort: str,
+    redactor: MarkerRedactor, cohort: str, *, egress: Mapping[str, Any] | None = None,
 ) -> TracePlan:
     case = _read_json(case_dir / "case.json", {})
     if not isinstance(case, dict):
@@ -696,7 +776,8 @@ def _build_case_plan(
     session_id = gateway_key_alias or f"{arm}/{case_id}/t{trial}"
     harness = _harness_name(case_id, modal)
     subject_mode = str(modal.get("subject_mode") or report.get("subject_mode") or "scripted")
-    tags = [harness, arm, subject_mode, "chain=on"]
+    provider, boundary = _execution_boundary(modal, summary)
+    tags = [harness, arm, subject_mode, "chain=on", f"boundary={boundary}"]
     if not chains_valid:
         tags.append("unobservable")
     trace_input, trace_output = _root_io(case, report, chains_valid, trial)
@@ -711,13 +792,25 @@ def _build_case_plan(
         "verifier_status": report.get("verifier"),
         "transcript_turn_count": transcript_turns,
         "transcript_total_tokens": transcript_tokens,
+        "provider": provider,
+        "boundary": boundary,
     }
+    # The Docker boundary's provenance and what it observed; absent on Modal runs.
+    for name in ("image", "image_id", "seccomp_profile", "source_revision"):
+        if modal.get(name) is not None:
+            metadata[name] = modal[name]
+    if egress is not None:
+        metadata["egress"] = egress
+    sessions = _codex_sessions(case_dir)
+    if sessions:
+        metadata["codex_sessions"] = sessions
     if isinstance(report.get("observe_only"), bool):
         metadata["observe_only"] = report["observe_only"]
     if gateway_key_alias:
         metadata["gateway_key_alias"] = gateway_key_alias
     attributes = {
         "harness": harness, "arm": arm, "case_id": case_id, "trial": str(trial),
+        "provider": provider, "boundary": boundary,
     }
     if gateway_key_alias:
         attributes["gateway_key_alias"] = gateway_key_alias
@@ -772,8 +865,9 @@ def build_trace_plans(source: Path, *, case_id: str | None = None) -> list[Trace
             for marker in _collect_markers(path).values
         ])
         cohort = str(modal.get("arm") or outer.name)
+        egress = _egress_summary(outer)
         return [
-            _build_case_plan(path, modal, summary, redactor, cohort)
+            _build_case_plan(path, modal, summary, redactor, cohort, egress=egress)
             for path in case_directories
         ]
 
@@ -887,7 +981,14 @@ def main(argv: list[str] | None = None) -> int:
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--dry-run", action="store_true")
     mode.add_argument("--push", action="store_true")
+    parser.add_argument(
+        "--wait-for-gateway", type=float, default=0.0, metavar="SECONDS",
+        help="with --push: retry the gateway-generation join until a generation for the "
+             "cell's key alias is visible, up to SECONDS (the gateway exports in batches)",
+    )
     args = parser.parse_args(argv)
+    if args.wait_for_gateway < 0:
+        parser.error("--wait-for-gateway must be zero or a positive number of seconds")
     try:
         plans = build_trace_plans(args.run, case_id=args.case_id)
         if args.dry_run:
@@ -897,7 +998,19 @@ def main(argv: list[str] | None = None) -> int:
         observations_client = client.api.observations
         try:
             for plan in plans:
-                add_gateway_generation_usage(plan, observations_client)
+                if args.wait_for_gateway > 0:
+                    found = wait_for_gateway_generations(
+                        plan, observations_client, timeout=args.wait_for_gateway,
+                    )
+                    if not found:
+                        print(
+                            f"langfuse ingest: no gateway generation visible for case "
+                            f"{plan.case_id} after {args.wait_for_gateway:g}s; pushed with "
+                            "gateway_generation_count=0",
+                            file=sys.stderr,
+                        )
+                else:
+                    add_gateway_generation_usage(plan, observations_client)
         except Exception:
             client.shutdown()
             raise

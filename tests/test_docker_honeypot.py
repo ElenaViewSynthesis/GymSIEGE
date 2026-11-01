@@ -814,6 +814,70 @@ class DriverProviderTests(unittest.TestCase):
         self.assertNotIn("unit-test-master-not-a-key", completed.stdout + completed.stderr)
         self.assertIn("Done.", completed.stdout)
 
+    FAKE_INGEST = (
+        "import json, os, sys\n"
+        "with open(os.environ['FAKE_INGEST_LOG'], 'a') as log:\n"
+        "    log.write(json.dumps(sys.argv[1:]) + '\\n')\n"
+        "print(json.dumps({'trace_ids': ['0' * 32]}))\n"
+        "raise SystemExit(int(os.environ.get('FAKE_INGEST_EXIT', '0')))\n"
+    )
+
+    def _langfuse_run(self, directory, *, ingest_exit="0", drop=()):
+        runner = Path(directory) / "fake_docker_runner.py"
+        runner.write_text(FAKE_DOCKER_RUNNER)
+        ingest = Path(directory) / "fake_ingest.py"
+        ingest.write_text(self.FAKE_INGEST)
+        calls = Path(directory) / "ingest-calls.jsonl"
+        env = self._env(
+            EXPERIMENT_APPROVED="1", LITELLM_MASTER_KEY="unit-test-master-not-a-key",
+            HONEYPOT_RUNNER=str(runner), HONEYPOT_INGEST=str(ingest),
+            FAKE_INGEST_LOG=str(calls), FAKE_INGEST_EXIT=ingest_exit,
+            LANGFUSE_PUBLIC_KEY="pk-unit", LANGFUSE_SECRET_KEY="unit-secret-not-a-key",
+        )
+        for name in drop:
+            env.pop(name, None)
+        completed = self._driver(
+            ["--provider", "docker", "--arm", "lure-pair", "--trials", "1",
+             "--model", "claude-opus-5-5", "--output", str(Path(directory) / "out"),
+             "--execute", "--langfuse"],
+            env,
+        )
+        rows = [json.loads(line) for line in calls.read_text().splitlines()] if calls.exists() else []
+        return completed, rows
+
+    def test_langfuse_pushes_each_passed_agent_cell_once(self):
+        with tempfile.TemporaryDirectory() as directory:
+            completed, calls = self._langfuse_run(directory)
+            out = Path(directory) / "out" / "lure-pair"
+            self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+            self.assertEqual(len(calls), 2)
+            for call, case_id in zip(calls, ("CLH-036", "CLH-037")):
+                self.assertEqual(call[0], str(out / f"collusion-{case_id}-fake-t1"))
+                self.assertEqual(call[1:], ["--push", "--wait-for-gateway", "180"])
+                self.assertTrue((out / f"collusion-{case_id}-fake-t1" / "langfuse-push.log").is_file())
+        self.assertEqual(completed.stdout.count("langfuse: trace pushed"), 2)
+        self.assertIn("Langfuse: each agent cell that passes its gate", completed.stdout)
+        self.assertIn("Langfuse: 2 trace(s) pushed, 0 failed.", completed.stdout)
+        self.assertNotIn("unit-secret-not-a-key", completed.stdout + completed.stderr)
+
+    def test_langfuse_push_failure_is_reported_and_the_arm_continues(self):
+        with tempfile.TemporaryDirectory() as directory:
+            completed, calls = self._langfuse_run(directory, ingest_exit="1")
+        self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(completed.stdout.count("] RUN"), 2)
+        self.assertEqual(completed.stderr.count("langfuse: push FAILED"), 2)
+        self.assertIn("Langfuse: 0 trace(s) pushed, 2 failed.", completed.stdout)
+        self.assertIn("Done.", completed.stdout)
+
+    def test_langfuse_needs_its_credentials_before_any_cell(self):
+        with tempfile.TemporaryDirectory() as directory:
+            completed, calls = self._langfuse_run(directory, drop=("LANGFUSE_SECRET_KEY",))
+            self.assertEqual(completed.returncode, 78, completed.stdout + completed.stderr)
+            self.assertIn("--langfuse needs LANGFUSE_SECRET_KEY", completed.stderr)
+            self.assertNotIn("] RUN", completed.stdout)
+            self.assertEqual(calls, [])
+
     def test_docker_gate_fails_on_a_missing_or_foreign_run_record(self):
         with tempfile.TemporaryDirectory() as directory:
             completed = self._execute_with_fake(directory, FAKE_RUNNER_RECORD="modal-run.json")

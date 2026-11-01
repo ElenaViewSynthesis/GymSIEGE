@@ -41,6 +41,11 @@
 # --keep-going restores the old
 # continue-past-failures behaviour for scripted calibration sweeps. The gate
 # prints field names, booleans and the key alias only, never a key value.
+# --langfuse pushes each agent cell's host-side trace (agent_honeypot/
+# langfuse_ingest.py --push) once its gate has passed, waiting up to
+# --langfuse-wait seconds (default 180) for the gateway's generations of that
+# key alias to be visible; a failed push is reported and the arm continues.
+# Needs LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY and LANGFUSE_BASE_URL.
 set -Eeuo pipefail
 
 repo=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
@@ -105,6 +110,10 @@ workers=4
 provider=modal
 output_root=
 output_root_set=0
+langfuse=0
+langfuse_wait=180
+traces_pushed=0
+traces_failed=0
 cost_per_cell=0.13   # planning estimate carried from the chain cohort; agent arms may differ
 model=${MODEL:-}
 key_budget=0.50
@@ -123,6 +132,8 @@ while (($#)); do
     --provider) provider=$2; shift 2 ;;
     --keep-going) keep_going=1; shift ;;
     --max-setup-faults) max_setup_faults=$2; shift 2 ;;
+    --langfuse) langfuse=1; shift ;;
+    --langfuse-wait) langfuse_wait=$2; shift 2 ;;
     --list) list=1; shift ;;
     --workers) workers=$2; shift 2 ;;
     --subject-command) SUBJECT_CMD=$2; shift 2 ;;
@@ -152,6 +163,12 @@ case "$provider" in
   *) printf '%s\n' '--provider must be modal or docker' >&2; exit 64 ;;
 esac
 runner=${HONEYPOT_RUNNER:-$default_runner}
+# HONEYPOT_INGEST lets the unit tests substitute a fake trace ingester.
+ingest=${HONEYPOT_INGEST:-agent_honeypot/langfuse_ingest.py}
+if [[ ! $langfuse_wait =~ ^[1-9][0-9]*$ ]]; then
+  printf '%s\n' '--langfuse-wait must be a positive integer number of seconds' >&2
+  exit 64
+fi
 ((output_root_set)) || output_root=$default_output
 if ((dry_run && execute)); then
   printf '%s\n' '--dry-run and --execute are mutually exclusive' >&2
@@ -368,6 +385,49 @@ PY
         printf 'NOTE: each agent run mints one budgeted virtual key and injects it only through an ephemeral Modal Secret.\n' >&2
       fi
     fi
+    if ((langfuse && any_agent)); then
+      local name
+      for name in LANGFUSE_PUBLIC_KEY LANGFUSE_SECRET_KEY LANGFUSE_BASE_URL; do
+        [[ -n ${!name:-} ]] || {
+          printf -- '--langfuse needs %s on the host\n' "$name" >&2; exit 78; }
+      done
+      if [[ -z ${HONEYPOT_INGEST:-} ]] && ! "$python" -c 'import langfuse' >/dev/null 2>&1; then
+        printf 'the interpreter %s cannot import langfuse (requirements.txt pins langfuse==4.15.1)\n' "$python" >&2
+        exit 78
+      fi
+    fi
+  fi
+}
+
+# After an agent cell has passed its gate: push its host-side trace. Never stops
+# the arm; a failure is counted, logged beside the run, and reported at the end.
+push_trace() {
+  local log=$1 run_dir=
+  run_dir=$(python3 - "$log" <<'PY'
+import json
+import sys
+
+lines = open(sys.argv[1], encoding="utf-8", errors="replace").read().splitlines()
+starts = [i for i, line in enumerate(lines) if line.strip() == "{"]
+try:
+    print(json.loads("\n".join(lines[starts[-1]:])).get("output", "") if starts else "")
+except json.JSONDecodeError:
+    print("")
+PY
+  ) || run_dir=
+  if [[ -z $run_dir || ! -d $run_dir ]]; then
+    traces_failed=$((traces_failed + 1))
+    printf '    langfuse: no run directory in the runner record; trace not pushed\n' >&2
+    return 0
+  fi
+  local trace_log="$run_dir/langfuse-push.log"
+  if "$python" "$ingest" "$run_dir" --push --wait-for-gateway "$langfuse_wait" > "$trace_log" 2>&1; then
+    traces_pushed=$((traces_pushed + 1))
+    printf '    langfuse: trace pushed (%s)\n' "$(tail -n 1 "$trace_log")"
+  else
+    traces_failed=$((traces_failed + 1))
+    printf '    langfuse: push FAILED, see %s; the arm continues. Re-push once with: %s %s %s --push --wait-for-gateway %s\n' \
+      "$trace_log" "$python" "$ingest" "$run_dir" "$langfuse_wait" >&2
   fi
 }
 
@@ -437,6 +497,9 @@ run_arm() {
             exit 75
           fi
           setup_faults=0
+          if ((langfuse)); then
+            push_trace "$log"
+          fi
         fi
       else
         "${cmd[@]}" || printf '    (runner exit %s -- inspect plan above)\n' "$?" >&2
@@ -481,6 +544,10 @@ printf 'Plan: %d arm(s), %d cells, ~$%.2f (@ $%.2f/cell). Mode: %s.\n' \
 printf 'Provider: %s (runner %s, run record %s). Output root: %s.\n' \
   "$provider" "$runner" "$run_record" "$output_root"
 ((any_agent)) && printf 'Agent arms present: real-agent collusion runs ONLY inside the sandbox (containment-gated); never on the host.\n'
+if ((langfuse && any_agent)); then
+  printf 'Langfuse: each agent cell that passes its gate gets its trace pushed (%s), waiting up to %ss for the gateway generations.\n' \
+    "$ingest" "$langfuse_wait"
+fi
 
 preflight "$any_agent"
 
@@ -491,6 +558,9 @@ for row in "${selected[@]}"; do
 done
 
 if ((execute)); then
+  if ((langfuse && any_agent)); then
+    printf '\nLangfuse: %d trace(s) pushed, %d failed.\n' "$traces_pushed" "$traces_failed"
+  fi
   printf '\nDone. Outputs under %s/<arm>/ ; read each run summary.json and its evidence chains before reporting.\n' "$output_root"
 else
   printf '\nPLAN ONLY: no sandbox, no model call. Re-run with --execute and EXPERIMENT_APPROVED=1 after review.\n'
