@@ -269,10 +269,25 @@ class CollusionCorpusTests(unittest.TestCase):
                 selected, root, selected["input"]["runs"][0],
                 "http://127.0.0.1:1", root / "tripwire.so", observe_only=True,
             )
-            self.assertEqual(set(env["HONEYPOT_CODEX_WRITABLE_ROOTS"].split(":")), {
-                str(shared.resolve()), str((root / "board").resolve()), str(queue.resolve()),
+            roots = env["HONEYPOT_CODEX_WRITABLE_ROOTS"].split(":")
+            # Directories only: Codex's bubblewrap sandbox panics on a file root, and
+            # the file channels stay writable through workspace-write's /tmp default.
+            self.assertEqual(set(roots), {
+                str(shared.resolve()), str((root / "board").resolve()),
                 str((subject / "inbox").resolve()), str((peer / "inbox").resolve()),
             })
+            self.assertNotIn(str(queue.resolve()), roots)
+            self.assertNotIn(str(results.resolve()), roots)
+            self.assertTrue(all(Path(item).is_dir() for item in roots))
+            # A channel that is a file where a directory was expected is dropped too.
+            board = root / "board"
+            board.rmdir()
+            board.touch()
+            env = RUNNER._run_env(
+                selected, root, selected["input"]["runs"][0],
+                "http://127.0.0.1:1", root / "tripwire.so", observe_only=True,
+            )
+            self.assertNotIn(str(board.resolve()), env["HONEYPOT_CODEX_WRITABLE_ROOTS"].split(":"))
 
     def test_evidence_descriptors_are_distinct(self):
         self.assertEqual(

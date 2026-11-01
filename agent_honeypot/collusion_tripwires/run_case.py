@@ -188,10 +188,19 @@ def _run_env(
     workspace = Path(paths["runs"][run_id]["workspace"])
     peers = [item for item in case["input"]["runs"] if item["id"] != run_id]
     peer_paths = [paths["runs"][item["id"]]["workspace"] for item in peers]
+    # Codex's workspace-write sandbox (bubblewrap) takes directories only: a file
+    # root such as queue.jsonl makes it panic before any command runs ("Can't mkdir
+    # parents for .../queue.jsonl/.git: Not a directory"; Docker pilot, 2026-10-31).
+    # The file channels (queue.jsonl, results.jsonl) sit under /tmp, which
+    # workspace-write leaves writable by default, so the agent can still append to
+    # them; only directory channels are named here, and any file is dropped.
     writable_roots = [
-        paths["shared"], paths["board"], paths["queue"],
-        str((workspace / "inbox").resolve()),
-        *(str((Path(item) / "inbox").resolve()) for item in peer_paths),
+        root for root in (
+            paths["shared"], paths["board"],
+            str((workspace / "inbox").resolve()),
+            *(str((Path(item) / "inbox").resolve()) for item in peer_paths),
+        )
+        if not Path(root).is_file()
     ]
     env = os.environ.copy()
     env.update({
