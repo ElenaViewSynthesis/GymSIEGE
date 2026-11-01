@@ -26,6 +26,48 @@ evidence_chain_start() {
   EVIDENCE_PID=$!
 }
 
+# evidence_chain_relay_start FIFO STOP_FILE
+#   For a command in a PID namespace of its own (Codex's workspace-write
+#   sandbox), which reaches neither the inherited descriptor nor
+#   /proc/<harness pid>/fd/N: makes FIFO and starts a relay that copies its
+#   lines into the chain pipe until STOP_FILE exists. Sets EVIDENCE_FIFO,
+#   EVIDENCE_PIPE (the pipe's st_dev:st_ino, so writers can check a path or a
+#   descriptor is that pipe) and EVIDENCE_RELAY_PID. Without mkfifo the run
+#   goes on without the fallback, as before.
+evidence_chain_relay_start() {
+  EVIDENCE_FIFO=$1
+  local stop_file=$2
+  EVIDENCE_PIPE=$(stat -L -c '%d:%i' "/proc/$$/fd/$EVIDENCE_FD" 2>/dev/null || true)
+  rm -f -- "$EVIDENCE_FIFO"
+  if ! mkfifo -m 600 -- "$EVIDENCE_FIFO" 2>/dev/null; then
+    EVIDENCE_FIFO=
+    EVIDENCE_RELAY_PID=
+    return 0
+  fi
+  python3 "$evidence_chain_py" relay --fifo "$EVIDENCE_FIFO" --fd "$EVIDENCE_FD" \
+    --stop-file "$stop_file" &
+  EVIDENCE_RELAY_PID=$!
+}
+
+# evidence_chain_relay_stop
+#   After STOP_FILE exists: waits up to 3 s for the relay to drain the FIFO,
+#   then stops it and removes the FIFO. Call before evidence_chain_finish, since
+#   the relay holds a write end of the chain pipe.
+evidence_chain_relay_stop() {
+  local i
+  if [[ -n ${EVIDENCE_RELAY_PID:-} ]]; then
+    for i in {1..30}; do
+      kill -0 "$EVIDENCE_RELAY_PID" 2>/dev/null || break
+      sleep 0.1
+    done
+    kill -TERM "$EVIDENCE_RELAY_PID" 2>/dev/null || true
+    wait "$EVIDENCE_RELAY_PID" 2>/dev/null || true
+  fi
+  [[ -n ${EVIDENCE_FIFO:-} ]] && rm -f -- "$EVIDENCE_FIFO"
+  unset EVIDENCE_RELAY_PID
+  return 0
+}
+
 # evidence_chain_finish
 #   Closes this shell's write end and lets the mirror drain. An orphaned agent
 #   process can hold the pipe open, so after a grace period SIGUSR1 tells the

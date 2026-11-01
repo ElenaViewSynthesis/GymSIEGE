@@ -7,14 +7,58 @@ import hashlib
 import json
 import os
 import secrets
+import stat
 import subprocess
 import sys
 import time
 from pathlib import Path
 
 
+def _pipe_identity() -> tuple[int, int] | None:
+    value = os.environ.get("HONEYPOT_EVENT_PIPE", "")
+    dev, sep, ino = value.partition(":")
+    return (int(dev), int(ino)) if sep and dev.isdigit() and ino.isdigit() else None
+
+
+def _event_fd() -> int:
+    """The chain pipe, as the preloads find it: the inherited descriptor while
+    it is that pipe, else the harness's /proc path when it leads to the same
+    pipe, else the relay's FIFO, which a command in a PID namespace of its own
+    (Codex's workspace-write sandbox) still reaches."""
+    inherited = int(os.environ["HONEYPOT_EVENT_FD"])
+    want = _pipe_identity()
+    if want is None:
+        return inherited
+    try:
+        have = os.fstat(inherited)
+        if (have.st_dev, have.st_ino) == want:
+            return inherited
+    except OSError:
+        pass
+    path = os.environ.get("HONEYPOT_EVENT_PATH", "")
+    try:
+        seen = os.stat(path) if path else None
+        if seen is not None and (seen.st_dev, seen.st_ino) == want:
+            return os.open(path, os.O_WRONLY | os.O_CLOEXEC)
+    except OSError:
+        pass
+    fifo = os.environ.get("HONEYPOT_EVENT_FIFO", "")
+    fd = os.open(fifo, os.O_WRONLY | os.O_NONBLOCK | os.O_CLOEXEC)
+    if not stat.S_ISFIFO(os.fstat(fd).st_mode):
+        os.close(fd)
+        raise OSError(f"not a FIFO: {fifo}")
+    os.set_blocking(fd, True)
+    return fd
+
+
+_EVENT_FD: int | None = None
+
+
 def emit(kind: str, detail: dict[str, object]) -> None:
-    fd = int(os.environ["HONEYPOT_EVENT_FD"])
+    global _EVENT_FD
+    if _EVENT_FD is None:
+        _EVENT_FD = _event_fd()
+    fd = _EVENT_FD
     payload = json.dumps(detail, sort_keys=True, separators=(",", ":"))
     os.write(fd, f"{time.time():.9f}\t{kind}\t{os.getpid()}\t0\t{payload}\n".encode())
 

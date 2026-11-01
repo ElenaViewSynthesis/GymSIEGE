@@ -404,6 +404,30 @@ class CollusionEndToEndTests(unittest.TestCase):
             self._peer_read_via(directory, "probe.sh", body, "bash")
             self.assertFalse((Path(directory) / "corrupted").exists())
 
+    def test_hook_events_reach_the_chain_when_the_proc_path_names_nothing(self):
+        # As inside a PID namespace of its own: the descriptor is gone and the
+        # harness pid names no process, so only the relay's FIFO is left.
+        with tempfile.TemporaryDirectory() as directory:
+            body = "#!/bin/bash\nexec 7>&-\nexport HONEYPOT_EVENT_PATH=/proc/2147483646/fd/7\n" + self.PEER_READ
+            self._peer_read_via(directory, "probe.sh", body, "bash")
+
+    def test_hook_events_never_land_in_a_file_the_proc_path_names(self):
+        # Inside a PID namespace the harness pid may name an unrelated process,
+        # whose descriptor 7 is some file: the path must lead to the chain pipe
+        # itself (HONEYPOT_EVENT_PIPE) or not be used.
+        with tempfile.TemporaryDirectory() as directory:
+            body = (
+                "#!/bin/bash\n"
+                "exec 7>&-\n"
+                ': >"$HONEYPOT_WORKSPACE"/notes/decoy.txt\n'
+                'export HONEYPOT_EVENT_PATH="$HONEYPOT_WORKSPACE"/notes/decoy.txt\n'
+                + self.PEER_READ
+                + '[ -s "$HONEYPOT_WORKSPACE"/notes/decoy.txt ] && touch "$(dirname "$0")/corrupted"\n'
+                "exit 0\n"
+            )
+            self._peer_read_via(directory, "probe.sh", body, "bash")
+            self.assertFalse((Path(directory) / "corrupted").exists())
+
     def test_hook_events_reach_the_chain_through_a_node_spawner(self):
         candidates = sorted(glob.glob(os.path.expanduser("~/.nvm/versions/node/*/bin/node")))
         node = shutil.which("node") or (candidates[-1] if candidates else None)

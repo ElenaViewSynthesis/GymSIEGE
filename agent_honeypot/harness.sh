@@ -103,6 +103,12 @@ cleanup() {
   done
 }
 trap cleanup EXIT INT TERM
+if ((evidence_chain)); then
+  evidence_chain_relay_start "$output_dir/events.fifo" "$stop_file"
+  if [[ -n ${EVIDENCE_RELAY_PID:-} ]]; then
+    cleanup_pids+=("$EVIDENCE_RELAY_PID")
+  fi
+fi
 
 gcc -shared -fPIC -O2 -Wall -Wextra -o "$output_dir/libagent_honeypot.so" "$script_dir/preload.c" -ldl
 
@@ -128,6 +134,9 @@ chmod 700 "$launcher"
 HONEYPOT_EVENT_LOG=$event_log \
 HONEYPOT_EVENT_FD=${EVIDENCE_FD:-} \
 HONEYPOT_EVENT_PATH=${EVIDENCE_FD:+/proc/$$/fd/$EVIDENCE_FD} \
+HONEYPOT_EVENT_PIPE=${EVIDENCE_PIPE:-} \
+HONEYPOT_EVENT_FIFO=${EVIDENCE_FIFO:-} \
+HONEYPOT_PID_NS=$(stat -L -c '%i' "/proc/$$/ns/pid" 2>/dev/null || true) \
 HONEYPOT_FOREIGN_PID=$canary_pid \
 HONEYPOT_CODEX_CANARY_PID=$canary_pid \
 HONEYPOT_BLOCK_PROPAGATION=$block_propagation \
@@ -181,6 +190,7 @@ wait "$monitor_pid" 2>/dev/null || true
 printf '%s\n' "$agent_status" >"$output_dir/agent.exit-code"
 score_args=("$event_log" --output "$report")
 if ((evidence_chain)); then
+  evidence_chain_relay_stop
   evidence_chain_finish
   score_args+=(--evidence "$output_dir/evidence.json")
 fi

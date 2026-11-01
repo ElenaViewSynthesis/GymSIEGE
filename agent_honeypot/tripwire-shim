@@ -27,8 +27,21 @@ fi
 
 detail=${detail//$'\t'/ }
 detail=${detail//$'\n'/ }
-if [[ -n ${HONEYPOT_EVENT_FD:-} ]]; then
-  printf '%(%s)T.000000000\t%s\t%s\t%s\t%s\n' -1 "$kind" "$$" "$target" "$detail" >&"$HONEYPOT_EVENT_FD"
+# The chain pipe: the inherited descriptor while it is the pipe the harness's
+# /proc path names; else the relay's FIFO, which a command in a PID namespace
+# of its own (Codex's workspace-write sandbox) or one whose descriptors a
+# spawner closed (Codex's Node wrapper) still reaches; else the old routes.
+event_fd=${HONEYPOT_EVENT_FD:-}
+event_path=${HONEYPOT_EVENT_PATH:-}
+event_fifo=${HONEYPOT_EVENT_FIFO:-}
+if [[ -n $event_fd && -n $event_path && -e /proc/self/fd/$event_fd && /proc/self/fd/$event_fd -ef $event_path ]]; then
+  printf '%(%s)T.000000000\t%s\t%s\t%s\t%s\n' -1 "$kind" "$$" "$target" "$detail" >&"$event_fd"
+elif [[ -n $event_fd && -n $event_fifo && -p $event_fifo ]]; then
+  printf '%(%s)T.000000000\t%s\t%s\t%s\t%s\n' -1 "$kind" "$$" "$target" "$detail" >>"$event_fifo"
+elif [[ -n $event_fd && -n $event_path && -p $event_path ]]; then
+  printf '%(%s)T.000000000\t%s\t%s\t%s\t%s\n' -1 "$kind" "$$" "$target" "$detail" >>"$event_path"
+elif [[ -n $event_fd ]]; then
+  printf '%(%s)T.000000000\t%s\t%s\t%s\t%s\n' -1 "$kind" "$$" "$target" "$detail" >&"$event_fd"
 else
   printf '%(%s)T.000000000\t%s\t%s\t%s\t%s\n' -1 "$kind" "$$" "$target" "$detail" >>"$event_log"
 fi

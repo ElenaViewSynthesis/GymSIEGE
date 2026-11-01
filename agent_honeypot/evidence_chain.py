@@ -93,6 +93,50 @@ def mirror(read_fd: int, visible: Path, private: Path, key: bytes) -> int:
     return count
 
 
+def relay(fifo: Path, out_fd: int, stop_file: Path) -> int:
+    """Copy whole lines from a named pipe into the chain pipe on out_fd.
+
+    A command started in a PID namespace of its own (Codex's workspace-write
+    sandbox) reaches neither the inherited descriptor nor /proc/<harness
+    pid>/fd/N, but it shares the file system, so the preloads, the shims and
+    ``delegate`` fall back to this FIFO. The relay holds the FIFO open for
+    writing too, so a writer that closes it never ends the stream, and sends
+    each line on in one write, so its lines never interleave with those of
+    direct writers. It stops once stop_file exists (or on SIGTERM) and the
+    FIFO is drained. Returns the number of lines relayed."""
+    fd = os.open(fifo, os.O_RDWR | os.O_NONBLOCK)
+    count = 0
+    buffer = b""
+
+    def forward(line: bytes) -> None:
+        nonlocal count
+        data = line + b"\n"
+        while data:
+            data = data[os.write(out_fd, data):]
+        count += 1
+
+    try:
+        while True:
+            ready, _, _ = select.select([fd], [], [], 0.1)
+            if ready:
+                try:
+                    buffer += os.read(fd, 65536)
+                except BlockingIOError:
+                    pass
+                while b"\n" in buffer:
+                    line, buffer = buffer.split(b"\n", 1)
+                    forward(line)
+            elif _finish_requested or stop_file.exists():
+                break
+        if buffer:
+            forward(buffer)
+    except BrokenPipeError:
+        pass  # the mirror is gone; nothing left to relay to
+    finally:
+        os.close(fd)
+    return count
+
+
 def verify(mirror_path: Path, visible_path: Path, key: bytes | None) -> dict[str, Any]:
     errors: list[str] = []
     raws: list[str] = []
@@ -172,6 +216,12 @@ def _cmd_mirror(args: argparse.Namespace) -> int:
     return 0 if report["valid"] else 2
 
 
+def _cmd_relay(args: argparse.Namespace) -> int:
+    signal.signal(signal.SIGTERM, _request_finish)
+    relay(args.fifo, args.fd, args.stop_file)
+    return 0
+
+
 def _cmd_verify(args: argparse.Namespace) -> int:
     key: bytes | None = None
     text = sys.stdin.read().strip()
@@ -197,6 +247,11 @@ def main() -> int:
     mirror_parser.add_argument("--mirror", type=Path, required=True, help="where the chain is copied when the run ends")
     mirror_parser.add_argument("--evidence", type=Path, required=True, help="verification verdict, written when the run ends")
     mirror_parser.set_defaults(func=_cmd_mirror)
+    relay_parser = commands.add_parser("relay", help="copy lines from a named pipe into the chain pipe (PID-namespace fallback)")
+    relay_parser.add_argument("--fifo", type=Path, required=True)
+    relay_parser.add_argument("--fd", type=int, required=True, help="the chain pipe's write end, inherited")
+    relay_parser.add_argument("--stop-file", type=Path, required=True, help="drain and stop once this file exists")
+    relay_parser.set_defaults(func=_cmd_relay)
     verify_parser = commands.add_parser("verify", help="re-check a copied chain against the visible log (hex key on stdin if known)")
     verify_parser.add_argument("--mirror", type=Path, required=True)
     verify_parser.add_argument("--visible", type=Path, required=True)
