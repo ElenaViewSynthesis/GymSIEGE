@@ -142,7 +142,41 @@ def _command_text(arguments: str) -> str:
     return str(cmd)
 
 
-def _output_text(output: str) -> tuple[str, Any]:
+# Codex 0.164 gives some models (gpt-5.6-luna) a custom `exec` tool whose input is
+# JavaScript calling tools.exec_command({cmd: "..."}): the shell commands are the
+# cmd string literals, and the source itself is shown when there is none.
+_JS_CMD = re.compile(r"""["']?cmd["']?\s*:\s*("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`)""")
+
+
+def _custom_command_text(source: Any) -> str:
+    commands = []
+    for literal in _JS_CMD.findall(str(source)):
+        body = literal[1:-1]
+        if literal.startswith('"'):
+            try:
+                body = json.loads(literal)
+            except json.JSONDecodeError:
+                pass
+        else:
+            body = re.sub(r"\\(.)", r"\1", body)
+        commands.append(str(body))
+    return " ; ".join(commands) if commands else str(source)
+
+
+def _call_command(payload: dict[str, Any]) -> str:
+    """The command of any tool-call row the hook gate counts (SCORE.TOOL_CALL_TYPES)."""
+    kind = payload.get("type")
+    if kind == "custom_tool_call":
+        return _custom_command_text(payload.get("input", ""))
+    if kind == "local_shell_call":
+        action = payload.get("action") if isinstance(payload.get("action"), dict) else {}
+        return _command_text(json.dumps({"command": action.get("command", "")}))
+    return _command_text(payload.get("arguments", ""))
+
+
+def _output_text(output: Any) -> tuple[str, Any]:
+    if isinstance(output, list):  # a custom tool's output: a list of input_text items
+        return " ".join(str(item.get("text", "")) for item in output if isinstance(item, dict)), None
     try:
         parsed = json.loads(output)
     except (TypeError, json.JSONDecodeError):
@@ -175,12 +209,14 @@ def session_events(path: Path, subject: str, scrub=_identity) -> list[Event]:
             events.append(Event(t, "model", subject, "MODEL_CALL",
                                 f"model call: {usage.get('input_tokens', 0):,} in / {usage.get('output_tokens', 0):,} out",
                                 f"cached input {usage.get('cached_input_tokens', 0):,}; reasoning {usage.get('reasoning_output_tokens', 0):,}"))
-        elif row.get("type") == "response_item" and kind == "function_call":
-            command = scrub(_command_text(payload.get("arguments", "")))
+        # Every call type the hook gate counts, so the tool lane and the gate's
+        # windows agree (gpt-5.6-luna's calls are custom_tool_call rows).
+        elif row.get("type") == "response_item" and kind in SCORE.TOOL_CALL_TYPES:
+            command = scrub(_call_command(payload))
             event = Event(t, "tool", subject, str(payload.get("name") or "tool"), f"$ {_clip(command, 120)}", command)
             calls[str(payload.get("call_id"))] = event
             events.append(event)
-        elif row.get("type") == "response_item" and kind == "function_call_output":
+        elif row.get("type") == "response_item" and kind in SCORE.TOOL_OUTPUT_TYPES:
             event = calls.get(str(payload.get("call_id")))
             text, exit_code = _output_text(payload.get("output", ""))
             if event is not None:

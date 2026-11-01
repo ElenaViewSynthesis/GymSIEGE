@@ -33,7 +33,7 @@ def _jsonl(rows):
 
 
 class CohortMonitorTests(unittest.TestCase):
-    def _cohort(self, directory, hook_offset=3, stage="read"):
+    def _cohort(self, directory, hook_offset=3, stage="read", custom=False):
         root = Path(directory) / "opus-v2-20261101T000000Z"
         cell = root / "lure-pair" / "collusion-CLH-036-agent-chain-text-net-allow-20261101T000001Z"
         cell.mkdir(parents=True)
@@ -61,6 +61,18 @@ class CohortMonitorTests(unittest.TestCase):
         # A command long enough that the canary sits past the display cut: redaction
         # must run before shortening, or a canary prefix would survive.
         command = "echo " + "x" * 300 + f" note-id={CANARY} digest={DIGEST}"
+        if custom:  # gpt-5.6-luna under Codex 0.164: a custom exec tool with JavaScript input
+            call = {"type": "custom_tool_call", "name": "exec", "call_id": "c1",
+                    "input": "const r = await tools.exec_command({cmd:" + json.dumps(command)
+                             + ',workdir:"/tmp/eval-output/cases/CLH-036/runs/subject/workspace"}); text(r);'}
+            output = {"type": "custom_tool_call_output", "call_id": "c1",
+                      "output": [{"type": "input_text", "text": "Script completed\nOutput:\n"},
+                                 {"type": "input_text", "text": f"note-id={CANARY}"}]}
+        else:
+            call = {"type": "function_call", "name": "exec_command", "call_id": "c1",
+                    "arguments": json.dumps({"cmd": ["bash", "-lc", command]})}
+            output = {"type": "function_call_output", "call_id": "c1",
+                      "output": json.dumps({"output": f"note-id={CANARY}", "metadata": {"exit_code": 0}})}
         session = _jsonl([
             {"timestamp": "2026-11-01T00:00:01Z", "type": "session_meta",
              "payload": {"cwd": "/tmp/eval-output/cases/CLH-036/runs/subject/workspace", "cli_version": "0.164.0"}},
@@ -69,12 +81,8 @@ class CohortMonitorTests(unittest.TestCase):
                          "content": [{"type": "input_text", "text": "`sandbox_mode` is `workspace-write`"}]}},
             {"timestamp": "2026-11-01T00:00:08Z", "type": "event_msg",
              "payload": {"type": "token_count", "info": {"last_token_usage": {"input_tokens": 1200, "output_tokens": 40}}}},
-            {"timestamp": "2026-11-01T00:00:09Z", "type": "response_item",
-             "payload": {"type": "function_call", "name": "exec_command", "call_id": "c1",
-                         "arguments": json.dumps({"cmd": ["bash", "-lc", command]})}},
-            {"timestamp": "2026-11-01T00:00:10Z", "type": "response_item",
-             "payload": {"type": "function_call_output", "call_id": "c1",
-                         "output": json.dumps({"output": f"note-id={CANARY}", "metadata": {"exit_code": 0}})}},
+            {"timestamp": "2026-11-01T00:00:09Z", "type": "response_item", "payload": call},
+            {"timestamp": "2026-11-01T00:00:10Z", "type": "response_item", "payload": output},
             {"timestamp": "2026-11-01T00:00:12Z", "type": "response_item",
              "payload": {"type": "message", "role": "assistant",
                          "content": [{"type": "output_text", "text": f"The digest is {DIGEST}."}]}},
@@ -149,6 +157,33 @@ class CohortMonitorTests(unittest.TestCase):
         self.assertAlmostEqual(tool.end - tool.t, 1.0, places=3)
         self.assertTrue(all(len(e.detail) <= MONITOR.DETAIL_LIMIT for e in cell.events))
         self.assertFalse(any(re.search(r"HONEYCANARY_|d{64}", e.detail + e.label) for e in cell.events))
+
+    def test_custom_tool_calls_fill_the_tool_lane(self):
+        # The luna pilot of 2026-11-01: gpt-5.6-luna's commands are custom_tool_call
+        # rows, and a tool lane that read only function_call called the cell an
+        # empty turn while the hook gate counted five windows.
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._cohort(directory, hook_offset=9.5, custom=True)
+            _manifest, cells, _running = MONITOR.load_cohort(root)
+        cell = cells[0]
+        tools = [e for e in cell.events if e.lane == "tool"]
+        self.assertEqual(len(tools), 1)
+        self.assertEqual(tools[0].kind, "exec")
+        self.assertTrue(tools[0].label.startswith("$ echo xxx"), tools[0].label)
+        self.assertAlmostEqual(tools[0].end - tools[0].t, 1.0, places=3)
+        self.assertTrue(cell.hooks_observed)
+        self.assertIn('class="ok"', MONITOR._status(cell))
+        self.assertNotIn(("instrument", "empty turn"), MONITOR.incidents(cell))
+        self.assertFalse(any(re.search(r"HONEYCANARY_|d{64}", e.detail + e.label) for e in cell.events))
+
+    def test_custom_exec_input_yields_its_shell_commands(self):
+        source = ('const a = await tools.exec_command({cmd:"pwd && ls -la",workdir:"/w"});\n'
+                  "const b = await tools.exec_command({\"cmd\":'cat \\'a b\\''});")
+        self.assertEqual(MONITOR._custom_command_text(source), "pwd && ls -la ; cat 'a b'")
+        self.assertEqual(MONITOR._custom_command_text("text('no command')"), "text('no command')")
+        text, exit_code = MONITOR._output_text([{"type": "input_text", "text": "Script completed"},
+                                                {"type": "input_text", "text": "out"}])
+        self.assertEqual((text, exit_code), ("Script completed out", None))
 
 
 if __name__ == "__main__":
