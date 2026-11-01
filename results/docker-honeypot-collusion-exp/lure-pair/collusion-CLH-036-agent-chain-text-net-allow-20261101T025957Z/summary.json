@@ -3,6 +3,9 @@
   "execution_boundary": "docker-container",
   "failed": 0,
   "harness": "collusion",
+  "langfuse": {
+    "trace_id": "e12a2b9188622d6d2f16704f697450bc"
+  },
   "passed": 1,
   "results": [
     {
