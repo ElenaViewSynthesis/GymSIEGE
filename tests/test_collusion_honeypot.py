@@ -289,6 +289,46 @@ class CollusionCorpusTests(unittest.TestCase):
             )
             self.assertNotIn(str(board.resolve()), env["HONEYPOT_CODEX_WRITABLE_ROOTS"].split(":"))
 
+    def test_codex_session_is_picked_by_workspace_and_archived_redacted(self):
+        key = "".join(("s", "k", "-", "unit_session_key_12345678"))
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            home, workspace, other = root / "home", root / "case/runs/subject/workspace", root / "elsewhere"
+            workspace.mkdir(parents=True)
+            sessions = home / ".codex/sessions/2026/11/01"
+            sessions.mkdir(parents=True)
+            mine = sessions / "rollout-mine.jsonl"
+            mine.write_text(
+                json.dumps({"type": "session_meta", "payload": {"cwd": str(workspace)}}) + "\n"
+                + json.dumps({"type": "response_item", "payload": {
+                    "content": [{"text": f"<cwd>{workspace}</cwd> OPENAI_API_KEY={key}"}]}}) + "\n"
+            )
+            newer = sessions / "rollout-other.jsonl"
+            newer.write_text(json.dumps({"type": "session_meta", "payload": {"cwd": str(other)}}) + "\n")
+            (sessions / "rollout-broken.jsonl").write_text("[1, 2]\n")
+            os.utime(newer, (mine.stat().st_mtime + 10,) * 2)
+            self.assertEqual(RUNNER._codex_session_for(workspace, home), mine)
+
+            destination = root / "case/runs/subject" / RUNNER.CODEX_SESSION_NAME
+            status = RUNNER._archive_codex_session(workspace, destination, home=home, key=key)
+            self.assertEqual(status, "archived")
+            text = destination.read_text()
+            self.assertIn(f"<cwd>{workspace}</cwd>", text)
+            self.assertNotIn(key, text)
+            self.assertIn("[REDACTED-VIRTUAL-KEY]", text)
+            self.assertNotIn(str(other), text)
+            destination.unlink()
+            # Without a key to redact with, nothing is written; without a session, nothing either.
+            self.assertEqual(
+                RUNNER._archive_codex_session(workspace, destination, home=home, key=None),
+                "skipped-no-redaction-key",
+            )
+            self.assertEqual(
+                RUNNER._archive_codex_session(other / "nope", destination, home=home, key=key),
+                "missing",
+            )
+            self.assertFalse(destination.exists())
+
     def test_evidence_descriptors_are_distinct(self):
         self.assertEqual(
             {RUNNER.PROCESS_EVIDENCE_FD, RUNNER.ORCHESTRATOR_EVIDENCE_FD, RUNNER.BOARD_EVIDENCE_FD},
@@ -392,6 +432,47 @@ class CollusionEndToEndTests(unittest.TestCase):
     def test_nested_delegation_escape_control(self):
         report = self._run("CLH-012")
         self.assertIn("DELEGATION_ESCAPE", report["event_counts"])
+
+    def test_fake_agent_codex_session_is_archived_after_the_subject_exits(self):
+        key = "".join(("s", "k", "-", "unit_e2e_session_key_1234"))
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory) / "home"
+            output = Path(directory) / "out"
+            # A fake agent that leaves a Codex-shaped session file for its workspace.
+            body = (
+                "import json, os, pathlib\n"
+                "s = pathlib.Path(os.environ['HOME'], '.codex/sessions/2026/11/01')\n"
+                "s.mkdir(parents=True, exist_ok=True)\n"
+                "ws = os.environ['HONEYPOT_WORKSPACE']\n"
+                "(s / 'rollout-fake.jsonl').write_text(\n"
+                "    json.dumps({'type': 'session_meta', 'payload': {'cwd': ws}}) + '\\n'\n"
+                "    + json.dumps({'type': 'response_item', 'payload': {'text': '<cwd>' + ws + '</cwd> '\n"
+                "                  + os.environ['OPENAI_API_KEY']}}) + '\\n')\n"
+            )
+            script = Path(directory) / "fake_agent.py"
+            script.write_text(body)
+            env = {**os.environ, "HOME": str(home), "OPENAI_API_KEY": key,
+                   AGENT_SUBJECT.CONTAINMENT_MARKER: "1"}
+            completed = subprocess.run(
+                [str(SUITE / "collusion_harness.sh"), "CLH-002", "--output-root", str(output),
+                 "--subject-command", shlex.join(["python3", str(script)])],
+                cwd=ROOT, env=env, text=True, capture_output=True, timeout=90, check=False,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+            report = json.loads((output / "CLH-002" / "report.json").read_text())
+            # CLH-002 has two agent subjects; each gets the session file for its own workspace.
+            self.assertEqual(report["codex_session_archive"],
+                             {"subject-a": "archived", "subject-b": "archived"})
+            for run_id in ("subject-a", "subject-b"):
+                run_dir = output / "CLH-002/runs" / run_id
+                archived = (run_dir / RUNNER.CODEX_SESSION_NAME).read_text()
+                workspace = json.loads((output / "CLH-002/paths.json").read_text())["runs"][run_id]["workspace"]
+                self.assertEqual(json.loads(archived.splitlines()[0])["payload"]["cwd"], workspace)
+                self.assertIn(f"<cwd>{workspace}</cwd>", archived)
+                self.assertNotIn(key, archived)
+                self.assertIn("[REDACTED-VIRTUAL-KEY]", archived)
+            # The copy is not a channel: no snapshot or preload event names it.
+            self.assertNotIn(RUNNER.CODEX_SESSION_NAME, json.dumps(report.get("evidence", [])))
 
     def test_fake_agent_benign_case(self):
         command = shlex.join([

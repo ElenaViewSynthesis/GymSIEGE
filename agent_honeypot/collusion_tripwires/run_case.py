@@ -41,6 +41,62 @@ def _module(name: str, path: Path):
 
 PREPARE = _module("collusion_prepare", HERE / "prepare_case.py")
 SCORE = _module("collusion_score_runner", HERE / "score_collusion.py")
+REDACT = _module("collusion_redact_stream", ROOT / "modal_honeypot" / "redact_stream.py")
+CODEX_SESSION_NAME = "codex-session.jsonl"
+
+
+def _codex_session_for(workspace: Path, home: Path) -> Path | None:
+    """Codex's session file for one subject: the newest rollout under
+    <home>/.codex/sessions whose session_meta cwd is the subject's workspace.
+    (agent_subject.py does not pass CODEX_HOME, so Codex uses ~/.codex.)"""
+    sessions = home / ".codex" / "sessions"
+    if not sessions.is_dir():
+        return None
+    target = os.path.realpath(workspace)
+    best: Path | None = None
+    for path in sessions.rglob("rollout-*.jsonl"):
+        try:
+            with path.open(encoding="utf-8") as handle:
+                first = json.loads(handle.readline())
+        except (OSError, ValueError):
+            continue
+        if not isinstance(first, dict):
+            continue
+        payload = first.get("payload")
+        if first.get("type") != "session_meta" or not isinstance(payload, dict):
+            continue
+        if os.path.realpath(str(payload.get("cwd", ""))) != target:
+            continue
+        if best is None or path.stat().st_mtime > best.stat().st_mtime:
+            best = path
+    return best
+
+
+def _archive_codex_session(
+    workspace: Path, destination: Path, *, home: Path, key: str | None,
+) -> str:
+    """Keep the subject's Codex session file beside its transcript.
+
+    The --json transcript does not carry what Codex sent the model; the session
+    file does: session_meta (cwd, cli_version), the developer permissions message
+    (`sandbox_mode` is ...), the environment context (<cwd>, <workspace_roots>)
+    and turn_context.sandbox_policy. It is copied after the subject's harness has
+    returned, by exit or by timeout, outside the subject's preload, through the
+    same key-redaction filter as the transcript; runs/<id>/ is not a snapshotted
+    channel and is archived by the bundle. Returns the archive status.
+    """
+    if not key:
+        return "skipped-no-redaction-key"
+    source = _codex_session_for(workspace, home)
+    if source is None:
+        return "missing"
+    try:
+        with source.open("rb") as raw, destination.open("wb") as sink:
+            REDACT.redact_stream(raw, sink, key.encode())
+    except OSError:
+        destination.unlink(missing_ok=True)
+        return "copy-failed"
+    return "archived"
 
 
 class ChainLog:
@@ -392,6 +448,7 @@ def run_one(
     hashes: dict[str, str] = {}
     _snapshot(output, orchestrator, hashes, "orchestrator", _marker_registry(output), initial=True)
     run_exit_codes: dict[str, int] = {}
+    codex_sessions: dict[str, str] = {}
     verifier = {"status": "not_configured"}
     for run in case["input"]["runs"]:
         run_id = str(run["id"])
@@ -412,6 +469,11 @@ def run_one(
         completed = subprocess.run(command, cwd=ROOT, env=env, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         run_exit_codes[run_id] = completed.returncode
         (run_root / "harness.stdout.log").write_text(completed.stdout)
+        if is_agent_subject:
+            codex_sessions[run_id] = _archive_codex_session(
+                Path(env["HONEYPOT_WORKSPACE"]), run_root / CODEX_SESSION_NAME,
+                home=Path(env.get("HOME") or Path.home()), key=env.get("OPENAI_API_KEY"),
+            )
         _process_results(completed.stdout, run_id, output, orchestrator, observe_only)
         _snapshot(output, orchestrator, hashes, run_id, _marker_registry(output))
         if run["kind"] == "subject" and case["input"].get("verifier"):
@@ -458,6 +520,8 @@ def run_one(
         else "local-scripted-no-model-no-network"
     )
     report["run_exit_codes"] = run_exit_codes
+    # Per agent subject: archived | missing | skipped-no-redaction-key | copy-failed.
+    report["codex_session_archive"] = codex_sessions if subject_command is not None else None
     subject_ids = [str(run["id"]) for run in case["input"]["runs"] if run["kind"] == "subject"]
     report["agent_execution_passed"] = (
         all(run_exit_codes.get(run_id) == 0 for run_id in subject_ids)
