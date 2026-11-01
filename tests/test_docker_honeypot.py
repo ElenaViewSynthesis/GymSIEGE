@@ -694,6 +694,7 @@ record = {
     "redaction": {"passed": True, "findings": []},
 }
 (run_dir / os.environ.get("FAKE_RUNNER_RECORD", "docker-run.json")).write_text(json.dumps(record))
+(run_dir / "summary.json").write_text(json.dumps({"results": [{"case_id": case_id, "agent_hooks_observed": True}]}))
 rows = [{"type": "item.completed", "item": {"type": "command_execution"}},
         {"type": "turn.completed", "usage": {"output_tokens": 7}}]
 payload = ("\\n".join(json.dumps(row) for row in rows) + "\\n").encode()

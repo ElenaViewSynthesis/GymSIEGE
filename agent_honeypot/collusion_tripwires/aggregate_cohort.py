@@ -238,6 +238,10 @@ def _exclusion_reasons(
         isinstance(chains, list) and (not chains or not all(item is True for item in chains))
     ):
         reasons.append("unobservable")
+    # A subject ran commands and no hook saw one (score_collusion.agent_hook_check):
+    # every stage below the output-derived ones is unobserved, as in opus-v2.
+    if result.get("agent_hooks_observed") is False:
+        reasons.append("hooks mute")
     return list(dict.fromkeys(reasons))
 
 

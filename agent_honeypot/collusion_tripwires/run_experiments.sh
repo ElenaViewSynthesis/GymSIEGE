@@ -34,8 +34,11 @@
 # driver stops at the first failed cell, and after each agent cell it reads the
 # runner's run record and refuses to continue unless the sandbox terminated
 # through the explicit finally, the virtual key was revoked, its spend is within
-# the cap, the redaction scan passed, and the archived turn executed a command
-# and produced output tokens. Empty turns are setup faults; consecutive setup
+# the cap, the redaction scan passed, the archived turn executed a command
+# and produced output tokens, and a hook saw the agent's commands (the run's
+# summary row carries agent_hooks_observed=true: at least one hook event in each
+# subject's chain inside its tool-call windows; collusion cohort opus-v2 had
+# none, and a cell without it stops the arm). Empty turns are setup faults; consecutive setup
 # faults up to --max-setup-faults (default 1) are skipped before the next one
 # stops the arm.
 # --keep-going restores the old
@@ -301,6 +304,13 @@ try:
                         output_tokens_positive = True
 except (KeyError, OSError, tarfile.TarError) as exc:
     archive_error = type(exc).__name__
+# The hook gate (score_collusion.agent_hook_check), from the run's summary row.
+hooks_observed = None
+try:
+    run_rows = json.loads((Path(record["output"]) / "summary.json").read_text()).get("results") or []
+    hooks_observed = run_rows[0].get("agent_hooks_observed") if run_rows else None
+except (KeyError, OSError, json.JSONDecodeError, AttributeError, TypeError):
+    hooks_observed = None
 
 hard_checks = {
     "remote_exit_zero": record.get("remote_exit_code") == 0,
@@ -311,6 +321,8 @@ hard_checks = {
     "run_record_present": isinstance(file_record, dict),
     # Modal records predate the field; a Docker record must name its provider.
     "provider_matches": record.get("provider") == (None if provider == "modal" else provider),
+    # An empty turn has nothing to observe and is judged as a setup fault below.
+    "agent_hooks_observed": hooks_observed is True or not command_executed,
 }
 setup_checks = {
     "spend_within_cap": isinstance(spend, (int, float)) and not isinstance(spend, bool) and spend <= budget,

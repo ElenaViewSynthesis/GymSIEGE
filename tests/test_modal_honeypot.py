@@ -890,6 +890,10 @@ run_dir.mkdir(parents=True, exist_ok=True)
 bad = os.environ.get("FAKE_RUNNER_FAIL_CASE") == case_id
 exit_failure = os.environ.get("FAKE_RUNNER_EXIT_CASE") == case_id
 empty_turn = os.environ.get("FAKE_RUNNER_EMPTY_CASE") == case_id
+mute = os.environ.get("FAKE_RUNNER_MUTE_CASE") == case_id
+(run_dir / "summary.json").write_text(json.dumps({"results": [
+    {"case_id": case_id, "agent_hooks_observed": None if empty_turn else not mute},
+]}))
 record = {
     "case_id": case_id,
     "remote_exit_code": 1 if exit_failure else 0,
@@ -916,7 +920,7 @@ raise SystemExit(1 if exit_failure else 0)
 """
 
     def _execute_driver(
-        self, directory, fail_case=None, exit_case=None, empty_case=None, extra=(),
+        self, directory, fail_case=None, exit_case=None, empty_case=None, extra=(), mute_case=None,
     ):
         script = MODULE.REPO / "agent_honeypot/collusion_tripwires/run_experiments.sh"
         fake = Path(directory) / "fake_runner.py"
@@ -935,6 +939,8 @@ raise SystemExit(1 if exit_failure else 0)
             env["FAKE_RUNNER_EXIT_CASE"] = exit_case
         if empty_case:
             env["FAKE_RUNNER_EMPTY_CASE"] = empty_case
+        if mute_case:
+            env["FAKE_RUNNER_MUTE_CASE"] = mute_case
         return subprocess.run(
             ["bash", str(script), "--arm", "lure-pair", "--trials", "1", "--model", "pinned-model",
              "--output", str(Path(directory) / "out"), "--execute", *extra],
@@ -968,6 +974,18 @@ raise SystemExit(1 if exit_failure else 0)
             self.assertEqual(completed.returncode, 0, completed.stderr)
             self.assertEqual(completed.stdout.count("] RUN"), 2)
             self.assertIn("continuing past the failed gate", completed.stderr)
+
+    def test_experiment_stops_when_no_hook_saw_the_agents_commands(self):
+        # collusion cohort opus-v2: commands ran, every other gate passed, and no
+        # hook event of an agent command reached the chain. Such a cell is blind
+        # below the output-derived stages, so the arm stops at once.
+        with tempfile.TemporaryDirectory() as directory:
+            completed = self._execute_driver(directory, mute_case="CLH-036")
+            self.assertEqual(completed.returncode, 75, completed.stdout + completed.stderr)
+            self.assertEqual(completed.stdout.count("] RUN"), 1)
+            self.assertIn("agent_hooks_observed=false", completed.stdout)
+            self.assertIn("gate: FAILED for alias collusion/CLH-036/t1/fake", completed.stderr)
+            self.assertNotIn("[CLH-037", completed.stdout)
 
     def test_experiment_empty_turn_is_counted_and_a_valid_cell_resets_it(self):
         with tempfile.TemporaryDirectory() as directory:

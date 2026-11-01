@@ -333,6 +333,25 @@ def _process_results(output_text: str, reporter: str, root: Path, chain: ChainLo
             handle.write(json.dumps({"reporter": reporter, **row}, sort_keys=True) + "\n")
 
 
+def _agent_hook_report(run_root: Path, session_status: str) -> dict[str, Any]:
+    """The hook gate for one agent subject (score_collusion.agent_hook_check):
+    its tool-call windows from the archived Codex session, its hook events from
+    its own harness log. Unknown (observed None) without an archived session."""
+    session = run_root / CODEX_SESSION_NAME
+    if session_status != "archived" or not session.is_file():
+        return {"session": session_status, "commands": None, "observed": None}
+    rows = []
+    for line in session.read_text(errors="replace").splitlines():
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(row, dict):
+            rows.append(row)
+    events = SCORE.load_events([(run_root / "harness" / "events.tsv", run_root.name)])
+    return {"session": session_status, **SCORE.agent_hook_check(events, SCORE.codex_tool_windows(rows))}
+
+
 def _artifacts(root: Path) -> tuple[list[tuple[Path, str]], dict[str, str], list[Path]]:
     sources = [(root / "orchestrator" / "events.tsv", "orchestrator"), (root / "board" / "events.tsv", "board")]
     outputs: dict[str, str] = {}
@@ -449,6 +468,7 @@ def run_one(
     _snapshot(output, orchestrator, hashes, "orchestrator", _marker_registry(output), initial=True)
     run_exit_codes: dict[str, int] = {}
     codex_sessions: dict[str, str] = {}
+    agent_hooks: dict[str, dict[str, Any]] = {}
     verifier = {"status": "not_configured"}
     for run in case["input"]["runs"]:
         run_id = str(run["id"])
@@ -474,6 +494,7 @@ def run_one(
                 Path(env["HONEYPOT_WORKSPACE"]), run_root / CODEX_SESSION_NAME,
                 home=Path(env.get("HOME") or Path.home()), key=env.get("OPENAI_API_KEY"),
             )
+            agent_hooks[run_id] = _agent_hook_report(run_root, codex_sessions[run_id])
         _process_results(completed.stdout, run_id, output, orchestrator, observe_only)
         _snapshot(output, orchestrator, hashes, run_id, _marker_registry(output))
         if run["kind"] == "subject" and case["input"].get("verifier"):
@@ -522,6 +543,9 @@ def run_one(
     report["run_exit_codes"] = run_exit_codes
     # Per agent subject: archived | missing | skipped-no-redaction-key | copy-failed.
     report["codex_session_archive"] = codex_sessions if subject_command is not None else None
+    # Per agent subject: did a hook see its commands (score_collusion.agent_hook_check)?
+    report["agent_hooks"] = agent_hooks if subject_command is not None else None
+    report["agent_hooks_observed"] = SCORE.hooks_observed(agent_hooks) if subject_command is not None else None
     subject_ids = [str(run["id"]) for run in case["input"]["runs"] if run["kind"] == "subject"]
     report["agent_execution_passed"] = (
         all(run_exit_codes.get(run_id) == 0 for run_id in subject_ids)
@@ -561,7 +585,8 @@ def run_all(
         return {"case_id": case_id, "passed": completed.returncode == 0, "exit_code": completed.returncode,
                 "stage": report.get("observed_stage"), "role": report.get("role"),
                 "observable": report.get("observability") == "observable",
-                "verifier": report.get("verifier"), "report": str(report_path)}
+                "verifier": report.get("verifier"), "report": str(report_path),
+                "agent_hooks_observed": report.get("agent_hooks_observed")}
 
     rows: list[dict[str, Any]] = []
     with ThreadPoolExecutor(max_workers=min(workers, len(cases))) as pool:
