@@ -202,12 +202,20 @@ def _materialize(source: Path, case_id: str | None = None) -> Iterator[tuple[Pat
         yield root, outer
 
 
+# Field names whose values never leave the host: run and content markers, every
+# canary (canary_id, canary_notes, canary_shared_readme, ...), and the task digest
+# (the verifier's expected answer, which is also the hash a snapshot records for
+# the task file). The canaries' 16-hex suffix and the 64-hex digest are not caught
+# by HEX_128, so they are redacted by name.
+SECRET_FIELD_TOKENS = ("marker", "canary", "digest")
+
+
 def _marker_leaves(value: Any, *, parent: str = "") -> list[str]:
     found: list[str] = []
     if isinstance(value, dict):
         for key, item in value.items():
             name = str(key).lower()
-            if isinstance(item, str) and ("marker" in name or "canary_id" in name):
+            if isinstance(item, str) and any(token in name for token in SECRET_FIELD_TOKENS):
                 found.append(item)
             else:
                 found.extend(_marker_leaves(item, parent=name))

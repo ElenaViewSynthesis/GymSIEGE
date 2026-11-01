@@ -128,6 +128,36 @@ class LangfuseIngestTests(unittest.TestCase):
         self.assertEqual(plan.root.metadata["session_id_source"], "key_alias")
         self.assertEqual(ingest.RUN_RECORD_NAMES, ("modal-run.json", "docker-run.json"))
 
+    def test_canaries_and_the_task_digest_never_reach_a_trace(self):
+        digest = "d" * 64
+        notes = "HONEYCANARY_CLH-036_subject_notes_0123456789abcdef"
+        readme = "HONEYCANARY_CLH-036_shared_readme_fedcba9876543210"
+        with tempfile.TemporaryDirectory() as directory:
+            copied = Path(directory) / "CLH-036"
+            shutil.copytree(COLLUSION_RUN / "CLH-036", copied)
+            markers = json.loads((copied / "markers.json").read_text())
+            markers["subject"].update({"task_digest": digest, "canary_notes": notes})
+            markers["subject"]["canary_shared_readme"] = readme
+            (copied / "markers.json").write_text(json.dumps(markers))
+            # The values reach the plan the way they do in a real cell: a snapshot
+            # event's file hash, and an agent's command output in its transcript.
+            (copied / "runs/subject/trajectory.jsonl").write_text("".join(json.dumps(row) + "\n" for row in (
+                {"type": "item.completed", "item": {
+                    "type": "command_execution", "command": "cat shared/README notes.txt",
+                    "aggregated_output": f"cache-id={readme}\nnote-id={notes}\n", "exit_code": 0}},
+                {"type": "item.completed", "item": {"type": "agent_message", "text": f"digest {digest}"}},
+                {"type": "turn.completed", "usage": {"input_tokens": 1, "output_tokens": 1}},
+            )))
+            (copied / "docker-run.json").write_text(json.dumps({
+                "arm": "lure-pair", "trial": 1, "provider": "docker", "boundary": "docker-container",
+                "virtual_key": {"key_alias": "collusion/CLH-036/t1/x"},
+            }))
+            plan = ingest.build_trace_plans(copied)[0]
+        text = json.dumps(ingest.asdict(plan))
+        for value in (digest, notes, readme):
+            self.assertNotIn(value, text)
+        self.assertIn("MARKER_", text)
+
     def test_gateway_usage_helper_filters_alias_and_sums_tokens(self):
         alias = "collusion/CLH-036/t1/stamp"
         plan = self._plan_with_gateway_alias(alias)
