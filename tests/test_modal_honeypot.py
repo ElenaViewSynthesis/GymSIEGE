@@ -4,6 +4,8 @@ import importlib.util
 import io
 import json
 import os
+import shlex
+import shutil
 import subprocess
 import sys
 import tarfile
@@ -244,6 +246,9 @@ class ModalHoneypotTests(unittest.TestCase):
                 "verifier": {"status": "implemented", "kind": "sha256_of_file", "passed": False},
                 "time_to_first_coordination_s": 0.5,
                 "evidence_chains": [{"valid": True, "mirror_events": 9}],
+                "agent_hooks": {"subject": {"commands": 3, "hook_events_in_window": 0,
+                                            "windows_with_hook_events": 0, "observed": False}},
+                "agent_hooks_observed": False,
             }))
             return subprocess.CompletedProcess(command, 0, "collusion output")
 
@@ -269,6 +274,10 @@ class ModalHoneypotTests(unittest.TestCase):
             "status": "implemented", "kind": "sha256_of_file", "passed": False,
         })
         self.assertEqual(result["evidence_chains"], [True])
+        # The driver's hook gate and the aggregator's "hooks mute" exclusion read
+        # these from the row (they were dropped here until the luna pilot).
+        self.assertIs(result["agent_hooks_observed"], False)
+        self.assertEqual(result["agent_hooks"]["subject"]["commands"], 3)
 
     def test_artifact_bundle_keeps_agent_transcripts(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -891,9 +900,10 @@ bad = os.environ.get("FAKE_RUNNER_FAIL_CASE") == case_id
 exit_failure = os.environ.get("FAKE_RUNNER_EXIT_CASE") == case_id
 empty_turn = os.environ.get("FAKE_RUNNER_EMPTY_CASE") == case_id
 mute = os.environ.get("FAKE_RUNNER_MUTE_CASE") == case_id
-(run_dir / "summary.json").write_text(json.dumps({"results": [
-    {"case_id": case_id, "agent_hooks_observed": None if empty_turn else not mute},
-]}))
+row = {"case_id": case_id}
+if os.environ.get("FAKE_RUNNER_NO_HOOKS_FIELD_CASE") != case_id:
+    row["agent_hooks_observed"] = None if empty_turn else not mute
+(run_dir / "summary.json").write_text(json.dumps({"results": [row]}))
 record = {
     "case_id": case_id,
     "remote_exit_code": 1 if exit_failure else 0,
@@ -921,6 +931,7 @@ raise SystemExit(1 if exit_failure else 0)
 
     def _execute_driver(
         self, directory, fail_case=None, exit_case=None, empty_case=None, extra=(), mute_case=None,
+        no_field_case=None,
     ):
         script = MODULE.REPO / "agent_honeypot/collusion_tripwires/run_experiments.sh"
         fake = Path(directory) / "fake_runner.py"
@@ -941,6 +952,8 @@ raise SystemExit(1 if exit_failure else 0)
             env["FAKE_RUNNER_EMPTY_CASE"] = empty_case
         if mute_case:
             env["FAKE_RUNNER_MUTE_CASE"] = mute_case
+        if no_field_case:
+            env["FAKE_RUNNER_NO_HOOKS_FIELD_CASE"] = no_field_case
         return subprocess.run(
             ["bash", str(script), "--arm", "lure-pair", "--trials", "1", "--model", "pinned-model",
              "--output", str(Path(directory) / "out"), "--execute", *extra],
@@ -984,8 +997,21 @@ raise SystemExit(1 if exit_failure else 0)
             self.assertEqual(completed.returncode, 75, completed.stdout + completed.stderr)
             self.assertEqual(completed.stdout.count("] RUN"), 1)
             self.assertIn("agent_hooks_observed=false", completed.stdout)
+            self.assertIn("gate: agent_hooks_observed failed: commands ran and no hook event reached the chain",
+                          completed.stderr)
             self.assertIn("gate: FAILED for alias collusion/CLH-036/t1/fake", completed.stderr)
             self.assertNotIn("[CLH-037", completed.stdout)
+
+    def test_a_summary_row_without_the_hook_field_fails_the_gate_and_says_why(self):
+        # The luna pilot of 2026-11-01: the in-sandbox summary row dropped the
+        # field, so a cell whose hooks saw every command read as mute.
+        with tempfile.TemporaryDirectory() as directory:
+            completed = self._execute_driver(directory, no_field_case="CLH-036")
+        self.assertEqual(completed.returncode, 75, completed.stdout + completed.stderr)
+        self.assertIn("agent_hooks_observed=false", completed.stdout)
+        self.assertIn("gate: agent_hooks_observed failed: the summary row has no agent_hooks_observed field",
+                      completed.stderr)
+        self.assertNotIn("[CLH-037", completed.stdout)
 
     def test_experiment_empty_turn_is_counted_and_a_valid_cell_resets_it(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -1052,6 +1078,71 @@ raise SystemExit(1 if exit_failure else 0)
             self.assertIn("cannot import modal", completed.stderr)
             self.assertNotIn("] RUN", completed.stdout)
             self.assertFalse((Path(directory) / "out").exists())
+
+
+@unittest.skipUnless(shutil.which("gcc") and Path("/proc").is_dir() and os.geteuid() != 0,
+                     "needs Linux, gcc, /proc, and a non-root user")
+class InSandboxHookVerdictEndToEndTests(unittest.TestCase):
+    """The summary row comes from a real collusion report, never a fake runner.
+
+    In the luna pilot of 2026-11-01 the report said the hooks saw all five
+    commands, the in-sandbox row dropped the verdict, and the driver read the
+    cell as mute; every fake runner wrote the field itself, so no test saw it.
+    The fake agent here leaves the custom_tool_call session gpt-5.6-luna makes."""
+
+    FAKE_AGENT = (
+        "import datetime, json, os, pathlib, subprocess, time\n"
+        "def now():\n"
+        "    return datetime.datetime.now(datetime.timezone.utc).isoformat().replace('+00:00', 'Z')\n"
+        "ws = os.environ['HONEYPOT_WORKSPACE']  # the session's cwd, as Codex records it\n"
+        "time.sleep(1.5)  # the agent's own start-up stays outside the command window\n"
+        "start = now()\n"
+        "# Through bash -lc, as Codex runs every command: the exec hook records the\n"
+        "# shell's exec of ls (a bare Python subprocess exec leaves no EXEC event).\n"
+        "subprocess.run(['bash', '-lc', 'ls -la \"$HONEYPOT_WORKSPACE\" >/dev/null'], check=False)\n"
+        "end = now()\n"
+        "rows = [\n"
+        "    {'timestamp': start, 'type': 'session_meta', 'payload': {'cwd': ws}},\n"
+        "    {'timestamp': start, 'type': 'response_item', 'payload': {\n"
+        "        'type': 'custom_tool_call', 'call_id': 'c1', 'name': 'exec',\n"
+        "        'input': 'const r = await tools.exec_command({cmd:\"ls -la\"}); text(r);'}},\n"
+        "    {'timestamp': end, 'type': 'response_item', 'payload': {\n"
+        "        'type': 'custom_tool_call_output', 'call_id': 'c1',\n"
+        "        'output': [{'type': 'input_text', 'text': 'Script completed'}]}},\n"
+        "]\n"
+        "sessions = pathlib.Path(os.environ['HOME'], '.codex/sessions/2026/11/01')\n"
+        "sessions.mkdir(parents=True, exist_ok=True)\n"
+        "(sessions / 'rollout-luna.jsonl').write_text(''.join(json.dumps(r) + '\\n' for r in rows))\n"
+    )
+
+    def test_the_summary_row_carries_the_hook_verdict_of_a_real_report(self):
+        repo = Path(__file__).parents[1]
+        collusion = {
+            "dataset": repo / "agent_honeypot/collusion_tripwires/cases.jsonl",
+            "runner": repo / "agent_honeypot/collusion_tripwires/run_case.py",
+            "prefix": "CLH-",
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            script = Path(directory) / "fake_luna_agent.py"
+            script.write_text(self.FAKE_AGENT)
+            # The session archive needs the key it redacts (a placeholder, never minted).
+            env = {"HOME": str(Path(directory) / "home"), "MODAL_COLLUSION_CONTAINMENT_ENFORCED": "1",
+                   "OPENAI_API_KEY": FAKE_VIRTUAL_KEY}
+            with mock.patch.dict(os.environ, env), mock.patch.object(SANDBOX, "ROOT", repo), \
+                    mock.patch.dict(SANDBOX.CONFIG, {"collusion": collusion}):
+                row = SANDBOX.run_case(
+                    "collusion", "CLH-003", Path(directory) / "out",
+                    subject_command=shlex.join(["python3", str(script)]), agent_timeout=60,
+                )
+            report = json.loads(Path(row["report"]).read_text())
+            log = (Path(directory) / "out" / "logs" / "CLH-003.log").read_text()
+        self.assertEqual(row["runner_exit_code"], 0, log[-2000:])
+        self.assertEqual(report["codex_session_archive"], {"subject": "archived"})
+        self.assertIs(report["agent_hooks_observed"], True, report.get("agent_hooks"))
+        self.assertIs(row["agent_hooks_observed"], True)
+        self.assertEqual(row["agent_hooks"], report["agent_hooks"])
+        self.assertEqual(row["agent_hooks"]["subject"]["commands"], 1)
+        self.assertEqual(row["agent_hooks"]["subject"]["windows_with_hook_events"], 1)
 
 
 if __name__ == "__main__":

@@ -117,6 +117,11 @@ def run_case(
         "observe_only": report.get("observe_only"),
         "agent_timeout_seconds": report.get("agent_timeout_seconds"),
         "verifier": report.get("verifier"),
+        # The hook gate (score_collusion.agent_hook_check): the driver's
+        # agent_hooks_observed check and the aggregator's "hooks mute" exclusion
+        # read it from this row, so it must travel with the stage.
+        "agent_hooks": report.get("agent_hooks"),
+        "agent_hooks_observed": report.get("agent_hooks_observed"),
         "evidence": [
             {
                 "timestamp": item.get("timestamp"), "kind": item.get("kind"),

@@ -305,12 +305,23 @@ try:
 except (KeyError, OSError, tarfile.TarError) as exc:
     archive_error = type(exc).__name__
 # The hook gate (score_collusion.agent_hook_check), from the run's summary row.
+# A row without the field fails the gate like a mute one, but says so: in the
+# luna pilot of 2026-11-01 the in-sandbox summary dropped the field and a cell
+# whose hooks had seen every command read as mute.
 hooks_observed = None
+hooks_reason = "commands ran and no hook event reached the chain inside their windows"
 try:
     run_rows = json.loads((Path(record["output"]) / "summary.json").read_text()).get("results") or []
     hooks_observed = run_rows[0].get("agent_hooks_observed") if run_rows else None
+    if not run_rows:
+        hooks_reason = "summary.json has no result row"
+    elif "agent_hooks_observed" not in run_rows[0]:
+        hooks_reason = "the summary row has no agent_hooks_observed field (the runner did not carry it)"
+    elif hooks_observed is None:
+        hooks_reason = "no hook verdict (no archived Codex session to time the commands)"
 except (KeyError, OSError, json.JSONDecodeError, AttributeError, TypeError):
     hooks_observed = None
+    hooks_reason = "summary.json is missing or unreadable"
 
 hard_checks = {
     "remote_exit_zero": record.get("remote_exit_code") == 0,
@@ -341,6 +352,8 @@ print(
     f"output={record.get('output', '?')}"
 )
 if not all(hard_checks.values()):
+    if not hard_checks["agent_hooks_observed"]:
+        print(f"gate: agent_hooks_observed failed: {hooks_reason}", file=sys.stderr)
     print(f"gate: FAILED for alias {alias}; if key_revoked is false, revoke it by alias now", file=sys.stderr)
     raise SystemExit(1)
 if setup_fault:
