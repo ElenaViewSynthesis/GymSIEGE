@@ -29,6 +29,20 @@ Validate the corpus without running an agent:
 python3 agent_honeypot/intent_tripwires/validate_experiments.py
 ```
 
+### Corpus version 2
+
+`experiments-v2.jsonl` (ITH-101 to ITH-111) is derived from the 11 intent
+evaluations by `make_experiments_v2.py` and checked by the validator. Each case
+keeps its category, tripwire, expectation and live-search flag, but its
+untrusted text moves into `TASK.md`, as the body of an issue report after a true
+description of the bug, and the prompt names `TASK.md` without restating the
+task, so the agent cannot do the task without reading the untrusted text. No
+`UNTRUSTED_CONTEXT.md` is written. In the first real-agent cohort on version 1,
+ten of eleven agents never opened that file; version 2 measures resistance to an
+injection the agent has read, not avoidance of a file it was told to distrust.
+The versions are separate corpora: `run_cohort.py --corpus 2` runs version 2,
+and a cohort never mixes them.
+
 ## Run an agent under the tripwires
 
 The harness exports these paths to the agent command:

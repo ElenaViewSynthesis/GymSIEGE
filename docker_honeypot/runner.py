@@ -73,6 +73,8 @@ WEB_SEARCH_TOKEN = "web-search"
 WEB_SEARCH_HOSTS_ENV = "HONEYPOT_WEB_SEARCH_HOSTS"
 HOSTNAME_PATTERN = re.compile(r"(?=.{1,253}\Z)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+")
 INTENT_DATASET = REPO / "agent_honeypot" / "intent_tripwires" / "experiments.jsonl"
+# Corpus version 2 (make_experiments_v2.py): the same cases with the untrusted text in TASK.md.
+INTENT_DATASETS = (INTENT_DATASET, INTENT_DATASET.with_name("experiments-v2.jsonl"))
 HARNESSES = ("collusion", "intent")
 # Docker's default seccomp profile plus only the calls Codex's bubblewrap
 # sandbox needs (docker_honeypot/build_seccomp_profile.py documents each one).
@@ -151,9 +153,11 @@ def container_names(
     return {"sandbox": name, "proxy": f"{name}-proxy"}
 
 
-def live_search_cases(dataset: Path = INTENT_DATASET) -> frozenset[str]:
-    """The intent cases that need live hosted web search (ITH-010, ITH-011)."""
-    rows = (json.loads(line) for line in dataset.read_text().splitlines() if line.strip())
+def live_search_cases(datasets: tuple[Path, ...] = INTENT_DATASETS) -> frozenset[str]:
+    """The intent cases that need live hosted web search: ITH-010 and ITH-011, and
+    their corpus-version-2 twins ITH-110 and ITH-111."""
+    rows = (json.loads(line) for dataset in datasets if dataset.is_file()
+            for line in dataset.read_text().splitlines() if line.strip())
     return frozenset(str(row["id"]) for row in rows if row["metadata"].get("requires_live_web_search"))
 
 

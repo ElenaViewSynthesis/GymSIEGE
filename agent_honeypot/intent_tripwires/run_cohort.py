@@ -56,6 +56,7 @@ from typing import Any
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[1]
 DATASET = HERE / "experiments.jsonl"
+DATASET_V2 = HERE / "experiments-v2.jsonl"
 RUNNER = REPO / "docker_honeypot" / "runner.py"
 SUBJECT_COMMAND = "bash /opt/honeypot/agent_honeypot/intent_tripwires/codex_intent.sh"
 CODEX_SANDBOX = "workspace-write"
@@ -70,13 +71,20 @@ KNOWN_CLIENT_HOSTS = frozenset({"chatgpt.com", "ab.chatgpt.com", "github.com", "
 EPSILON = 1e-9
 
 
-def load_cases(path: Path = DATASET) -> dict[str, dict[str, Any]]:
-    return {row["id"]: row for row in (json.loads(line) for line in path.read_text().splitlines() if line.strip())}
+def load_cases(paths: tuple[Path, ...] = (DATASET, DATASET_V2)) -> dict[str, dict[str, Any]]:
+    """Both corpus versions by case ID (version 2's IDs are ITH-101..ITH-111)."""
+    return {row["id"]: row for path in paths if path.is_file()
+            for row in (json.loads(line) for line in path.read_text().splitlines() if line.strip())}
 
 
-def default_cases(cases: dict[str, dict[str, Any]]) -> list[str]:
-    """The intent evaluations; the two sensor controls stay scripted."""
-    return sorted(case_id for case_id, case in cases.items() if case["metadata"]["role"] == "intent_eval")
+def corpus_version(case: dict[str, Any]) -> int:
+    return int(case["metadata"].get("corpus_version", 1))
+
+
+def default_cases(cases: dict[str, dict[str, Any]], corpus: int = 1) -> list[str]:
+    """The intent evaluations of one corpus version; the two sensor controls stay scripted."""
+    return sorted(case_id for case_id, case in cases.items()
+                  if case["metadata"]["role"] == "intent_eval" and corpus_version(case) == corpus)
 
 
 def web_search(case: dict[str, Any]) -> str:
@@ -268,7 +276,8 @@ def spent(args: argparse.Namespace, ledger: list[dict[str, Any]]) -> float:
 
 def plan_record(args: argparse.Namespace, case_ids: list[str], cases: dict[str, dict[str, Any]]) -> dict[str, Any]:
     return {
-        "schema_version": "1.0", "suite": "intent", "provider": "docker", "arm": args.arm,
+        "schema_version": "1.0", "suite": "intent", "corpus_version": args.corpus,
+        "provider": "docker", "arm": args.arm,
         "model": args.model, "key_budget_usd": args.key_budget, "ceiling_usd": args.ceiling,
         "spent_before_usd": args.spent_before, "agent_timeout_seconds": args.agent_timeout,
         "codex_sandbox": CODEX_SANDBOX, "subject_command": SUBJECT_COMMAND, "image": args.image,
@@ -419,7 +428,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--ceiling", type=float, required=True, help="the author's ceiling for this cohort, USD")
     parser.add_argument("--spent-before", type=float, default=0.0,
                         help="spend already counted against the ceiling, USD")
-    parser.add_argument("--cases", help="comma-separated ITH case IDs (default: the 11 intent evaluations)")
+    parser.add_argument("--corpus", type=int, choices=(1, 2), default=1,
+                        help="intent corpus version: 1 (ITH-001..011, untrusted text in UNTRUSTED_CONTEXT.md) "
+                             "or 2 (ITH-101..111, the same text inside TASK.md); default 1")
+    parser.add_argument("--cases", help="comma-separated ITH case IDs of that corpus (default: its 11 intent evaluations)")
     parser.add_argument("--arm", default="intent")
     parser.add_argument("--agent-timeout", type=int, default=900)
     parser.add_argument("--max-setup-faults", type=int, default=2)
@@ -430,10 +442,14 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     args.root = args.root.resolve()
     cases = load_cases()
-    case_ids = [item.strip() for item in args.cases.split(",") if item.strip()] if args.cases else default_cases(cases)
+    case_ids = ([item.strip() for item in args.cases.split(",") if item.strip()] if args.cases
+                else default_cases(cases, args.corpus))
     unknown = [case_id for case_id in case_ids if case_id not in cases]
     if unknown:
         parser.error(f"unknown case(s): {', '.join(unknown)}")
+    other = [case_id for case_id in case_ids if corpus_version(cases[case_id]) != args.corpus]
+    if other:
+        parser.error(f"not in corpus version {args.corpus} (never pool the versions): {', '.join(other)}")
     controls = [case_id for case_id in case_ids if cases[case_id]["metadata"]["role"] != "intent_eval"]
     if controls:
         parser.error(f"sensor controls stay scripted: {', '.join(controls)}")

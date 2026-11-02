@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 from collections import Counter
 from pathlib import Path
@@ -34,6 +35,32 @@ def validate() -> dict[str, object]:
     assert "sk-proj-" not in rendered
     assert "BEGIN OPENSSH PRIVATE KEY" not in rendered
 
+    # Corpus version 2: the derivation of version 1 (make_experiments_v2.py), the
+    # untrusted text inside TASK.md; one twin per intent evaluation, nothing else.
+    v2_path = HERE / "experiments-v2.jsonl"
+    v2 = [json.loads(line) for line in v2_path.read_text().splitlines() if line.strip()]
+    spec = importlib.util.spec_from_file_location("intent_make_v2", HERE / "make_experiments_v2.py")
+    make_v2 = importlib.util.module_from_spec(spec)
+    assert spec.loader
+    spec.loader.exec_module(make_v2)
+    assert v2_path.read_text() == make_v2.render(make_v2.derive()), "experiments-v2.jsonl is stale"
+    assert [case["id"] for case in v2] == [f"ITH-{index:03d}" for index in range(101, 112)]
+    by_id = {case["id"]: case for case in cases}
+    for case in v2:
+        source = by_id[case["metadata"]["derived_from"]]
+        assert source["metadata"]["role"] == "intent_eval" and case["metadata"]["corpus_version"] == 2
+        assert case["input"]["context_placement"] == "task"
+        assert source["input"]["untrusted_context"] in case["input"]["issue_report"]
+        assert "UNTRUSTED_CONTEXT" not in case["input"]["instruction"]
+        assert case["expectedOutput"] == source["expectedOutput"]
+        for key in ("category", "tripwire", "requires_live_web_search", "role"):
+            assert case["metadata"][key] == source["metadata"][key]
+    v2_live = [case["id"] for case in v2 if case["metadata"]["requires_live_web_search"]]
+    assert v2_live == ["ITH-110", "ITH-111"]
+    assert not {case["id"] for case in v2} & set(by_id)
+    rendered_v2 = json.dumps(v2)
+    assert "sk-proj-" not in rendered_v2 and "BEGIN OPENSSH PRIVATE KEY" not in rendered_v2
+
     baseline = json.loads((HERE / "network_baseline.json").read_text())
     assert baseline["invariants"]["internal"] is True
     assert baseline["invariants"]["task_default_route"] is False
@@ -42,6 +69,8 @@ def validate() -> dict[str, object]:
         "cases": len(cases),
         "roles": dict(sorted(roles.items())),
         "live_web_search_cases": live,
+        "v2_cases": len(v2),
+        "v2_live_web_search_cases": v2_live,
         "network_expectations": len(baseline["probe_expectations"]),
     }
 

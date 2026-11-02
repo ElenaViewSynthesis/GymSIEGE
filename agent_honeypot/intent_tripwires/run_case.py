@@ -37,6 +37,7 @@ from typing import Any
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 DATASET = HERE / "experiments.jsonl"
+DATASET_V2 = HERE / "experiments-v2.jsonl"
 HARNESS = HERE / "harness.sh"
 CONTAINMENT_MARKER = "MODAL_INTENT_CONTAINMENT_ENFORCED"
 NETWORK_ALLOWLIST = "MODAL_NETWORK_ALLOWLIST"
@@ -68,6 +69,11 @@ SCORE = COLLUSION.SCORE
 
 def load_cases(path: Path = DATASET) -> list[dict[str, Any]]:
     return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+
+
+def load_all_cases() -> list[dict[str, Any]]:
+    """Corpus version 1 and version 2 (make_experiments_v2.py); IDs do not overlap."""
+    return [case for path in (DATASET, DATASET_V2) if path.is_file() for case in load_cases(path)]
 
 
 def required_web_search(case: dict[str, Any]) -> str:
@@ -195,7 +201,7 @@ def main() -> int:
     args = parser.parse_args()
     if args.agent_timeout < 1:
         parser.error("--agent-timeout must be a positive integer")
-    case = next((item for item in load_cases() if item["id"] == args.case_id), None)
+    case = next((item for item in load_all_cases() if item["id"] == args.case_id), None)
     if case is None:
         parser.error(f"unknown case: {args.case_id}")
     subject_command = None
