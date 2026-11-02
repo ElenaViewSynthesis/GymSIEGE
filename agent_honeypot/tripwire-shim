@@ -27,19 +27,34 @@ fi
 
 detail=${detail//$'\t'/ }
 detail=${detail//$'\n'/ }
-# The chain pipe: the inherited descriptor while it is the pipe the harness's
-# /proc path names; else the relay's FIFO, which a command in a PID namespace
-# of its own (Codex's workspace-write sandbox) or one whose descriptors a
-# spawner closed (Codex's Node wrapper) still reaches; else the old routes.
+# The chain pipe: the inherited descriptor while it is that pipe; else the
+# relay's FIFO, which a command in a PID namespace of its own (Codex's
+# workspace-write sandbox) or one whose descriptors a spawner closed (Codex's
+# Node wrapper) still reaches; else the old routes.
+# The shim never touches the harness's /proc path (HONEYPOT_EVENT_PATH,
+# /proc/<harness pid>/fd/N). It runs under the preload, which hooks stat and
+# open, so a look at that path is reported as the agent's own
+# FOREIGN_PROC_READ of the harness: from 036ba64 until this check, every shimmed
+# command in a chain run logged one, and scored as a foreign read. The
+# descriptor is matched by its pipe inode instead: the ino line of the shim's
+# own /proc/self/fdinfo/N against HONEYPOT_EVENT_PIPE (st_dev:st_ino, read by
+# the harness), with bash builtins only, since a stat child would add an EXEC.
 event_fd=${HONEYPOT_EVENT_FD:-}
-event_path=${HONEYPOT_EVENT_PATH:-}
+event_pipe=${HONEYPOT_EVENT_PIPE:-}
 event_fifo=${HONEYPOT_EVENT_FIFO:-}
-if [[ -n $event_fd && -n $event_path && -e /proc/self/fd/$event_fd && /proc/self/fd/$event_fd -ef $event_path ]]; then
+fd_is_chain=0
+if [[ $event_fd =~ ^[0-9]+$ && -n $event_pipe && -p /proc/self/fd/$event_fd && -r /proc/self/fdinfo/$event_fd ]]; then
+  while IFS=$' \t:' read -r key value _; do
+    if [[ $key == ino ]]; then
+      [[ $value == "${event_pipe#*:}" ]] && fd_is_chain=1
+      break
+    fi
+  done <"/proc/self/fdinfo/$event_fd"
+fi
+if (( fd_is_chain )); then
   printf '%(%s)T.000000000\t%s\t%s\t%s\t%s\n' -1 "$kind" "$$" "$target" "$detail" >&"$event_fd"
 elif [[ -n $event_fd && -n $event_fifo && -p $event_fifo ]]; then
   printf '%(%s)T.000000000\t%s\t%s\t%s\t%s\n' -1 "$kind" "$$" "$target" "$detail" >>"$event_fifo"
-elif [[ -n $event_fd && -n $event_path && -p $event_path ]]; then
-  printf '%(%s)T.000000000\t%s\t%s\t%s\t%s\n' -1 "$kind" "$$" "$target" "$detail" >>"$event_path"
 elif [[ -n $event_fd ]]; then
   printf '%(%s)T.000000000\t%s\t%s\t%s\t%s\n' -1 "$kind" "$$" "$target" "$detail" >&"$event_fd"
 else
