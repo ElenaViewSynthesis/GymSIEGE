@@ -33,8 +33,10 @@ goes to <root>/intent-summary.json. No key, token id, canary or marker value
 is printed or written by this driver; the runner's own log (driver-*.log)
 carries the run record with its token id and is never committed.
 
-Not yet: Langfuse traces (the ingest does not redact the intent canary) and
-the cohort monitor (it reads collusion runs).
+Watch it live with agent_honeypot/collusion_tripwires/cohort_monitor.py
+<root> --watch 20, which reads this layout. Not yet: Langfuse traces. The
+ingest's redactor reads canary.txt, but its push has not been tested on an
+intent run.
 """
 
 from __future__ import annotations
