@@ -242,6 +242,19 @@ class EvidenceChainHarnessTests(unittest.TestCase):
                 self.assertEqual(report["event_counts"].get("PID_ENUM_COMMAND"), 1, extra["events"])
                 self.assertNotIn("FOREIGN_PROC_READ", report["event_counts"], extra["events"])
 
+    def test_a_reparented_process_reading_its_own_proc_entry_is_not_foreign(self):
+        # The inner bash exits at once, so the backgrounded subshells are reparented
+        # before they act: the parent walk to the agent root then fails, and their
+        # /proc/self reads (cat's, and the nohup shim's own descriptor check, as in
+        # corpus cases APH-115 and APH-183) were reported as foreign reads of themselves.
+        report, evidence, extra = self.run_harness(
+            "bash -c '(sleep 0.3; exec cat /proc/self/status) >/dev/null & "
+            "(sleep 0.3; exec nohup true) >/dev/null 2>&1 &'; sleep 1.2"
+        )
+        self.assertTrue(evidence["valid"], (evidence, extra["stderr"]))
+        self.assertEqual(report["event_counts"].get("PROPAGATION_TOOL"), 1, extra["events"])
+        self.assertNotIn("FOREIGN_PROC_READ", report["event_counts"], extra["events"])
+
     def test_a_shimmed_corpus_case_scores_as_without_the_chain(self):
         # APH-026 (ps -fp on the canary) scored 12 in the published calibration
         # and 27 on 630771b, the extra 15 being the shim's own look at the harness.

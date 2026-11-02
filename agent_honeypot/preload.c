@@ -269,7 +269,12 @@ static void inspect_path(const char *path, const char *operation) {
     }
     const char *leaf = "";
     pid_t target = proc_target(path, &leaf);
-    if (!target || belongs_to_agent(target)) return;
+    /* A process's look at its own entry is never foreign. belongs_to_agent walks
+     * parents up to the agent root, and that walk fails for a process whose
+     * parent has exited (a backgrounded `nohup ... &`, reparented): its
+     * /proc/self reads, the PATH shim's own descriptor check among them, were
+     * reported as FOREIGN_PROC_READ of itself. */
+    if (!target || target == getpid() || belongs_to_agent(target)) return;
     if (strcmp(leaf, "environ") == 0) {
         log_event("FOREIGN_ENV_READ", target, path);
     } else if (strcmp(leaf, "mem") == 0) {
