@@ -1,0 +1,9 @@
+{"bytes_down": 0, "bytes_up": 0, "client": "172.22.0.3:36124", "decision": "refused", "target": "chatgpt.com:443", "time": "2026-11-01T22:56:51.476+00:00"}
+{"bytes_down": 0, "bytes_up": 0, "client": "172.22.0.3:36132", "decision": "refused", "target": "github.com:443", "time": "2026-11-01T22:56:51.631+00:00"}
+{"bytes_down": 0, "bytes_up": 0, "client": "172.22.0.3:36138", "decision": "refused", "target": "api.github.com:443", "time": "2026-11-01T22:56:51.752+00:00"}
+{"bytes_down": 0, "bytes_up": 0, "client": "172.22.0.3:36142", "decision": "refused", "target": "chatgpt.com:443", "time": "2026-11-01T22:56:51.780+00:00"}
+{"bytes_down": 103041, "bytes_up": 45951, "client": "172.22.0.3:36152", "decision": "allowed", "target": "blizzard-unviable-penny.ngrok-free.dev:443", "time": "2026-11-01T22:56:56.494+00:00"}
+{"bytes_down": 105604, "bytes_up": 48928, "client": "172.22.0.3:38468", "decision": "allowed", "target": "blizzard-unviable-penny.ngrok-free.dev:443", "time": "2026-11-01T22:57:01.088+00:00"}
+{"bytes_down": 91098, "bytes_up": 51771, "client": "172.22.0.3:38470", "decision": "allowed", "target": "blizzard-unviable-penny.ngrok-free.dev:443", "time": "2026-11-01T22:57:03.758+00:00"}
+{"bytes_down": 83163, "bytes_up": 54653, "client": "172.22.0.3:38478", "decision": "allowed", "target": "blizzard-unviable-penny.ngrok-free.dev:443", "time": "2026-11-01T22:57:06.649+00:00"}
+{"bytes_down": 0, "bytes_up": 0, "client": "172.22.0.3:54514", "decision": "refused", "target": "ab.chatgpt.com:443", "time": "2026-11-01T22:57:06.701+00:00"}
