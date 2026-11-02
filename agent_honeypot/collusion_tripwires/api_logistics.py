@@ -17,6 +17,7 @@ import os
 import sys
 import tarfile
 from collections import defaultdict
+from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, os.getcwd())
@@ -52,6 +53,13 @@ def transcript_usage(run_dir: Path) -> dict[str, int]:
     return usage
 
 
+def _instant(value) -> datetime | None:
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00")) if value else None
+    except ValueError:
+        return None
+
+
 def cell_row(cohort: str, boundary: str, run_dir: Path) -> dict:
     record_path = run_dir / ("docker-run.json" if (run_dir / "docker-run.json").is_file() else "modal-run.json")
     record = json.loads(record_path.read_text())
@@ -59,6 +67,8 @@ def cell_row(cohort: str, boundary: str, run_dir: Path) -> dict:
     result = (summary.get("results") or [{}])[0]
     vk = record.get("virtual_key") or {}
     policy = record.get("policy") or {}
+    # A cell's time from key mint to key revoke: sandbox start, the agent's run, teardown.
+    minted, revoked = _instant(vk.get("minted_at")), _instant(vk.get("revoked_at"))
     return {
         "cohort": cohort, "boundary": boundary, "run_dir": str(run_dir.relative_to(REPO)),
         "arm": record.get("arm"), "case_id": record.get("case_id") or result.get("case_id"),
@@ -66,6 +76,8 @@ def cell_row(cohort: str, boundary: str, run_dir: Path) -> dict:
         "key_cap_usd": vk.get("budget_usd") or policy.get("key_budget_usd"),
         "spend_usd": vk.get("spend_usd"), "alias": vk.get("key_alias"),
         "run_wall_seconds": result.get("run_wall_seconds"),
+        "key_minted_at": vk.get("minted_at"), "key_revoked_at": vk.get("revoked_at"),
+        "cell_seconds": (revoked - minted).total_seconds() if minted and revoked else None,
         **transcript_usage(run_dir),
     }
 
@@ -124,24 +136,45 @@ def total(rows, key):
 groups = defaultdict(list)
 for cell in cells:
     groups[cell["cohort"]].append(cell)
+def median(values):
+    values = sorted(v for v in values if isinstance(v, (int, float)))
+    return values[len(values) // 2] if values else None
+
+
+def completion(rows):
+    """Completion time: first key mint to last key revoke, in minutes (pauses included)."""
+    minted = [_instant(r.get("key_minted_at")) for r in rows]
+    revoked = [_instant(r.get("key_revoked_at")) for r in rows]
+    minted, revoked = [m for m in minted if m], [r for r in revoked if r]
+    return (max(revoked) - min(minted)).total_seconds() / 60 if minted and revoked else None
+
+
 order = ["v1", "v2", "v3", "opus-modal", "opus-docker-pilots"] + sorted(set(groups) - {"v1", "v2", "v3", "opus-modal", "opus-docker-pilots"})
-print("cohort              boundary          model            cells  calls  in_tok      cached_in   out_tok   spend      $/cell   cap   wall_s(median)")
+print("cohort              boundary          model            cells  calls  in_tok      cached_in   out_tok   spend      $/cell   cap   "
+      "agent_s(median)  cell_s(median)  cells_min(sum)  completion_min  first_mint")
 for name in [o for o in order if o in groups]:
     rows = groups[name]
-    walls = sorted(r["run_wall_seconds"] for r in rows if isinstance(r.get("run_wall_seconds"), (int, float)))
-    median = walls[len(walls) // 2] if walls else None
     spend = total(rows, "spend_usd") or 0.0
     models = sorted({str(r["model"]) for r in rows})
     caps = sorted({r["key_cap_usd"] for r in rows if r["key_cap_usd"] is not None})
+    cell_sum = total(rows, "cell_seconds")
+    span = completion(rows)
+    first = min((r["key_minted_at"] for r in rows if r.get("key_minted_at")), default=None)
+    agent_median, cell_median = median(r.get("run_wall_seconds") for r in rows), median(r.get("cell_seconds") for r in rows)
     print(f"{name:19} {rows[0]['boundary']:17} {','.join(models):16} {len(rows):5}  {total(rows, 'gateway_calls')!s:5}  "
           f"{total(rows, 'input_tokens')!s:10}  {total(rows, 'cached_input_tokens')!s:10}  {total(rows, 'output_tokens')!s:8}  "
-          f"${spend:8.4f}  ${spend / len(rows):.4f}  {caps}  {median}")
-print("--- opus-v2 per case")
-per_case = defaultdict(list)
-for r in groups.get("opus-v2", []):
-    per_case[(r["arm"], r["case_id"])].append(r)
-for (arm, case), rows in sorted(per_case.items()):
-    spend = total(rows, "spend_usd")
-    print(f"  {arm:12} {case}  cells={len(rows)} calls={total(rows, 'gateway_calls')} commands={total(rows, 'commands')} "
-          f"in={total(rows, 'input_tokens')} cached={total(rows, 'cached_input_tokens')} out={total(rows, 'output_tokens')} "
-          f"spend=${spend:.4f} per_cell=${spend / len(rows):.4f}")
+          f"${spend:8.4f}  ${spend / len(rows):.4f}  {caps}  "
+          f"{agent_median if agent_median is None else round(agent_median, 1)!s:15}  "
+          f"{cell_median if cell_median is None else round(cell_median, 1)!s:14}  "
+          f"{cell_sum if cell_sum is None else round(cell_sum / 60, 1)!s:14}  "
+          f"{span if span is None else round(span, 1)!s:14}  {str(first)[:19]}")
+for name in [o for o in order if o in groups and groups[o][0]["boundary"] == "docker-container" and o != "opus-docker-pilots"]:
+    print(f"--- {name} per case")
+    per_case = defaultdict(list)
+    for r in groups[name]:
+        per_case[(r["arm"], r["case_id"])].append(r)
+    for (arm, case), rows in sorted(per_case.items()):
+        spend = total(rows, "spend_usd")
+        print(f"  {arm:12} {case}  cells={len(rows)} calls={total(rows, 'gateway_calls')} commands={total(rows, 'commands')} "
+              f"in={total(rows, 'input_tokens')} cached={total(rows, 'cached_input_tokens')} out={total(rows, 'output_tokens')} "
+              f"spend=${spend:.4f} per_cell=${spend / len(rows):.4f} cell_s(median)={median(r.get('cell_seconds') for r in rows)}")
