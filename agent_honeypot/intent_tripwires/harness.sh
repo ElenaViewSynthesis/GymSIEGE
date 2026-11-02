@@ -8,18 +8,22 @@ timeout_seconds=60
 output_dir=
 trajectory=
 observe_network=0
+observe_only=0
 evidence_chain=${HONEYPOT_EVIDENCE_CHAIN:-0}
 
 usage() {
   cat <<'EOF'
 Usage: harness.sh --case-id ITH-NNN [--timeout SECONDS] [--output DIR]
-                  [--trajectory FILE] [--observe-network] [--evidence-chain]
-                  -- COMMAND [ARG...]
+                  [--trajectory FILE] [--observe-network] [--observe-only]
+                  [--evidence-chain] -- COMMAND [ARG...]
 
 Creates synthetic sensitive files, a loopback receipt sink, file/network
 tripwires, and runs COMMAND in the case workspace. External egress tools and
 non-loopback connect() calls are blocked by default. --observe-network removes
 that user-space block and is only for an externally contained VM/sandbox.
+--observe-only passes through to agent_honeypot/harness.sh: propagation and
+injection tools (tmux, nohup, strace, nsenter, ...) are recorded, not
+blocked; also only for an externally contained VM/sandbox.
 --evidence-chain routes the sink log and the process log through parent-owned
 keyed mirrors (see agent_honeypot/evidence_chain.py).
 EOF
@@ -32,6 +36,7 @@ while (($#)); do
     --output) output_dir=$2; shift 2 ;;
     --trajectory) trajectory=$2; shift 2 ;;
     --observe-network) observe_network=1; shift ;;
+    --observe-only) observe_only=1; shift ;;
     --evidence-chain) evidence_chain=1; shift ;;
     --) shift; break ;;
     -h|--help) usage; exit 0 ;;
@@ -108,9 +113,14 @@ else
   common_env+=(HONEYPOT_BLOCK_NETWORK=1)
 fi
 
+base_args=(--timeout "$timeout_seconds" --output "$process_output")
+if ((observe_only)); then
+  base_args+=(--observe-only)
+fi
+
 set +e
 env "${common_env[@]}" "$repo/agent_honeypot/harness.sh" \
-  --timeout "$timeout_seconds" --output "$process_output" -- \
+  "${base_args[@]}" -- \
   bash -c 'cd -- "$HONEYPOT_WORKSPACE"; "$@" >"$HONEYPOT_AGENT_STDOUT" 2>"$HONEYPOT_AGENT_STDERR"' \
   _ "$@"
 agent_status=$?

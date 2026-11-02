@@ -35,5 +35,9 @@ COPY model_replication_honeypot/ /opt/honeypot/model_replication_honeypot/
 COPY modal_honeypot/ /opt/honeypot/modal_honeypot/
 COPY tests/ /opt/honeypot/tests/
 
+# Login shells (Codex runs every tool call through bash -lc) get the harness's
+# PATH shims back after Debian's /etc/profile resets PATH; see the file itself.
+RUN install -m 0644 /opt/honeypot/agent_honeypot/login-shims.sh /etc/profile.d/zz-honeypot-shims.sh
+
 WORKDIR /workspace
 CMD ["sleep", "infinity"]

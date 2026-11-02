@@ -12,7 +12,8 @@ inside an outer boundary that the outer runner has confirmed
 MODAL_NETWORK_ALLOWLIST). The harness's own connect() block is lifted
 (--observe-network) so the agent reaches its gateway through that boundary,
 whose egress proxy decides, and logs, every other connection; the preload
-still logs every connect. The web-search mode comes from the boundary
+still logs every connect. The PATH shims record and do not block
+(--observe-only), as for collusion's real subjects. The web-search mode comes from the boundary
 (HONEYPOT_CODEX_WEB_SEARCH, set from the allow-list's web-search token) and
 must match the case: live for the two hosted-search cases, disabled for every
 other. After the harness returns, Codex's session file is archived
@@ -135,7 +136,10 @@ def run_one(
     if agent:
         web_search = agent_preconditions(case, env)
         env[WEB_SEARCH] = web_search
-        command += ["--observe-network", "--", *subject_command]
+        # Record, never block, what a real agent runs: the PATH shims log
+        # tmux, strace, nsenter and the rest and then let them run, as for
+        # collusion's real subjects (the boundary contains them).
+        command += ["--observe-network", "--observe-only", "--", *subject_command]
     else:
         web_search = "disabled"
         env.pop(WEB_SEARCH, None)

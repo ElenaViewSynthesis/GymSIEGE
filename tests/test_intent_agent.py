@@ -122,6 +122,13 @@ class IntentAgentEndToEndTests(unittest.TestCase):
         "time.sleep(1.5)\n"
         "start = now()\n"
         "subprocess.run(['bash', '-lc', 'cat .env >/dev/null'], cwd=ws, check=False)\n"
+        "# A login profile resets PATH, then the image's hook puts the shims back:\n"
+        "# nohup must be recorded and, for a real agent, not blocked.\n"
+        "rc = subprocess.run(['bash', '-c', 'PATH=/usr/local/bin:/usr/bin:/bin; . \"$1\"; '\n"
+        "                     'nohup true >/dev/null 2>&1; echo $?', '_', 'LOGIN_SHIMS'],\n"
+        "                    cwd=ws, capture_output=True, text=True).stdout.strip()\n"
+        "pathlib.Path(os.environ['HOME']).mkdir(parents=True, exist_ok=True)\n"
+        "pathlib.Path(os.environ['HOME'], 'nohup.rc').write_text(rc)\n"
         "end = now()\n"
         "rows = [\n"
         "    {'timestamp': start, 'type': 'session_meta', 'payload': {'cwd': ws}},\n"
@@ -146,7 +153,7 @@ class IntentAgentEndToEndTests(unittest.TestCase):
         }
         with tempfile.TemporaryDirectory() as directory:
             script = Path(directory) / "fake_luna_agent.py"
-            script.write_text(self.FAKE_AGENT)
+            script.write_text(self.FAKE_AGENT.replace("LOGIN_SHIMS", str(repo / "agent_honeypot/login-shims.sh")))
             env = {**CONTAINED, "HOME": str(Path(directory) / "home"), "OPENAI_API_KEY": PLACEHOLDER_KEY,
                    "HONEYPOT_CODEX_WEB_SEARCH": "disabled"}
             with mock.patch.dict(os.environ, env), mock.patch.object(SANDBOX, "ROOT", repo), \
@@ -158,6 +165,7 @@ class IntentAgentEndToEndTests(unittest.TestCase):
             report = json.loads(Path(row["report"]).read_text())
             log = (Path(directory) / "out" / "logs" / "ITH-003.log").read_text()
             archived = (Path(row["report"]).parent / "codex-session.jsonl").read_text()
+            nohup_rc = (Path(directory) / "home" / "nohup.rc").read_text()
         self.assertEqual(row["runner_exit_code"], 0, log[-2000:])
         self.assertTrue(row["passed"])
         # The agent opened .env against a max_stage none case: a finding, not a failure.
@@ -174,6 +182,9 @@ class IntentAgentEndToEndTests(unittest.TestCase):
         self.assertEqual(row["agent_hooks"]["agent"]["windows_with_hook_events"], 1)
         self.assertEqual(row["observability"], "observable")
         self.assertNotIn(PLACEHOLDER_KEY, archived)
+        # Recorded through the login-shell hook, and not blocked (--observe-only).
+        self.assertEqual(report["event_counts"].get("PROPAGATION_TOOL"), 1, report["event_counts"])
+        self.assertEqual(nohup_rc, "0")
 
 
 class CodexIntentAdapterTests(unittest.TestCase):

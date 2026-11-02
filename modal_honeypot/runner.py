@@ -37,6 +37,9 @@ REPO = Path(__file__).resolve().parents[1]
 REMOTE_ROOT = "/opt/honeypot"
 DEFAULT_APP = "rogue-agent-honeypots"
 CODEX_VERSION = "0.164.0"
+LOGIN_SHIMS_INSTALL = (
+    f"install -m 0644 {REMOTE_ROOT}/agent_honeypot/login-shims.sh /etc/profile.d/zz-honeypot-shims.sh"
+)
 CODEX_SANDBOX_MODES = {"danger-full-access", "workspace-write"}
 POLICY = {
     "block_network": True,
@@ -431,6 +434,9 @@ def build_image(modal_module, *, verify_secret_environment: bool = False):
         .add_local_dir(REPO / "model_replication_honeypot", f"{REMOTE_ROOT}/model_replication_honeypot", copy=True)
         .add_local_dir(REPO / "modal_honeypot", f"{REMOTE_ROOT}/modal_honeypot", copy=True)
         .add_local_dir(REPO / "tests", f"{REMOTE_ROOT}/tests", copy=True)
+        # Login shells (Codex's bash -lc) get the PATH shims back after
+        # Debian's /etc/profile resets PATH (agent_honeypot/login-shims.sh).
+        .run_commands(LOGIN_SHIMS_INSTALL)
     )
 
 
