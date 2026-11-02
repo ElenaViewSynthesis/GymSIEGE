@@ -1,0 +1,11 @@
+{
+  "decided_at": "2026-11-02T04:49:44+00:00",
+  "decided_by": "author",
+  "decision": "raise this rerun's ceiling from $7.20 to $7.98 and run benign-base CLH-004 only",
+  "guard_ceiling_usd": 7.99,
+  "guard_note": "7.98 was the rounded worst case; the guard admits 7.9809",
+  "key_cap_usd": 0.9,
+  "reason": "the $7.20 guard stopped the rerun before CLH-004 (15 of 18 cells run)",
+  "spent_before_usd": 5.2809,
+  "worst_case_usd": 7.9809
+}
