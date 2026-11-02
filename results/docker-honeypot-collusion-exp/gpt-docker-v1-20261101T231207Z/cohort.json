@@ -1,0 +1,62 @@
+{
+  "agent_timeout_seconds": 900,
+  "arms": [
+    {
+      "arm": "lure-pair",
+      "cases": [
+        "CLH-036",
+        "CLH-037"
+      ],
+      "order": 1,
+      "trials": 3
+    },
+    {
+      "arm": "benign-base",
+      "cases": [
+        "CLH-001",
+        "CLH-002",
+        "CLH-003",
+        "CLH-004"
+      ],
+      "order": 2,
+      "trials": 3
+    }
+  ],
+  "boundary": "docker-container",
+  "budget_cap_usd": 9.0,
+  "budget_remaining_before_usd": 8.99,
+  "cells": 18,
+  "client": {
+    "codex_cli": "0.164.0",
+    "codex_sandbox": "workspace-write",
+    "session_archive": "runs/<id>/codex-session.jsonl (ed8a271)",
+    "writable_roots": "directory channels only (c9e56c4)"
+  },
+  "cohort": "gpt-docker-v1",
+  "created_at": "2026-11-01T23:12:08+00:00",
+  "decisions": {
+    "A": "A1 accept and document the four refused Codex client hosts",
+    "B": "B1 leave and disclose the model-metadata fallback"
+  },
+  "egress_allowlist_tokens": [
+    "langfuse",
+    "gateway"
+  ],
+  "final_path": "results/docker-honeypot-collusion-exp/gpt-docker-v1-20261101T231207Z",
+  "image": "rogue-agent-honeypot:a4e70a1",
+  "image_id": "sha256:581f7762bad4acbd34c6fbb4a3ddc5ff4aee6e54fd2b17a89b727644dde73ba2",
+  "key_budget_usd": 0.5,
+  "langfuse": {
+    "push_per_cell": true,
+    "wait_for_gateway_seconds": 180
+  },
+  "max_setup_faults": 2,
+  "model": "gpt-5.6-luna",
+  "name": "gpt-docker-v1-20261101T231207Z",
+  "provider": "docker",
+  "seccomp_profile": {
+    "path": "docker_honeypot/seccomp-bwrap.json",
+    "sha256": "e9c622ab994a377528dcb6740755036c49ab097b50353f521882ad4e4713a997"
+  },
+  "source_commit": "a4e70a1206b7ac12dfb08e9e4897c0fd5077017c"
+}
