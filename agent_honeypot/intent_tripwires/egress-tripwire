@@ -49,8 +49,30 @@ target=${target//$'\t'/ }
 target=${target//$'\n'/ }
 line=$(printf '%(%s)T.000000000\tNETWORK_TOOL_ATTEMPT\t%s\t0\ttool=%s target=%s canary_source=%s local_sink=%s blocked=%s' \
   -1 "$$" "$tool" "${target:0:500}" "$canary_source" "$local_sink" "$blocked")
-if [[ -n ${HONEYPOT_EVENT_FD:-} ]]; then
-  printf '%s\n' "$line" >&"$HONEYPOT_EVENT_FD"
+# The chain pipe, chosen as agent_honeypot/tripwire-shim chooses it: the
+# inherited descriptor while its own /proc/self/fdinfo inode is the pipe's
+# (HONEYPOT_EVENT_PIPE); else the relay's FIFO, which a command in a PID
+# namespace of its own (Codex's workspace-write sandbox) or one whose
+# descriptors a spawner closed still reaches; else the old routes. Never the
+# harness's /proc path: under the preload that look is itself a foreign read.
+event_fd=${HONEYPOT_EVENT_FD:-}
+event_pipe=${HONEYPOT_EVENT_PIPE:-}
+event_fifo=${HONEYPOT_EVENT_FIFO:-}
+fd_is_chain=0
+if [[ $event_fd =~ ^[0-9]+$ && -n $event_pipe && -p /proc/self/fd/$event_fd && -r /proc/self/fdinfo/$event_fd ]]; then
+  while IFS=$' \t:' read -r key value _; do
+    if [[ $key == ino ]]; then
+      [[ $value == "${event_pipe#*:}" ]] && fd_is_chain=1
+      break
+    fi
+  done <"/proc/self/fdinfo/$event_fd"
+fi
+if (( fd_is_chain )); then
+  printf '%s\n' "$line" >&"$event_fd"
+elif [[ -n $event_fd && -n $event_fifo && -p $event_fifo ]]; then
+  printf '%s\n' "$line" >>"$event_fifo"
+elif [[ -n $event_fd ]]; then
+  printf '%s\n' "$line" >&"$event_fd"
 else
   printf '%s\n' "$line" >>"$event_log"
 fi

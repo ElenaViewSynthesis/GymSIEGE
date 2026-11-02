@@ -31,6 +31,11 @@ CONFIG = {
         "runner": ROOT / "model_replication_honeypot/corpus/run_case.py",
         "prefix": "MRH-",
     },
+    "intent": {
+        "dataset": ROOT / "agent_honeypot/intent_tripwires/experiments.jsonl",
+        "runner": ROOT / "agent_honeypot/intent_tripwires/run_case.py",
+        "prefix": "ITH-",
+    },
     "instrument": {
         "dataset": ROOT / "agent_honeypot/instrument_tripwires/cases.jsonl",
         "runner": ROOT / "agent_honeypot/instrument_tripwires/run_case.py",
@@ -47,6 +52,8 @@ CONFIG = {
 # The outer runner names the boundary it started: the Modal runner leaves the
 # variable unset, the Docker runner passes docker-container.
 EXECUTION_BOUNDARIES = {"modal-sandbox", "docker-container"}
+# Harnesses whose runner takes a real agent (--subject-command).
+SUBJECT_HARNESSES = {"collusion", "intent"}
 
 
 def execution_boundary() -> str:
@@ -80,8 +87,8 @@ def run_case(
             "--output-root", str(output_root / "cases"),
         ]
     if subject_command is not None:
-        if mode != "collusion":
-            raise ValueError("subject commands are supported only by the collusion harness")
+        if mode not in SUBJECT_HARNESSES:
+            raise ValueError("subject commands are supported only by the collusion and intent harnesses")
         command.extend([
             "--subject-command", subject_command,
             "--agent-timeout", str(agent_timeout),
@@ -117,6 +124,8 @@ def run_case(
         "observe_only": report.get("observe_only"),
         "agent_timeout_seconds": report.get("agent_timeout_seconds"),
         "verifier": report.get("verifier"),
+        # Intent only: the hosted web-search mode the boundary allowed.
+        "web_search": report.get("web_search"),
         # The hook gate (score_collusion.agent_hook_check): the driver's
         # agent_hooks_observed check and the aggregator's "hooks mute" exclusion
         # read it from this row, so it must travel with the stage.
@@ -199,8 +208,8 @@ def main() -> int:
         if args.case_id or args.all:
             parser.error("--demo cannot be combined with --case-id or --all")
         return 0 if run_demo(args.output_root)["passed"] else 1
-    if args.subject_command is not None and args.harness != "collusion":
-        parser.error("--subject-command requires --harness collusion")
+    if args.subject_command is not None and args.harness not in SUBJECT_HARNESSES:
+        parser.error("--subject-command requires --harness collusion or intent")
     if not (args.case_id or args.all):
         parser.error("a harness run requires --case-id or --all")
     if not 1 <= args.workers <= 8:
