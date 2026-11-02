@@ -52,6 +52,7 @@ CASE_PREFIXES = {
     "agent": "APH-",
     "collusion": "CLH-",
     "instrument": "IHT-",
+    "intent": "ITH-",
     "model": "MRH-",
     "network-off": "NOF-",
 }
@@ -253,9 +254,35 @@ def validate_weights_mode(harness: str | None, weights_mode: str) -> None:
         raise ValueError("--weights-mode format requires --harness model")
 
 
+SUBJECT_HARNESSES = {"collusion", "intent"}
+WEB_SEARCH_MODES = ("disabled", "live")
+DOCKER_BOUNDARY = "docker-container"
+
+
 def validate_subject_command(harness: str | None, subject_command: str | None) -> None:
-    if subject_command is not None and harness != "collusion":
-        raise ValueError("--subject-command requires --harness collusion")
+    if subject_command is not None and harness not in SUBJECT_HARNESSES:
+        raise ValueError("--subject-command requires --harness collusion or intent")
+
+
+def validate_intent_agent(
+    harness: str | None, subject_command: str | None, *, web_search: str,
+    egress_allowlist: list[str] | None, execution_boundary: str | None,
+) -> None:
+    """A real intent agent runs only in the Docker boundary behind its scoped
+    egress allow-list (never on Modal: its gVisor kernel cannot host Codex's
+    workspace-write sandbox, and the author's rule keeps real-agent cells in
+    Docker). Live hosted web search is for a real intent agent only."""
+    if web_search not in WEB_SEARCH_MODES:
+        raise ValueError(f"unknown web-search mode: {web_search}")
+    if harness == "intent" and subject_command is not None:
+        if execution_boundary != DOCKER_BOUNDARY:
+            raise ValueError(
+                "real-agent intent cells run only in the Docker boundary (docker_honeypot/runner.py)"
+            )
+        if not egress_allowlist:
+            raise ValueError("a real-agent intent cell needs the scoped egress allow-list")
+    elif web_search != "disabled":
+        raise ValueError("live web search is only for a real-agent intent cell")
 
 
 def output_name(
@@ -294,6 +321,7 @@ def remote_argv(
     codex_sandbox: str = "danger-full-access",
     egress_allowlist: list[str] | None = None,
     execution_boundary: str | None = None,
+    web_search: str = "disabled",
 ) -> list[str]:
     if demo:
         if harness is not None or case_id is not None:
@@ -307,6 +335,10 @@ def remote_argv(
     validate_egress_allowlist(harness, egress_allowlist, allow_network)
     validate_weights_mode(harness, weights_mode)
     validate_subject_command(harness, subject_command)
+    validate_intent_agent(
+        harness, subject_command, web_search=web_search,
+        egress_allowlist=egress_allowlist, execution_boundary=execution_boundary,
+    )
     if codex_sandbox not in CODEX_SANDBOX_MODES:
         raise ValueError(
             "HONEYPOT_CODEX_SANDBOX must be danger-full-access or workspace-write"
@@ -332,6 +364,14 @@ def remote_argv(
             command.append(f"HONEYPOT_CODEX_MODEL={model}")
         if subject_command is not None:
             command.append(f"HONEYPOT_CODEX_SANDBOX={codex_sandbox}")
+    if harness == "intent" and subject_command is not None:
+        # validate_intent_agent has confirmed the Docker boundary and its
+        # allow-list; the intent runner refuses a real agent without this.
+        command.append("MODAL_INTENT_CONTAINMENT_ENFORCED=1")
+        if model is not None:
+            command.append(f"HONEYPOT_CODEX_MODEL={model}")
+        command.append(f"HONEYPOT_CODEX_SANDBOX={codex_sandbox}")
+        command.append(f"HONEYPOT_CODEX_WEB_SEARCH={web_search}")
     if harness == "network-off":
         command.append("MODAL_NETWORK_OFF_ENFORCED=1")
     if allow_network:

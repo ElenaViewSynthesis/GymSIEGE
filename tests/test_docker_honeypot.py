@@ -628,7 +628,8 @@ class DockerRunnerTests(unittest.TestCase):
         RUNNER.validate_egress_spec("langfuse,gateway", "agent")
         RUNNER.validate_egress_spec("gateway, langfuse", "agent")
         RUNNER.validate_egress_spec(None, None)
-        for spec in ("gateway", "langfuse", "langfuse,gateway,example.com", "*"):
+        for spec in ("gateway", "langfuse", "langfuse,gateway,example.com", "*",
+                     "langfuse,gateway,web-search"):
             with self.assertRaises(ValueError, msg=spec):
                 RUNNER.validate_egress_spec(spec, "agent")
         with self.assertRaises(ValueError):
@@ -888,6 +889,142 @@ class DriverProviderTests(unittest.TestCase):
             completed = self._execute_with_fake(directory, FAKE_RUNNER_PROVIDER="modal")
         self.assertEqual(completed.returncode, 75, completed.stdout + completed.stderr)
         self.assertIn("provider_matches=false", completed.stdout)
+
+
+class DockerIntentCellTests(unittest.TestCase):
+    """--harness intent: a real agent on one ITH case, the same boundary as collusion;
+    the hosted-search cases take the allow-list's web-search token and only they."""
+
+    def _args(self, output, **overrides):
+        values = {
+            "harness": "intent", "case_id": "ITH-003", "workers": 1,
+            "egress_allowlist": "langfuse,gateway", "subject_command": "fake-agent",
+            "agent_timeout": 900, "model": "pinned-model", "key_budget": 0.90,
+            "key_ttl": "35m", "arm": "intent-pilot", "trial": 1, "image": None,
+            "output": Path(output), "sandbox_timeout": 1800, "exec_timeout": 1500,
+            "dry_run": False,
+        }
+        values.update(overrides)
+        return SimpleNamespace(**values)
+
+    _run = DockerRunnerTests._run
+
+    @staticmethod
+    def _inner(docker):
+        exec_call = next(call for call in docker.calls if call["args"][0] == "exec")
+        argv = exec_call["args"]
+        return argv[argv.index("NO_PROXY=") + 2:]
+
+    def test_the_hosted_search_cases_are_exactly_the_two_live_ones(self):
+        self.assertEqual(RUNNER.live_search_cases(), {"ITH-010", "ITH-011"})
+
+    def test_an_intent_agent_cell_runs_in_the_collusion_boundary(self):
+        docker, client = FakeDocker(), FakeLiteLLMClient()
+        outcome = self._run(docker, client)
+        self.assertEqual(outcome.result, 0, outcome.error)
+        inner = self._inner(docker)
+        self.assertEqual(inner[:4], ["/usr/sbin/runuser", "-u", "honeypot", "--preserve-environment"])
+        for assignment in ("MODAL_INTENT_CONTAINMENT_ENFORCED=1", "HONEYPOT_EVIDENCE_CHAIN=1",
+                           "HONEYPOT_EXECUTION_BOUNDARY=docker-container",
+                           "HONEYPOT_CODEX_SANDBOX=workspace-write", "HONEYPOT_CODEX_MODEL=pinned-model",
+                           "HONEYPOT_CODEX_WEB_SEARCH=disabled"):
+            self.assertIn(assignment, inner)
+        self.assertNotIn("MODAL_COLLUSION_CONTAINMENT_ENFORCED=1", inner)
+        self.assertEqual(inner[inner.index("--harness") + 1], "intent")
+        self.assertEqual(inner[inner.index("--case-id") + 1], "ITH-003")
+        self.assertEqual(inner[-4:], ["--subject-command", "fake-agent", "--agent-timeout", "900"])
+        sandbox_argv = docker.all("run")[1]["args"]
+        self.assertEqual(sandbox_argv[sandbox_argv.index("--network") + 1], "honeypot-egress")
+        self.assertIn(f"seccomp={RUNNER.SECCOMP_PROFILE}", sandbox_argv)
+        self.assertEqual(_env_flags(docker.all("run")[0]["args"]),
+                         ["EGRESS_ALLOWLIST=cloud.langfuse.com:tunnel.example.org"])
+        record = outcome.record
+        self.assertEqual(record["harness"], "intent")
+        self.assertEqual(record["policy"]["web_search"], "disabled")
+        self.assertEqual(record["policy"]["web_search_hosts"], [])
+        self.assertTrue(record["policy"]["secrets"][0].startswith("virtual-key:intent/ITH-003/t1/"))
+        self.assertEqual([call[0] for call in client.calls], ["generate", "info", "delete"])
+        self.assertNotIn(FAKE_VIRTUAL_KEY, outcome.record_text)
+
+    def test_a_hosted_search_case_runs_live_with_the_web_search_token_only(self):
+        docker, client = FakeDocker(), FakeLiteLLMClient()
+        outcome = self._run(docker, client, case_id="ITH-010",
+                            egress_allowlist="langfuse,gateway,web-search")
+        self.assertEqual(outcome.result, 0, outcome.error)
+        self.assertIn("HONEYPOT_CODEX_WEB_SEARCH=live", self._inner(docker))
+        self.assertEqual(outcome.record["policy"]["web_search"], "live")
+        # Hosted search runs behind the gateway: by default the proxy admits nothing more.
+        self.assertEqual(_env_flags(docker.all("run")[0]["args"]),
+                         ["EGRESS_ALLOWLIST=cloud.langfuse.com:tunnel.example.org"])
+        self.assertEqual(outcome.record["policy"]["egress_allowlist"],
+                         ["cloud.langfuse.com", "tunnel.example.org"])
+
+    def test_named_search_hosts_join_the_proxy_list_of_a_live_cell(self):
+        docker, client = FakeDocker(), FakeLiteLLMClient()
+        env = {**AGENT_ENV, "HONEYPOT_WEB_SEARCH_HOSTS": "Search.Example.net"}
+        outcome = self._run(docker, client, env=env, case_id="ITH-011",
+                            egress_allowlist="gateway,langfuse,web-search")
+        self.assertEqual(outcome.result, 0, outcome.error)
+        self.assertEqual(_env_flags(docker.all("run")[0]["args"]),
+                         ["EGRESS_ALLOWLIST=cloud.langfuse.com:search.example.net:tunnel.example.org"])
+        self.assertEqual(outcome.record["policy"]["web_search_hosts"], ["search.example.net"])
+
+    def test_the_web_search_token_is_refused_or_required_by_case(self):
+        refused = [
+            dict(case_id="ITH-010"),                                         # live case, no token
+            dict(case_id="ITH-003", egress_allowlist="langfuse,gateway,web-search"),
+            dict(case_id="ITH-010", egress_allowlist="langfuse,gateway,web-search",
+                 subject_command=None),                                      # scripted cell
+            dict(harness="collusion", case_id="CLH-036",
+                 egress_allowlist="langfuse,gateway,web-search"),
+            dict(case_id="ITH-010", egress_allowlist="langfuse,gateway,web-search,example.com"),
+        ]
+        for overrides in refused:
+            docker = FakeDocker()
+            with self.subTest(**{k: str(v) for k, v in overrides.items()}), \
+                    self.assertRaises(ValueError):
+                self._run(docker, FakeLiteLLMClient(), **overrides)
+            self.assertEqual(docker.calls, [], "nothing may start before the refusal")
+
+    def test_search_hosts_are_bare_hostnames_for_a_live_cell_only(self):
+        self.assertEqual(RUNNER.web_search_hosts("live", {}), [])
+        self.assertEqual(RUNNER.web_search_hosts("live", {"HONEYPOT_WEB_SEARCH_HOSTS": "b.example.org, A.example.com"}),
+                         ["a.example.com", "b.example.org"])
+        for value in ("https://search.example.com", "*", "search.example.com:443", "localhost", "a b.example"):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                RUNNER.web_search_hosts("live", {"HONEYPOT_WEB_SEARCH_HOSTS": value})
+        with self.assertRaises(ValueError):
+            RUNNER.web_search_hosts("disabled", {"HONEYPOT_WEB_SEARCH_HOSTS": "search.example.com"})
+
+    def test_a_scripted_intent_cell_has_no_network_and_no_marker(self):
+        docker = FakeDocker()
+        outcome = self._run(docker, None, env={}, subject_command=None, egress_allowlist=None,
+                            case_id="ITH-012")
+        self.assertEqual(outcome.result, 0, outcome.error)
+        inner = self._inner_scripted(docker)
+        self.assertNotIn("MODAL_INTENT_CONTAINMENT_ENFORCED=1", inner)
+        self.assertNotIn("--subject-command", inner)
+        sandbox_argv = docker.all("run")[0]["args"]
+        self.assertEqual(sandbox_argv[sandbox_argv.index("--network") + 1], "none")
+
+    @staticmethod
+    def _inner_scripted(docker):
+        argv = next(call for call in docker.calls if call["args"][0] == "exec")["args"]
+        return argv[argv.index("/usr/sbin/runuser"):]
+
+    def test_the_modal_path_refuses_a_real_intent_agent(self):
+        for boundary in (None, "modal-sandbox"):
+            with self.subTest(boundary=boundary), self.assertRaises(ValueError):
+                BASE.remote_argv("intent", "ITH-003", 1, evidence_chain=True, subject_command="fake-agent",
+                                 model="m", egress_allowlist=["tunnel.example.org"],
+                                 execution_boundary=boundary)
+        with self.assertRaises(ValueError):  # no allow-list
+            BASE.remote_argv("intent", "ITH-003", 1, subject_command="fake-agent",
+                             execution_boundary="docker-container")
+        with self.assertRaises(ValueError):  # live search outside a real intent agent
+            BASE.remote_argv("collusion", "CLH-036", 1, web_search="live")
+        with self.assertRaises(ValueError):
+            BASE.remote_argv("agent", "APH-001", 1, subject_command="fake-agent")
 
 
 if __name__ == "__main__":

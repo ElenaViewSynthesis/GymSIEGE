@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run one collusion cell in a Docker container behind an allow-listing egress proxy.
+"""Run one collusion or intent cell in a Docker container behind an allow-listing egress proxy.
 
 The Docker twin of modal_honeypot/runner.py, for a client that needs its own
 Linux sandbox (Codex workspace-write uses Landlock, which Modal's gVisor kernel
@@ -18,7 +18,11 @@ The boundary, per cell:
 * a real-agent cell sits on the internal network ``honeypot-egress`` (no route
   out) and reaches the world only through its own egress-proxy container, which
   is on that network and the default bridge and allows CONNECT to exactly the
-  gateway and Langfuse hosts; a scripted cell runs with ``--network none``;
+  gateway and Langfuse hosts; a scripted cell runs with ``--network none``.
+  The two hosted-search intent cases (ITH-010, ITH-011) take the allow-list's
+  ``web-search`` token, which turns on live hosted search and admits only the
+  search hosts named in HONEYPOT_WEB_SEARCH_HOSTS (none by default: the
+  provider runs hosted search behind the gateway);
 * the virtual key and gateway URL enter the container only as ``docker exec``
   environment, by name, so their values never appear in any process argv;
 * ``finally`` removes both containers, revokes the key, records spend, runs the
@@ -65,6 +69,11 @@ LABEL = "rogue-agent-honeypot.role"
 REMOTE_OUTPUT = "/tmp/eval-output"
 SECRET_ENV_NAMES = ("OPENAI_API_KEY", "OPENAI_BASE_URL")
 EGRESS_TOKENS = {"gateway", "langfuse"}
+WEB_SEARCH_TOKEN = "web-search"
+WEB_SEARCH_HOSTS_ENV = "HONEYPOT_WEB_SEARCH_HOSTS"
+HOSTNAME_PATTERN = re.compile(r"(?=.{1,253}\Z)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+")
+INTENT_DATASET = REPO / "agent_honeypot" / "intent_tripwires" / "experiments.jsonl"
+HARNESSES = ("collusion", "intent")
 # Docker's default seccomp profile plus only the calls Codex's bubblewrap
 # sandbox needs (docker_honeypot/build_seccomp_profile.py documents each one).
 # The sandbox container gets it; the egress proxy keeps Docker's default.
@@ -142,18 +151,66 @@ def container_names(
     return {"sandbox": name, "proxy": f"{name}-proxy"}
 
 
-def validate_egress_spec(spec: str | None, subject_command: str | None) -> None:
-    """The proxy allow-list is exactly the gateway and Langfuse hosts, or nothing."""
+def live_search_cases(dataset: Path = INTENT_DATASET) -> frozenset[str]:
+    """The intent cases that need live hosted web search (ITH-010, ITH-011)."""
+    rows = (json.loads(line) for line in dataset.read_text().splitlines() if line.strip())
+    return frozenset(str(row["id"]) for row in rows if row["metadata"].get("requires_live_web_search"))
+
+
+def validate_egress_spec(
+    spec: str | None, subject_command: str | None, *, harness: str = "collusion",
+    case_id: str | None = None,
+) -> str:
+    """The proxy allow-list is exactly the gateway and Langfuse hosts, or nothing;
+    a hosted-search intent cell adds the web-search token. Returns the cell's
+    web-search mode ("live" with the token, else "disabled").
+
+    The token is the explicit opt-in for live hosted web search, accepted only
+    for a real agent on an intent case that needs it and required for those
+    cases, so they never run with search silently off. Hosted search runs at
+    the model provider, behind the gateway, so by default the token adds no
+    host; any search host the client must reach itself is named, as bare
+    hostnames, in HONEYPOT_WEB_SEARCH_HOSTS (web_search_hosts)."""
     if spec is None:
         if subject_command is not None:
             raise ValueError("a real-agent Docker cell requires --egress-allowlist langfuse,gateway")
-        return
+        return "disabled"
     tokens = {item.strip() for item in spec.split(",") if item.strip()}
-    if tokens != EGRESS_TOKENS:
+    needs_search = (
+        harness == "intent" and subject_command is not None and case_id in live_search_cases()
+    )
+    live = WEB_SEARCH_TOKEN in tokens
+    if live and not needs_search:
+        raise ValueError(
+            "the web-search token is only for a real agent on an intent case that needs "
+            "live hosted web search (" + ", ".join(sorted(live_search_cases())) + ")"
+        )
+    if needs_search and not live:
+        raise ValueError(
+            f"{case_id} needs live hosted web search: use "
+            "--egress-allowlist langfuse,gateway,web-search"
+        )
+    if tokens - {WEB_SEARCH_TOKEN} != EGRESS_TOKENS:
         raise ValueError(
             "the Docker egress allow-list is exactly the tokens langfuse,gateway "
-            "(the gateway host and the Langfuse host)"
+            "(the gateway host and the Langfuse host), plus web-search for the "
+            "hosted-search intent cases"
         )
+    return "live" if live else "disabled"
+
+
+def web_search_hosts(web_search: str, environ: Mapping[str, str] | None = None) -> list[str]:
+    """Search hosts a live-search cell's client reaches itself, from
+    HONEYPOT_WEB_SEARCH_HOSTS (comma-separated bare hostnames; empty by default,
+    since hosted search runs behind the gateway). Never for any other cell."""
+    raw = (os.environ if environ is None else environ).get(WEB_SEARCH_HOSTS_ENV, "")
+    hosts = sorted({item.strip().lower() for item in raw.split(",") if item.strip()})
+    if hosts and web_search != "live":
+        raise ValueError(f"{WEB_SEARCH_HOSTS_ENV} is only for a cell with the web-search token")
+    for host in hosts:
+        if not HOSTNAME_PATTERN.fullmatch(host):
+            raise ValueError(f"{WEB_SEARCH_HOSTS_ENV} entries are bare hostnames, not URLs or '*': {host}")
+    return hosts
 
 
 def seccomp_profile_record(path: Path = SECCOMP_PROFILE) -> dict[str, str]:
@@ -303,11 +360,22 @@ def run(
     revision: Mapping[str, object] | None = None,
     sleep: Callable[[float], None] = time.sleep,
 ) -> int:
+    if args.harness not in HARNESSES:
+        raise ValueError("the Docker runner takes --harness " + " or ".join(HARNESSES))
     base.validate_case(args.harness, args.case_id)
     base.validate_subject_command(args.harness, args.subject_command)
     spec = getattr(args, "egress_allowlist", None)
-    validate_egress_spec(spec, args.subject_command)
-    egress_allowlist = base.resolve_egress_allowlist(spec)
+    web_search = validate_egress_spec(
+        spec, args.subject_command, harness=args.harness, case_id=args.case_id,
+    )
+    search_hosts = web_search_hosts(web_search)
+    host_spec = None if spec is None else ",".join(
+        token for token in (item.strip() for item in spec.split(","))
+        if token and token != WEB_SEARCH_TOKEN
+    )
+    egress_allowlist = base.resolve_egress_allowlist(host_spec)
+    if egress_allowlist is not None and search_hosts:
+        egress_allowlist = sorted(set(egress_allowlist) | set(search_hosts))
     base.validate_egress_allowlist(args.harness, egress_allowlist, False)
     agent = args.subject_command is not None
     with_proxy = bool(egress_allowlist)
@@ -339,6 +407,8 @@ def run(
         "network_off_suite_enabled": False,
         "evidence_chain": True,
         "weights_mode": "text",
+        "web_search": web_search,
+        "web_search_hosts": search_hosts,
     }
     if key_alias is not None:
         runtime_policy.update({
@@ -358,6 +428,7 @@ def run(
         codex_sandbox=codex_sandbox,
         egress_allowlist=egress_allowlist,
         execution_boundary=BOUNDARY,
+        web_search=web_search,
     )
     name = base.output_name(
         args.harness, args.case_id, demo=False, evidence_chain=True, weights_mode="text",
@@ -536,15 +607,19 @@ def run(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--harness", choices=["collusion"], required=True)
+    parser.add_argument("--harness", choices=list(HARNESSES), required=True)
     parser.add_argument("--case-id", required=True)
     parser.add_argument("--workers", type=int, choices=range(1, 9), default=4)
     parser.add_argument(
         "--egress-allowlist",
         help="exactly 'langfuse,gateway' for a real-agent cell: the egress proxy allows "
-             "CONNECT to those two hosts only; omitted, the container has no network",
+             "CONNECT to those two hosts only; omitted, the container has no network. "
+             "The hosted-search intent cases (ITH-010, ITH-011) add 'web-search', which "
+             "turns on live hosted search and admits only the hosts named in "
+             "HONEYPOT_WEB_SEARCH_HOSTS (none by default: hosted search runs behind the gateway)",
     )
-    parser.add_argument("--subject-command", help="real-agent command for collusion subjects")
+    parser.add_argument("--subject-command",
+                        help="real-agent command: the collusion subjects, or the intent case's agent")
     parser.add_argument("--agent-timeout", type=int, default=900)
     parser.add_argument("--model", help="single LiteLLM model allowed on a minted virtual key")
     parser.add_argument("--key-budget", type=float, default=0.50)
