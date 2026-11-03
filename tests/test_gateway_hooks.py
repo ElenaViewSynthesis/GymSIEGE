@@ -352,6 +352,48 @@ class StreamRewriteTests(unittest.TestCase):
         self.assertEqual(json.dumps(out, sort_keys=True), before)
 
 
+def search_body():
+    """Codex's standalone-search request (shape captured from the client)."""
+    return {"id": "01a1a003-20c7-7ab1-ae31-31b23f7580f4", "model": "gpt-5.6-luna", "input": [],
+            "commands": {"search_query": [{"q": "x"}]},
+            "settings": {"allowed_callers": ["direct"], "external_web_access": True},
+            "max_output_tokens": 10000}
+
+
+def litellm_strip(body, params=("id", "litellm_logging_obj", "metadata")):
+    """The loop LiteLLM's pass-through runs over its own parameter names."""
+    taken = {}
+    for key in params:
+        if key in body:
+            taken[key] = body.pop(key, None)
+    return taken
+
+
+class KeepUpstreamFieldsTests(unittest.TestCase):
+    def test_the_search_id_survives_the_parameter_strip(self):
+        body = H.keep_search_body({**search_body(), "litellm_logging_obj": object()}, "/v1/alpha/search")
+        self.assertIsInstance(body, H.KeepUpstreamFields)
+        taken = litellm_strip(body)
+        self.assertEqual(body["id"], search_body()["id"])
+        self.assertIsNone(taken["id"])  # LiteLLM takes no parameter from it
+        self.assertNotIn("litellm_logging_obj", body)
+        self.assertEqual(json.loads(json.dumps(body)), search_body())
+        plain = search_body()
+        litellm_strip(plain)
+        self.assertNotIn("id", plain)  # what happened before the fix
+
+    def test_other_requests_are_left_as_they_are(self):
+        self.assertIs(type(H.keep_search_body(search_body(), "/v1/responses")), dict)
+        self.assertIs(type(H.keep_search_body({"commands": {}, "input": []}, "/v1/alpha/search")), dict)
+        self.assertIs(type(H.keep_search_body({"id": "x"}, "")), dict)
+        self.assertIsInstance(H.keep_search_body(search_body(), ""), H.KeepUpstreamFields)
+        self.assertEqual(H.keep_search_body(None, "/v1/alpha/search"), None)
+        kept = H.KeepUpstreamFields(search_body())
+        self.assertIs(H.keep_search_body(kept, "/v1/alpha/search"), kept)
+        self.assertEqual(kept.pop("model"), "gpt-5.6-luna")
+        self.assertEqual(kept.pop("absent", "default"), "default")
+
+
 class CallbackTests(unittest.TestCase):
     """The callback class against a stand-in LiteLLM package."""
 
@@ -402,6 +444,16 @@ class CallbackTests(unittest.TestCase):
         other_key = {"model": "claude-opus-5-5", "input": [echoed("q")]}
         asyncio.run(self.cb.async_pre_call_hook(SimpleNamespace(token="other"), None, other_key, "aresponses"))
         self.assertEqual(other_key["input"], [])
+
+    def test_pass_through_pre_call_keeps_the_search_id(self):
+        key = SimpleNamespace(request_route="/v1/alpha/search", token="hashed-key")
+        out = asyncio.run(self.cb.async_pre_call_hook(key, None, search_body(), "pass_through_endpoint"))
+        self.assertIsInstance(out, self.M.KeepUpstreamFields)
+        litellm_strip(out)
+        self.assertIn("id", out)
+        other = SimpleNamespace(request_route="/anthropic/v1/messages", token="hashed-key")
+        data = {"id": "msg", "model": "claude"}
+        self.assertIs(asyncio.run(self.cb.async_pre_call_hook(other, None, data, "pass_through_endpoint")), data)
 
     def test_deployment_hook_never_raises(self):
         self.assertIsNone(asyncio.run(self.cb.async_pre_call_deployment_hook({"messages": [object()]}, None)))

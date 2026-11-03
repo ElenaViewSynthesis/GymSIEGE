@@ -31,6 +31,11 @@ Responses route only:
   server-tool outputs. Dropping keeps the request valid but hides the search from
   the model; the gateway log says when it happens.
 
+It also keeps Codex's standalone-search requests intact on the gateway's
+``/v1/alpha/search`` pass-through route: LiteLLM strips the body's ``id`` as one
+of its own parameter names, and OpenAI's search endpoint requires it (see
+``KeepUpstreamFields``).
+
 Everything else passes through untouched, and any error inside the callback leaves
 the chunk, response or request as it was. The gateway is shared with other
 projects, and their traffic must not depend on this file.
@@ -421,6 +426,45 @@ def keep_searches(stash: SearchStash, namespace: str, response: Any) -> int:
     return stash.record(namespace, calls, result_blocks(field(response, "provider_specific_fields")))
 
 
+# Codex's standalone search (code-mode models) POSTs {base_url}/alpha/search,
+# which the gateway forwards to OpenAI as a configured pass-through route.
+# LiteLLM's pass-through pops every key it treats as one of its own parameters
+# from the body before forwarding, and "id" is one of them; OpenAI's search
+# endpoint requires that id ("Missing required parameter: 'id'"). The pre-call
+# hook runs just before that strip and its returned dict becomes the body, so it
+# returns the body as a KeepUpstreamFields, whose pop() leaves these keys in place.
+STANDALONE_SEARCH_ROUTES = frozenset({"/v1/alpha/search", "/alpha/search"})
+KEPT_UPSTREAM_KEYS = frozenset({"id"})
+
+
+class KeepUpstreamFields(dict):
+    """A pass-through body whose upstream fields survive LiteLLM's parameter strip.
+
+    ``pop`` of a kept key returns None (so LiteLLM takes no parameter from it) and
+    leaves the key in the body; every other key pops as usual."""
+
+    def pop(self, key, *default):
+        if key in KEPT_UPSTREAM_KEYS and key in self:
+            return None
+        return super().pop(key, *default)
+
+
+def is_standalone_search_body(data: Any, route: str) -> bool:
+    """A standalone-search request: its route, or (if the route is unknown) its shape."""
+    if not isinstance(data, dict) or not isinstance(data.get("id"), str):
+        return False
+    if route in STANDALONE_SEARCH_ROUTES:
+        return True
+    return not route and "commands" in data and "input" in data
+
+
+def keep_search_body(data: Any, route: str) -> Any:
+    """The body to hand back from the pre-call hook of a pass-through request."""
+    if is_standalone_search_body(data, route) and not isinstance(data, KeepUpstreamFields):
+        return KeepUpstreamFields(data)
+    return data
+
+
 try:  # pragma: no cover - exercised inside the gateway image, not in the repo venv
     from litellm._logging import verbose_proxy_logger
     from litellm.integrations.custom_logger import CustomLogger
@@ -442,6 +486,12 @@ if CustomLogger is not None:  # pragma: no cover - see tests/test_gateway_hooks.
             self.stash = SearchStash()
 
         async def async_pre_call_hook(self, user_api_key_dict, cache, data, call_type):
+            if call_type == "pass_through_endpoint":
+                try:
+                    return keep_search_body(data, route_of(user_api_key_dict))
+                except Exception as exc:  # never break the shared gateway
+                    verbose_proxy_logger.warning("honeypot_gateway_hooks: pass-through skipped: %s", exc)
+                    return data
             try:
                 if call_type != "aresponses" or not is_server_search_model(data.get("model")):
                     return data
