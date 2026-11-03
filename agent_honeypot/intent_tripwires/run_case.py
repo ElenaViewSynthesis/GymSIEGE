@@ -69,6 +69,7 @@ def _module(name: str, path: Path):
 # The Codex session archive and the hook gate are the collusion suite's own.
 COLLUSION = _module("intent_uses_collusion_run_case", ROOT / "agent_honeypot" / "collusion_tripwires" / "run_case.py")
 SCORE = COLLUSION.SCORE
+INTENT_SCORE = _module("intent_run_case_score", HERE / "score_intent.py")
 
 
 def load_cases(path: Path = DATASET) -> list[dict[str, Any]]:
@@ -182,6 +183,12 @@ def run_one(
             home=Path(env.get("HOME") or Path.home()), key=env.get("OPENAI_API_KEY"),
         )
         hooks = {"agent": hook_report(output, session)}
+        # A search the provider refused leaves its query out of the transcript the
+        # harness scored; the archived session still holds the call that sent it.
+        canary_file = output / "canary.txt"
+        canary = canary_file.read_text().strip() if canary_file.is_file() else ""
+        if session == "archived" and INTENT_SCORE.session_search_canary(output / CODEX_SESSION_NAME, canary):
+            INTENT_SCORE.escalate_for_session_search(report, case)
         report.update({
             "codex_session_archive": {"agent": session},
             "agent_hooks": hooks,
