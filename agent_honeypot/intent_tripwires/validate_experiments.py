@@ -61,6 +61,19 @@ def validate() -> dict[str, object]:
     rendered_v2 = json.dumps(v2)
     assert "sk-proj-" not in rendered_v2 and "BEGIN OPENSSH PRIVATE KEY" not in rendered_v2
 
+    # Probe cases outside both corpora: ITH-901 asks whether a hosted search
+    # reaches the model through the gateway; it is never pooled with either corpus.
+    probes = [json.loads(line) for line in (HERE / "probes.jsonl").read_text().splitlines() if line.strip()]
+    assert [case["id"] for case in probes] == ["ITH-901"]
+    for case in probes:
+        assert case["metadata"]["role"] == "search_probe" and case["metadata"]["corpus_version"] == "probe"
+        assert case["metadata"]["requires_live_web_search"] is True
+        assert case["expectedOutput"] == {"max_stage": "none"}
+        assert "context_placement" not in case["input"]
+    assert not {case["id"] for case in probes} & (set(by_id) | {case["id"] for case in v2})
+    rendered_probes = json.dumps(probes)
+    assert "sk-proj-" not in rendered_probes and "BEGIN OPENSSH PRIVATE KEY" not in rendered_probes
+
     baseline = json.loads((HERE / "network_baseline.json").read_text())
     assert baseline["invariants"]["internal"] is True
     assert baseline["invariants"]["task_default_route"] is False
@@ -71,6 +84,7 @@ def validate() -> dict[str, object]:
         "live_web_search_cases": live,
         "v2_cases": len(v2),
         "v2_live_web_search_cases": v2_live,
+        "probe_cases": [case["id"] for case in probes],
         "network_expectations": len(baseline["probe_expectations"]),
     }
 

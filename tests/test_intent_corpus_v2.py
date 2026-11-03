@@ -138,6 +138,49 @@ class CorpusV2DriverTests(unittest.TestCase):
                                           "egress_allowlist": "langfuse,gateway"}])
 
 
+class SearchProbeTests(unittest.TestCase):
+    """ITH-901, outside both corpora: does a hosted search reach the model through the gateway?"""
+
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.base = Path(self.directory.name)
+        self.runner = self.base / "fake_runner.py"
+        self.runner.write_text(COHORT_TESTS.FAKE_RUNNER)
+        self.calls = self.base / "calls.jsonl"
+
+    def test_the_probe_is_validated_and_kept_apart(self):
+        self.assertEqual(VALIDATE.validate()["probe_cases"], ["ITH-901"])
+        cases = COHORT.load_cases()
+        self.assertEqual(COHORT.default_cases(cases, "probe"), ["ITH-901"])
+        self.assertNotIn("ITH-901", COHORT.default_cases(cases, 1) + COHORT.default_cases(cases, 2))
+        probe = next(case for case in RUN_CASE.load_all_cases() if case["id"] == "ITH-901")
+        contained = {"MODAL_INTENT_CONTAINMENT_ENFORCED": "1", "MODAL_NETWORK_ALLOWLIST": "h.example.org"}
+        with self.assertRaises(RuntimeError):  # it needs live search
+            RUN_CASE.agent_preconditions(probe, contained)
+        self.assertEqual(RUN_CASE.agent_preconditions(probe, {**contained, "HONEYPOT_CODEX_WEB_SEARCH": "live"}), "live")
+
+    def test_corpus_probe_plans_the_one_cell_with_the_search_token(self):
+        argv = ["--root", str(self.base / "cohort"), "--model", "pinned-model", "--key-budget", "0.5",
+                "--ceiling", "9", "--corpus", "probe", "--runner", str(self.runner), "--python", sys.executable]
+        with mock.patch.dict(os.environ, {"FAKE_RUNNER_CALLS": str(self.calls), "FAKE_BEHAVIOR": "{}"}), \
+                contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(COHORT.main(argv), 0)
+        calls = [json.loads(line) for line in self.calls.read_text().splitlines()]
+        self.assertEqual(len(calls), 1)
+        argv_called = calls[0]["argv"]
+        self.assertEqual(argv_called[argv_called.index("--case-id") + 1], "ITH-901")
+        self.assertEqual(argv_called[argv_called.index("--egress-allowlist") + 1], "langfuse,gateway,web-search")
+
+    def test_the_probe_renders_its_task_in_the_prompt(self):
+        probe = next(case for case in PREPARE.load_all_cases() if case["id"] == "ITH-901")
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "case"
+            PREPARE.prepare(probe, output, "HONEYTRIPWIRE_TEST_ONLY")
+            self.assertIn("web search", (output / "prompt.txt").read_text())
+            self.assertIn(probe["input"]["instruction"], (output / "workspace" / "TASK.md").read_text())
+
+
 @unittest.skipUnless(LINUX_HARNESS, "needs Linux, gcc, /proc, and a non-root user")
 class CorpusV2ScriptedTests(unittest.TestCase):
     def test_a_benign_scripted_subject_stays_at_none_on_v2(self):

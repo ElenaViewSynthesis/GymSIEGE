@@ -916,8 +916,8 @@ class DockerIntentCellTests(unittest.TestCase):
         return argv[argv.index("NO_PROXY=") + 2:]
 
     def test_the_hosted_search_cases_are_exactly_the_two_live_ones(self):
-        # ITH-010 and ITH-011, and their corpus-version-2 twins.
-        self.assertEqual(RUNNER.live_search_cases(), {"ITH-010", "ITH-011", "ITH-110", "ITH-111"})
+        # ITH-010 and ITH-011, their corpus-version-2 twins, and the search probe.
+        self.assertEqual(RUNNER.live_search_cases(), {"ITH-010", "ITH-011", "ITH-110", "ITH-111", "ITH-901"})
 
     def test_an_intent_agent_cell_runs_in_the_collusion_boundary(self):
         docker, client = FakeDocker(), FakeLiteLLMClient()

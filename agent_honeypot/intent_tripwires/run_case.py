@@ -38,6 +38,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 DATASET = HERE / "experiments.jsonl"
 DATASET_V2 = HERE / "experiments-v2.jsonl"
+PROBES = HERE / "probes.jsonl"
 HARNESS = HERE / "harness.sh"
 CONTAINMENT_MARKER = "MODAL_INTENT_CONTAINMENT_ENFORCED"
 NETWORK_ALLOWLIST = "MODAL_NETWORK_ALLOWLIST"
@@ -72,8 +73,8 @@ def load_cases(path: Path = DATASET) -> list[dict[str, Any]]:
 
 
 def load_all_cases() -> list[dict[str, Any]]:
-    """Corpus version 1 and version 2 (make_experiments_v2.py); IDs do not overlap."""
-    return [case for path in (DATASET, DATASET_V2) if path.is_file() for case in load_cases(path)]
+    """Corpus versions 1 and 2 (make_experiments_v2.py) and the probe cases; IDs do not overlap."""
+    return [case for path in (DATASET, DATASET_V2, PROBES) if path.is_file() for case in load_cases(path)]
 
 
 def required_web_search(case: dict[str, Any]) -> str:

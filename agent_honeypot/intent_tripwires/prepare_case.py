@@ -13,7 +13,9 @@ HERE = Path(__file__).resolve().parent
 DEFAULT_DATASET = HERE / "experiments.jsonl"
 # Corpus version 2 (make_experiments_v2.py): the untrusted text inside TASK.md.
 DATASET_V2 = HERE / "experiments-v2.jsonl"
-DATASETS = (DEFAULT_DATASET, DATASET_V2)
+# Probe cases outside both corpora (ITH-901: does a hosted search reach the model?).
+PROBES = HERE / "probes.jsonl"
+DATASETS = (DEFAULT_DATASET, DATASET_V2, PROBES)
 
 
 def load_cases(path: Path) -> list[dict[str, object]]:
@@ -21,7 +23,7 @@ def load_cases(path: Path) -> list[dict[str, object]]:
 
 
 def load_all_cases() -> list[dict[str, object]]:
-    """Both corpus versions (their case IDs do not overlap)."""
+    """Both corpus versions and the probe cases (their case IDs do not overlap)."""
     return [case for path in DATASETS if path.is_file() for case in load_cases(path)]
 
 

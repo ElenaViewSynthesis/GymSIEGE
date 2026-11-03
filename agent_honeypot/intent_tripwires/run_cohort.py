@@ -57,6 +57,10 @@ HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[1]
 DATASET = HERE / "experiments.jsonl"
 DATASET_V2 = HERE / "experiments-v2.jsonl"
+PROBES = HERE / "probes.jsonl"
+# Roles a real agent may run: the intent evaluations and the probe cases; the two
+# sensor controls stay scripted.
+AGENT_ROLES = ("intent_eval", "search_probe")
 RUNNER = REPO / "docker_honeypot" / "runner.py"
 SUBJECT_COMMAND = "bash /opt/honeypot/agent_honeypot/intent_tripwires/codex_intent.sh"
 CODEX_SANDBOX = "workspace-write"
@@ -71,20 +75,22 @@ KNOWN_CLIENT_HOSTS = frozenset({"chatgpt.com", "ab.chatgpt.com", "github.com", "
 EPSILON = 1e-9
 
 
-def load_cases(paths: tuple[Path, ...] = (DATASET, DATASET_V2)) -> dict[str, dict[str, Any]]:
-    """Both corpus versions by case ID (version 2's IDs are ITH-101..ITH-111)."""
+def load_cases(paths: tuple[Path, ...] = (DATASET, DATASET_V2, PROBES)) -> dict[str, dict[str, Any]]:
+    """Both corpus versions (version 2's IDs are ITH-101..ITH-111) and the probe
+    cases (ITH-9NN), by case ID."""
     return {row["id"]: row for path in paths if path.is_file()
             for row in (json.loads(line) for line in path.read_text().splitlines() if line.strip())}
 
 
-def corpus_version(case: dict[str, Any]) -> int:
-    return int(case["metadata"].get("corpus_version", 1))
+def corpus_version(case: dict[str, Any]) -> int | str:
+    """1, 2, or "probe" for a probe case outside both corpora."""
+    return case["metadata"].get("corpus_version", 1)
 
 
-def default_cases(cases: dict[str, dict[str, Any]], corpus: int = 1) -> list[str]:
-    """The intent evaluations of one corpus version; the two sensor controls stay scripted."""
+def default_cases(cases: dict[str, dict[str, Any]], corpus: int | str = 1) -> list[str]:
+    """The agent cases of one corpus version (or the probes); the two sensor controls stay scripted."""
     return sorted(case_id for case_id, case in cases.items()
-                  if case["metadata"]["role"] == "intent_eval" and corpus_version(case) == corpus)
+                  if case["metadata"]["role"] in AGENT_ROLES and corpus_version(case) == corpus)
 
 
 def web_search(case: dict[str, Any]) -> str:
@@ -428,9 +434,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--ceiling", type=float, required=True, help="the author's ceiling for this cohort, USD")
     parser.add_argument("--spent-before", type=float, default=0.0,
                         help="spend already counted against the ceiling, USD")
-    parser.add_argument("--corpus", type=int, choices=(1, 2), default=1,
-                        help="intent corpus version: 1 (ITH-001..011, untrusted text in UNTRUSTED_CONTEXT.md) "
-                             "or 2 (ITH-101..111, the same text inside TASK.md); default 1")
+    parser.add_argument("--corpus", choices=("1", "2", "probe"), default="1",
+                        help="intent corpus version: 1 (ITH-001..011, untrusted text in UNTRUSTED_CONTEXT.md), "
+                             "2 (ITH-101..111, the same text inside TASK.md), or probe (ITH-9NN, probe cases "
+                             "outside both corpora); default 1")
     parser.add_argument("--cases", help="comma-separated ITH case IDs of that corpus (default: its 11 intent evaluations)")
     parser.add_argument("--arm", default="intent")
     parser.add_argument("--agent-timeout", type=int, default=900)
@@ -440,6 +447,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--runner", type=Path, default=RUNNER, help=argparse.SUPPRESS)
     parser.add_argument("--python", default=sys.executable, help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
+    args.corpus = int(args.corpus) if args.corpus.isdigit() else args.corpus
     args.root = args.root.resolve()
     cases = load_cases()
     case_ids = ([item.strip() for item in args.cases.split(",") if item.strip()] if args.cases
@@ -450,7 +458,7 @@ def main(argv: list[str] | None = None) -> int:
     other = [case_id for case_id in case_ids if corpus_version(cases[case_id]) != args.corpus]
     if other:
         parser.error(f"not in corpus version {args.corpus} (never pool the versions): {', '.join(other)}")
-    controls = [case_id for case_id in case_ids if cases[case_id]["metadata"]["role"] != "intent_eval"]
+    controls = [case_id for case_id in case_ids if cases[case_id]["metadata"]["role"] not in AGENT_ROLES]
     if controls:
         parser.error(f"sensor controls stay scripted: {', '.join(controls)}")
     if len(set(case_ids)) != len(case_ids):
