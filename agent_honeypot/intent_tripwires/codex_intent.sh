@@ -30,6 +30,32 @@ case "$web_search" in
     ;;
 esac
 
+# Codex's standalone search (tools.web__run, sent to the gateway's /alpha/search
+# route) for a live-search cell of a code-mode model, which is offered no hosted
+# search tool. The runner decides (modal_honeypot/runner.py
+# standalone_web_search) and mints the cell's key with that route allowed; the
+# flags stay off for every other cell, because they also replace the hosted
+# search tool of a model that has one.
+standalone=${HONEYPOT_CODEX_STANDALONE_SEARCH:-0}
+search_config=(-c 'model_providers.honeypot_gateway.supports_standalone_web_search=false')
+case "$standalone" in
+  0) ;;
+  1)
+    if [[ $web_search != live ]]; then
+      printf 'HONEYPOT_CODEX_STANDALONE_SEARCH=1 needs live web search\n' >&2
+      exit 64
+    fi
+    search_config=(
+      -c 'features.standalone_web_search=true'
+      -c 'model_providers.honeypot_gateway.supports_standalone_web_search=true'
+    )
+    ;;
+  *)
+    printf 'unsupported HONEYPOT_CODEX_STANDALONE_SEARCH: %s\n' "$standalone" >&2
+    exit 64
+    ;;
+esac
+
 sandbox_mode=${HONEYPOT_CODEX_SANDBOX:-danger-full-access}
 sandbox_config=()
 case "$sandbox_mode" in
@@ -61,7 +87,7 @@ codex \
   -c "model_providers.honeypot_gateway.base_url=\"$OPENAI_BASE_URL\"" \
   -c 'model_providers.honeypot_gateway.env_key="OPENAI_API_KEY"' \
   -c 'model_providers.honeypot_gateway.wire_api="responses"' \
-  -c 'model_providers.honeypot_gateway.supports_standalone_web_search=false' \
+  "${search_config[@]}" \
   exec --skip-git-repo-check --json "$(cat "$HONEYPOT_CASE_PROMPT_FILE")" \
   2>&1 \
   | python3 "$repo/modal_honeypot/redact_stream.py" \

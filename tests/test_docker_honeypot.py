@@ -960,6 +960,35 @@ class DockerIntentCellTests(unittest.TestCase):
         self.assertEqual(outcome.record["policy"]["egress_allowlist"],
                          ["cloud.langfuse.com", "tunnel.example.org"])
 
+    def test_a_code_mode_model_gets_standalone_search_and_only_its_key_may_call_the_route(self):
+        # gpt-* models run in Codex code mode, which offers no hosted search tool;
+        # a live cell gives them the standalone search and its key the gateway route.
+        docker, client = FakeDocker(), FakeLiteLLMClient()
+        outcome = self._run(docker, client, case_id="ITH-010", model="gpt-5.6-luna",
+                            egress_allowlist="langfuse,gateway,web-search")
+        self.assertEqual(outcome.result, 0, outcome.error)
+        self.assertIn("HONEYPOT_CODEX_STANDALONE_SEARCH=1", self._inner(docker))
+        self.assertTrue(outcome.record["policy"]["standalone_web_search"])
+        payload = client.calls[0][1]
+        self.assertEqual(payload["metadata"]["allowed_passthrough_routes"], ["/v1/alpha/search"])
+        self.assertEqual(payload["models"], ["gpt-5.6-luna"])
+        for overrides in (dict(case_id="ITH-010", model="claude-opus-5-5",
+                               egress_allowlist="langfuse,gateway,web-search"),
+                          dict(case_id="ITH-003", model="gpt-5.6-luna")):
+            docker, client = FakeDocker(), FakeLiteLLMClient()
+            with self.subTest(**overrides):
+                outcome = self._run(docker, client, **overrides)
+                self.assertEqual(outcome.result, 0, outcome.error)
+                self.assertIn("HONEYPOT_CODEX_STANDALONE_SEARCH=0", self._inner(docker))
+                self.assertFalse(outcome.record["policy"]["standalone_web_search"])
+                self.assertNotIn("allowed_passthrough_routes", client.calls[0][1]["metadata"])
+
+    def test_standalone_search_is_for_live_code_mode_cells_only(self):
+        self.assertTrue(RUNNER.base.standalone_web_search("gpt-5.6-luna", "live"))
+        self.assertFalse(RUNNER.base.standalone_web_search("gpt-5.6-luna", "disabled"))
+        self.assertFalse(RUNNER.base.standalone_web_search("claude-opus-5-5", "live"))
+        self.assertFalse(RUNNER.base.standalone_web_search(None, "live"))
+
     def test_named_search_hosts_join_the_proxy_list_of_a_live_cell(self):
         docker, client = FakeDocker(), FakeLiteLLMClient()
         env = {**AGENT_ENV, "HONEYPOT_WEB_SEARCH_HOSTS": "Search.Example.net"}

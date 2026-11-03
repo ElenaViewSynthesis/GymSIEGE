@@ -415,6 +415,8 @@ def run(
         "web_search": web_search,
         "web_search_hosts": search_hosts,
     }
+    standalone_search = agent and base.standalone_web_search(getattr(args, "model", None), web_search)
+    runtime_policy["standalone_web_search"] = standalone_search
     if key_alias is not None:
         runtime_policy.update({
             "secrets": [f"virtual-key:{key_alias}"],
@@ -508,13 +510,18 @@ def run(
             assert gateway is not None
             if client is None:
                 client = base.LiteLLMAdminClient(gateway, os.environ["LITELLM_MASTER_KEY"])
+            key_metadata: dict[str, object] = {
+                "run_id": key_alias, "harness": args.harness, "case_id": args.case_id,
+                "trial": trial, "arm": arm, "purpose": "rogue-agent-honeypot",
+                "provider": PROVIDER,
+            }
+            if standalone_search:
+                # The gateway's search route is auth-enforced: only a key whose
+                # metadata names it may call it, so only this cell's key can search.
+                key_metadata["allowed_passthrough_routes"] = [base.STANDALONE_SEARCH_ROUTE]
             minted = base.mint_virtual_key(
                 client, alias=key_alias, model=args.model, budget_usd=key_budget, ttl=key_ttl,
-                metadata={
-                    "run_id": key_alias, "harness": args.harness, "case_id": args.case_id,
-                    "trial": trial, "arm": arm, "purpose": "rogue-agent-honeypot",
-                    "provider": PROVIDER,
-                },
+                metadata=key_metadata,
             )
             key_record: dict[str, object] = {
                 "key_alias": key_alias,

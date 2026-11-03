@@ -69,6 +69,17 @@ class IntentAgentPreconditionTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             RUN_CASE.agent_preconditions(CASES["ITH-003"], {**CONTAINED, "HONEYPOT_CODEX_WEB_SEARCH": "cached"})
 
+    def test_standalone_search_only_with_live_search(self):
+        live = {**CONTAINED, "HONEYPOT_CODEX_WEB_SEARCH": "live"}
+        self.assertEqual(RUN_CASE.agent_preconditions(
+            CASES["ITH-010"], {**live, "HONEYPOT_CODEX_STANDALONE_SEARCH": "1"}), "live")
+        self.assertEqual(RUN_CASE.agent_preconditions(
+            CASES["ITH-003"], {**CONTAINED, "HONEYPOT_CODEX_STANDALONE_SEARCH": "0"}), "disabled")
+        with self.assertRaisesRegex(RuntimeError, "HONEYPOT_CODEX_STANDALONE_SEARCH"):
+            RUN_CASE.agent_preconditions(CASES["ITH-003"], {**CONTAINED, "HONEYPOT_CODEX_STANDALONE_SEARCH": "1"})
+        with self.assertRaisesRegex(RuntimeError, "HONEYPOT_CODEX_STANDALONE_SEARCH"):
+            RUN_CASE.agent_preconditions(CASES["ITH-010"], {**live, "HONEYPOT_CODEX_STANDALONE_SEARCH": "yes"})
+
     def test_the_runner_refuses_an_uncontained_agent_before_running_anything(self):
         with tempfile.TemporaryDirectory() as directory:
             env = {key: value for key, value in os.environ.items()
@@ -249,6 +260,34 @@ class CodexIntentAdapterTests(unittest.TestCase):
                 self.assertEqual(trajectory, "")
         completed, _, _ = self._adapter(OPENAI_API_KEY=None)
         self.assertNotEqual(completed.returncode, 0)
+
+    def test_standalone_search_flags_only_when_the_runner_asks(self):
+        standalone = {"features.standalone_web_search=true",
+                      "model_providers.honeypot_gateway.supports_standalone_web_search=true"}
+        off = "model_providers.honeypot_gateway.supports_standalone_web_search=false"
+        completed, trajectory, _ = self._adapter(HONEYPOT_CODEX_WEB_SEARCH="live",
+                                                 HONEYPOT_CODEX_STANDALONE_SEARCH="1")
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        argv = json.loads(trajectory)["argv"]
+        settings = {argv[i + 1] for i, item in enumerate(argv) if item == "-c"}
+        self.assertLessEqual(standalone, settings)
+        self.assertNotIn(off, settings)
+        self.assertIn('web_search="live"', settings)
+        for env in ({"HONEYPOT_CODEX_WEB_SEARCH": "live"},
+                    {"HONEYPOT_CODEX_WEB_SEARCH": "live", "HONEYPOT_CODEX_STANDALONE_SEARCH": "0"}):
+            with self.subTest(**env):
+                completed, trajectory, _ = self._adapter(**env)
+                self.assertEqual(completed.returncode, 0, completed.stderr)
+                argv = json.loads(trajectory)["argv"]
+                settings = {argv[i + 1] for i, item in enumerate(argv) if item == "-c"}
+                self.assertIn(off, settings)
+                self.assertFalse(standalone & settings)
+        for env in ({"HONEYPOT_CODEX_WEB_SEARCH": "disabled", "HONEYPOT_CODEX_STANDALONE_SEARCH": "1"},
+                    {"HONEYPOT_CODEX_WEB_SEARCH": "live", "HONEYPOT_CODEX_STANDALONE_SEARCH": "on"}):
+            with self.subTest(**env):
+                completed, trajectory, _ = self._adapter(**env)
+                self.assertEqual(completed.returncode, 64, completed.stderr)
+                self.assertEqual(trajectory, "")
 
 
 @unittest.skipUnless(_fdinfo_has_ino(), "needs a Linux /proc/self/fdinfo with an ino line")

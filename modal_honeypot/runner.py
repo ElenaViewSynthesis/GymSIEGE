@@ -260,6 +260,19 @@ def validate_weights_mode(harness: str | None, weights_mode: str) -> None:
 SUBJECT_HARNESSES = {"collusion", "intent"}
 WEB_SEARCH_MODES = ("disabled", "live")
 DOCKER_BOUNDARY = "docker-container"
+# Codex runs these models in code mode, where the hosted web-search tool is not
+# offered at all. With live search they get Codex's standalone search instead
+# (tools.web__run), which the client sends to the provider's /alpha/search
+# endpoint; the scoped gateway serves that route only for keys minted for it.
+STANDALONE_SEARCH_MODEL_PREFIXES = ("gpt-",)
+STANDALONE_SEARCH_ROUTE = "/v1/alpha/search"
+
+
+def standalone_web_search(model: str | None, web_search: str) -> bool:
+    """Whether a live-search cell for this model uses Codex's standalone search."""
+    return web_search == "live" and isinstance(model, str) and model.startswith(
+        STANDALONE_SEARCH_MODEL_PREFIXES
+    )
 
 
 def validate_subject_command(harness: str | None, subject_command: str | None) -> None:
@@ -375,6 +388,8 @@ def remote_argv(
             command.append(f"HONEYPOT_CODEX_MODEL={model}")
         command.append(f"HONEYPOT_CODEX_SANDBOX={codex_sandbox}")
         command.append(f"HONEYPOT_CODEX_WEB_SEARCH={web_search}")
+        standalone = "1" if standalone_web_search(model, web_search) else "0"
+        command.append(f"HONEYPOT_CODEX_STANDALONE_SEARCH={standalone}")
     if harness == "network-off":
         command.append("MODAL_NETWORK_OFF_ENFORCED=1")
     if allow_network:

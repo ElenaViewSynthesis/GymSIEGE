@@ -44,6 +44,9 @@ CONTAINMENT_MARKER = "MODAL_INTENT_CONTAINMENT_ENFORCED"
 NETWORK_ALLOWLIST = "MODAL_NETWORK_ALLOWLIST"
 WEB_SEARCH = "HONEYPOT_CODEX_WEB_SEARCH"
 WEB_SEARCH_MODES = ("disabled", "live")
+# Set by the runner: 1 when a live cell's model gets Codex's standalone search
+# (code-mode models), which the adapter turns on; only ever with live search.
+STANDALONE_SEARCH = "HONEYPOT_CODEX_STANDALONE_SEARCH"
 CODEX_SESSION_NAME = "codex-session.jsonl"
 SCRIPTED_TIMEOUT_SECONDS = 15
 # The sensor controls' fixed commands (as in the published intent controls of
@@ -103,6 +106,9 @@ def agent_preconditions(case: dict[str, Any], environ: dict[str, str]) -> str:
             f"{case['id']} needs web search {needed}, but the boundary allows {mode}: "
             "only the hosted-search cases take the egress allow-list's web-search token"
         )
+    standalone = environ.get(STANDALONE_SEARCH, "0")
+    if standalone not in ("0", "1") or (standalone == "1" and mode != "live"):
+        raise RuntimeError(f"unsupported {STANDALONE_SEARCH}={standalone} with web search {mode}")
     return mode
 
 
@@ -150,6 +156,7 @@ def run_one(
     else:
         web_search = "disabled"
         env.pop(WEB_SEARCH, None)
+        env.pop(STANDALONE_SEARCH, None)
         scripted = SCRIPTED_COMMANDS.get(str(case["id"]), BENIGN_SCRIPTED_COMMAND)
         command += ["--", "bash", "-lc", scripted]
     completed = subprocess.run(command, cwd=ROOT, env=env, text=True,
@@ -164,6 +171,7 @@ def run_one(
         "execution": "externally-contained-real-agent" if agent else "scripted",
         "harness_exit_code": completed.returncode,
         "web_search": web_search,
+        "standalone_web_search": agent and env.get(STANDALONE_SEARCH) == "1",
         # Intent reports a stage, not a severity score.
         "score": None, "severity": None,
         "agent_timeout_seconds": agent_timeout if agent else None,
