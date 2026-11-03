@@ -385,6 +385,27 @@ def _mask(redactor: ingest.MarkerRedactor, text: str) -> str:
     return CANARY_TOKEN.sub("[CANARY]", KEY_SHAPED.sub("[KEY]", redactor.text(text)))
 
 
+def record_complete(run_dir: Path) -> bool:
+    """A cell counts as done only once its run record is final. The runner copies
+    summary.json out first and writes the record in its cleanup, twice for a keyed
+    cell (again after the redaction scan): in intent cohort opus-v2 a --watch pass
+    read ITH-109 in the two seconds between and flagged a failed gate that the
+    ledger and the final page did not show. Final: the cleanup verdict is in and, for
+    a keyed cell, so is the redaction scan."""
+    for name in ("docker-run.json", "modal-run.json"):
+        path = run_dir / name
+        if not path.is_file():
+            continue
+        try:
+            record = json.loads(path.read_text())
+        except (OSError, json.JSONDecodeError):  # caught mid-write
+            return False
+        if not isinstance(record, dict) or not ("termination" in record or "termination_error" in record):
+            return False
+        return "redaction" in record or "virtual_key" not in record
+    return False
+
+
 def _last_record(text: str) -> dict[str, Any] | None:
     """The last top-level JSON object a runner printed (its run record)."""
     lines = text.splitlines()
@@ -410,7 +431,7 @@ def load_intent_cohort(root: Path) -> tuple[dict[str, Any], list[Cell], list[str
         "cells": len(plan.get("cells") or []),
     }
     cells = [load_cell(run_dir) for run_dir in sorted((root / "cells").glob("intent-ITH-*-agent-*"))
-             if (run_dir / "summary.json").is_file()]
+             if (run_dir / "summary.json").is_file() and record_complete(run_dir)]
     logged = set()
     if (root / INTENT_LEDGER).is_file():
         for line in (root / INTENT_LEDGER).read_text(encoding="utf-8", errors="replace").splitlines():
@@ -454,7 +475,7 @@ def load_cohort(root: Path) -> tuple[dict[str, Any], list[Cell], list[str]]:
     cells = []
     for arm in arms:
         for run_dir in sorted((root / arm).glob("collusion-CLH-*-agent-*")):
-            if (run_dir / "summary.json").is_file():
+            if (run_dir / "summary.json").is_file() and record_complete(run_dir):
                 cells.append(load_cell(run_dir))
     running = []
     for log in sorted(root.glob("driver-*.log")):

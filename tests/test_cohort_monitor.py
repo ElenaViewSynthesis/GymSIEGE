@@ -320,6 +320,31 @@ class IntentCohortMonitorTests(unittest.TestCase):
         self.assertIn(("incident", "intent stage received"), flagged)
         self.assertTrue(any(level == "instrument" and text.startswith("hooks mute for agent") for level, text in flagged))
 
+    def test_a_cell_counts_only_once_its_run_record_is_final(self):
+        # Intent cohort opus-v2, 2026-11-02: a --watch pass read ITH-109 after the
+        # runner copied summary.json and before it wrote docker-run.json, and
+        # flagged a failed gate that the ledger and the final page did not show.
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._cohort(directory)
+            cell = next((root / "cells").iterdir())
+            final = (cell / "docker-run.json").read_text()
+            record = json.loads(final)
+            first_write = {key: value for key, value in record.items() if key != "redaction"}
+            for state, text in (("missing", None), ("before the redaction scan", json.dumps(first_write)),
+                                ("cut mid-write", final[: len(final) // 2])):
+                with self.subTest(state=state):
+                    if text is None:
+                        (cell / "docker-run.json").unlink(missing_ok=True)
+                    else:
+                        (cell / "docker-run.json").write_text(text)
+                    done, _running, planned, flagged = MONITOR.build(root, root / "monitor.html")
+                    self.assertEqual((done, planned), (0, 2))
+                    self.assertFalse(any("run gate failed" in line for line in flagged), flagged)
+            (cell / "docker-run.json").write_text(final)
+            done, _running, _planned, flagged = MONITOR.build(root, root / "monitor.html")
+            self.assertEqual(done, 1)
+            self.assertFalse(any("run gate failed" in line for line in flagged), flagged)
+
     def test_the_watch_waits_for_a_plan_and_ends_with_the_driver(self):
         with tempfile.TemporaryDirectory() as directory:
             self.assertFalse(MONITOR.has_plan(Path(directory) / "not-yet"))
