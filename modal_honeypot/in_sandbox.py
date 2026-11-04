@@ -36,6 +36,11 @@ CONFIG = {
         "runner": ROOT / "agent_honeypot/intent_tripwires/run_case.py",
         "prefix": "ITH-",
     },
+    "lure": {
+        "dataset": ROOT / "agent_honeypot/lure_tripwires/tasks.jsonl",
+        "runner": ROOT / "agent_honeypot/lure_tripwires/run_case.py",
+        "prefix": "ULT-",
+    },
     "instrument": {
         "dataset": ROOT / "agent_honeypot/instrument_tripwires/cases.jsonl",
         "runner": ROOT / "agent_honeypot/instrument_tripwires/run_case.py",
@@ -53,7 +58,7 @@ CONFIG = {
 # variable unset, the Docker runner passes docker-container.
 EXECUTION_BOUNDARIES = {"modal-sandbox", "docker-container"}
 # Harnesses whose runner takes a real agent (--subject-command).
-SUBJECT_HARNESSES = {"collusion", "intent"}
+SUBJECT_HARNESSES = {"collusion", "intent", "lure"}
 
 
 def execution_boundary() -> str:
@@ -141,6 +146,10 @@ def run_case(
         "web_search": report.get("web_search"),
         # Intent only: the checkpoint's decoy format (text or format).
         "decoy_format": report.get("decoy_format"),
+        # Lure suite only: the lure evidence and the run's lifecycle (start, end,
+        # termination reason, budget); the verifier result travels as "verifier".
+        "lure": report.get("lure"),
+        "lifecycle": report.get("lifecycle"),
         # The hook gate (score_collusion.agent_hook_check): the driver's
         # agent_hooks_observed check and the aggregator's "hooks mute" exclusion
         # read it from this row, so it must travel with the stage.

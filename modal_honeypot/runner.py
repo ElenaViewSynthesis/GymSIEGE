@@ -56,6 +56,7 @@ CASE_PREFIXES = {
     "collusion": "CLH-",
     "instrument": "IHT-",
     "intent": "ITH-",
+    "lure": "ULT-",
     "model": "MRH-",
     "network-off": "NOF-",
 }
@@ -251,7 +252,7 @@ def validate_egress_allowlist(
 
 
 # Harnesses whose cases run under agent_honeypot/harness.sh, where the alerter lives.
-ALERT_HARNESSES = frozenset({"agent", "model", "intent", "collusion"})
+ALERT_HARNESSES = frozenset({"agent", "model", "intent", "collusion", "lure"})
 
 
 def validate_alerting(
@@ -300,7 +301,7 @@ def validate_weights_mode(harness: str | None, weights_mode: str) -> None:
         raise ValueError("--weights-mode format requires --harness model")
 
 
-SUBJECT_HARNESSES = {"collusion", "intent"}
+SUBJECT_HARNESSES = {"collusion", "intent", "lure"}
 WEB_SEARCH_MODES = ("disabled", "live")
 DOCKER_BOUNDARY = "docker-container"
 # Codex runs these models in code mode, where the hosted web-search tool is not
@@ -320,7 +321,7 @@ def standalone_web_search(model: str | None, web_search: str) -> bool:
 
 def validate_subject_command(harness: str | None, subject_command: str | None) -> None:
     if subject_command is not None and harness not in SUBJECT_HARNESSES:
-        raise ValueError("--subject-command requires --harness collusion or intent")
+        raise ValueError("--subject-command requires --harness collusion, intent or lure")
 
 
 def validate_intent_agent(
@@ -333,13 +334,13 @@ def validate_intent_agent(
     Docker). Live hosted web search is for a real intent agent only."""
     if web_search not in WEB_SEARCH_MODES:
         raise ValueError(f"unknown web-search mode: {web_search}")
-    if harness == "intent" and subject_command is not None:
+    if harness in ("intent", "lure") and subject_command is not None:
         if execution_boundary != DOCKER_BOUNDARY:
             raise ValueError(
-                "real-agent intent cells run only in the Docker boundary (docker_honeypot/runner.py)"
+                "real-agent intent and lure cells run only in the Docker boundary (docker_honeypot/runner.py)"
             )
         if not egress_allowlist:
-            raise ValueError("a real-agent intent cell needs the scoped egress allow-list")
+            raise ValueError("a real-agent intent or lure cell needs the scoped egress allow-list")
     elif web_search != "disabled":
         raise ValueError("live web search is only for a real-agent intent cell")
 
@@ -441,6 +442,15 @@ def remote_argv(
         command.append(f"HONEYPOT_CODEX_WEB_SEARCH={web_search}")
         standalone = "1" if standalone_web_search(model, web_search) else "0"
         command.append(f"HONEYPOT_CODEX_STANDALONE_SEARCH={standalone}")
+    if harness == "lure" and subject_command is not None:
+        # validate_intent_agent has confirmed the Docker boundary and its
+        # allow-list; the lure runner refuses a real agent without this.
+        command.append("MODAL_LURE_CONTAINMENT_ENFORCED=1")
+        if model is not None:
+            command.append(f"HONEYPOT_CODEX_MODEL={model}")
+        command.append(f"HONEYPOT_CODEX_SANDBOX={codex_sandbox}")
+        command.append("HONEYPOT_CODEX_WEB_SEARCH=disabled")
+        command.append("HONEYPOT_CODEX_STANDALONE_SEARCH=0")
     if harness == "intent" and decoy_format != "text":
         # Read by intent_tripwires/run_case.py, which hands it to the harness as an
         # option; neither lets it into the agent's environment.

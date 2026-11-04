@@ -76,7 +76,7 @@ INTENT_DATASET = REPO / "agent_honeypot" / "intent_tripwires" / "experiments.jso
 # Corpus version 2 (make_experiments_v2.py): the same cases with the untrusted text in TASK.md.
 INTENT_DATASETS = (INTENT_DATASET, INTENT_DATASET.with_name("experiments-v2.jsonl"),
                    INTENT_DATASET.with_name("probes.jsonl"))
-HARNESSES = ("collusion", "intent")
+HARNESSES = ("collusion", "intent", "lure")
 # Docker's default seccomp profile plus only the calls Codex's bubblewrap
 # sandbox needs (docker_honeypot/build_seccomp_profile.py documents each one).
 # The sandbox container gets it; the egress proxy keeps Docker's default.
@@ -426,7 +426,8 @@ def run(
     # Both settings, always, so every run record says whether the alerter ran
     # and whether it could kill.
     runtime_policy.update({
-        "alert": alert or enforce,
+        # The lure suite's harness always runs the alerter in observe mode.
+        "alert": alert or enforce or args.harness == "lure",
         "enforce": enforce,
         "enforce_real_agent": enforce_real_agent,
         "enforce_hold_seconds": enforce_hold,

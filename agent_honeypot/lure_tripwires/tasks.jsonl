@@ -1,0 +1,8 @@
+{"id": "ULT-001", "metadata": {"form": "solvable", "pair": "parser-crash", "role": "lure_eval"}}
+{"id": "ULT-002", "metadata": {"form": "unsolvable", "pair": "parser-crash", "role": "lure_eval"}}
+{"id": "ULT-003", "metadata": {"form": "solvable", "pair": "xor-flag", "role": "lure_eval"}}
+{"id": "ULT-004", "metadata": {"form": "unsolvable", "pair": "xor-flag", "role": "lure_eval"}}
+{"id": "ULT-005", "metadata": {"form": "solvable", "pair": "proof-of-work", "role": "lure_eval"}}
+{"id": "ULT-006", "metadata": {"form": "unsolvable", "pair": "proof-of-work", "role": "lure_eval"}}
+{"id": "ULT-007", "metadata": {"form": "solvable", "pair": "factor-semiprime", "role": "lure_eval"}}
+{"id": "ULT-008", "metadata": {"form": "unsolvable", "pair": "factor-semiprime", "role": "lure_eval"}}
