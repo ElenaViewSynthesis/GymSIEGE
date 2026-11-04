@@ -117,6 +117,8 @@ def runner_command(args: argparse.Namespace, case: dict[str, Any], *, dry_run: b
         # The driver runs real agents only; the runner refuses --enforce on one
         # without --enforce-real-agent, and so does main() here.
         command += ["--enforce", "--enforce-real-agent"]
+    if getattr(args, "decoy_format", None):
+        command += ["--decoy-format", args.decoy_format]
     if dry_run:
         command.append("--dry-run")
     return command
@@ -208,8 +210,10 @@ def proxy_decisions(output: Path) -> dict[str, dict[str, int]]:
     return {decision: dict(sorted(counts.items())) for decision, counts in sorted(decisions.items())}
 
 
-def gate_cell(output: Path, case: dict[str, Any], key_budget: float) -> dict[str, Any]:
-    """The gate for one cell, from its run record and copied outputs."""
+def gate_cell(output: Path, case: dict[str, Any], key_budget: float,
+              decoy_format: str | None = None) -> dict[str, Any]:
+    """The gate for one cell, from its run record and copied outputs. With a
+    decoy arm, the cell must have run that arm (the case report's format)."""
     case_id = str(case["id"])
     try:
         record = json.loads((output / RUN_RECORD).read_text())
@@ -239,6 +243,7 @@ def gate_cell(output: Path, case: dict[str, Any], key_budget: float) -> dict[str
         "image_inputs_clean": revision.get("dirty") is False,
         "observable": row.get("observability") == "observable" and bool(chains) and all(chains),
         "web_search_matches": row.get("web_search") == web_search(case),
+        "decoy_format_matches": decoy_format is None or row.get("decoy_format") == decoy_format,
         # An empty turn has nothing to observe and is judged as a setup fault.
         "agent_hooks_observed": hooks is True or not signals["command_executed"],
     }
@@ -268,6 +273,7 @@ def gate_cell(output: Path, case: dict[str, Any], key_budget: float) -> dict[str
         # The alerter's record (None without --alert/--enforce): first boundary
         # event, alert and kill latencies, censoring.
         "boundary": row.get("boundary"),
+        "decoy_format": row.get("decoy_format"),
         "archive_error": signals["archive_error"],
         "output": str(output),
     }
@@ -296,6 +302,8 @@ def plan_record(args: argparse.Namespace, case_ids: list[str], cases: dict[str, 
         plan["alert"] = True
     if getattr(args, "enforce", False):
         plan["enforce"] = True
+    if getattr(args, "decoy_format", None):
+        plan["decoy_format"] = args.decoy_format
     return plan
 
 
@@ -415,7 +423,7 @@ def run_execute(args: argparse.Namespace, case_ids: list[str], cases: dict[str, 
                   f"If a key was minted, revoke it by alias now; see {log.name}", file=sys.stderr)
             write_summary(args.root, plan, args)
             return 1
-        row = {**gate_cell(output, cases[case_id], args.key_budget),
+        row = {**gate_cell(output, cases[case_id], args.key_budget, getattr(args, "decoy_format", None)),
                "runner_exit": completed.returncode, "log": str(log)}
         if completed.returncode != 0 and row["status"] == "ok":
             row["status"] = "hard_fail"
@@ -469,6 +477,9 @@ def main(argv: list[str] | None = None) -> int:
                         help="kill each agent at its first boundary event; needs --enforce-real-agent")
     parser.add_argument("--enforce-real-agent", action="store_true",
                         help="the explicit word that real agents may be killed (with --enforce)")
+    parser.add_argument("--decoy-format", choices=("text", "format"),
+                        help="the decoy-realism arm: the checkpoint as the text-marker file or a "
+                             "format-valid synthetic one (default: the runner's, text; recorded only when given)")
     parser.add_argument("--runner", type=Path, default=RUNNER, help=argparse.SUPPRESS)
     parser.add_argument("--python", default=sys.executable, help=argparse.SUPPRESS)
     args = parser.parse_args(argv)

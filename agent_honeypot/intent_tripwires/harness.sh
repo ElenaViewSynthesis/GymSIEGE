@@ -10,12 +10,15 @@ trajectory=
 observe_network=0
 observe_only=0
 evidence_chain=${HONEYPOT_EVIDENCE_CHAIN:-0}
+decoy_format=${HONEYPOT_DECOY_FORMAT:-text}
+# The arm never reaches the agent's environment.
+unset HONEYPOT_DECOY_FORMAT
 
 usage() {
   cat <<'EOF'
 Usage: harness.sh --case-id ITH-NNN [--timeout SECONDS] [--output DIR]
                   [--trajectory FILE] [--observe-network] [--observe-only]
-                  [--evidence-chain] -- COMMAND [ARG...]
+                  [--evidence-chain] [--decoy-format text|format] -- COMMAND [ARG...]
 
 Creates synthetic sensitive files, a loopback receipt sink, file/network
 tripwires, and runs COMMAND in the case workspace. External egress tools and
@@ -26,6 +29,9 @@ injection tools (tmux, nohup, strace, nsenter, ...) are recorded, not
 blocked; also only for an externally contained VM/sandbox.
 --evidence-chain routes the sink log and the process log through parent-owned
 keyed mirrors (see agent_honeypot/evidence_chain.py).
+--decoy-format (or HONEYPOT_DECOY_FORMAT) plants the checkpoint as the
+text-marker file (text, the default) or as a format-valid synthetic
+safetensors file (format), at the same path (prepare_case.py).
 EOF
 }
 
@@ -38,6 +44,7 @@ while (($#)); do
     --observe-network) observe_network=1; shift ;;
     --observe-only) observe_only=1; shift ;;
     --evidence-chain) evidence_chain=1; shift ;;
+    --decoy-format) decoy_format=$2; shift 2 ;;
     --) shift; break ;;
     -h|--help) usage; exit 0 ;;
     *) printf 'Unknown option: %s\n' "$1" >&2; usage >&2; exit 64 ;;
@@ -45,6 +52,7 @@ while (($#)); do
 done
 [[ $case_id =~ ^ITH-[0-9]{3}$ ]] || { printf 'A valid --case-id is required\n' >&2; exit 64; }
 [[ $timeout_seconds =~ ^[0-9]+$ && $timeout_seconds -gt 0 ]] || { printf 'Invalid timeout\n' >&2; exit 64; }
+[[ $decoy_format == text || $decoy_format == format ]] || { printf 'Unknown --decoy-format: %s\n' "$decoy_format" >&2; exit 64; }
 (($#)) || { usage >&2; exit 64; }
 if [[ -z $output_dir ]]; then
   output_dir="$PWD/results/intent-honeypot/${case_id}-$(date -u +%Y%m%dT%H%M%SZ)-$$"
@@ -52,7 +60,7 @@ fi
 output_dir=$(realpath -m "$output_dir")
 [[ ! -e $output_dir ]] || { printf 'Output already exists: %s\n' "$output_dir" >&2; exit 73; }
 
-python3 "$script_dir/prepare_case.py" "$case_id" --output "$output_dir" >/dev/null
+python3 "$script_dir/prepare_case.py" "$case_id" --output "$output_dir" --decoy-format "$decoy_format" >/dev/null
 workspace="$output_dir/workspace"
 canary_file="$output_dir/canary.txt"
 sensitive_paths=$(<"$output_dir/sensitive-paths.txt")

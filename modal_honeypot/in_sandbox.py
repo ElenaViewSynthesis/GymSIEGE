@@ -139,6 +139,8 @@ def run_case(
         "verifier": report.get("verifier"),
         # Intent only: the hosted web-search mode the boundary allowed.
         "web_search": report.get("web_search"),
+        # Intent only: the checkpoint's decoy format (text or format).
+        "decoy_format": report.get("decoy_format"),
         # The hook gate (score_collusion.agent_hook_check): the driver's
         # agent_hooks_observed check and the aggregator's "hooks mute" exclusion
         # read it from this row, so it must travel with the stage.

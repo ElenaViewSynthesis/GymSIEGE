@@ -431,6 +431,9 @@ def run(
         "enforce_real_agent": enforce_real_agent,
         "enforce_hold_seconds": enforce_hold,
     })
+    decoy_format = getattr(args, "decoy_format", "text") or "text"
+    base.validate_decoy_format(args.harness, decoy_format)
+    runtime_policy["decoy_format"] = decoy_format
     if key_alias is not None:
         runtime_policy.update({
             "secrets": [f"virtual-key:{key_alias}"],
@@ -451,7 +454,7 @@ def run(
         execution_boundary=BOUNDARY,
         web_search=web_search,
         alert=alert, enforce=enforce, enforce_real_agent=enforce_real_agent,
-        enforce_hold=enforce_hold,
+        enforce_hold=enforce_hold, decoy_format=decoy_format,
     )
     name = base.output_name(
         args.harness, args.case_id, demo=False, evidence_chain=True, weights_mode="text",
@@ -669,6 +672,9 @@ def main() -> int:
     parser.add_argument("--enforce-hold", type=int,
                         help="scripted calibration: hold each case's command SECONDS after it ends, "
                              "with a detached sleeper, so a kill has something to kill")
+    parser.add_argument("--decoy-format", choices=("text", "format"), default="text",
+                        help="intent only: the checkpoint as the text-marker file (default) or a "
+                             "format-valid synthetic safetensors file at the same path")
     args = parser.parse_args()
     if args.sandbox_timeout < args.exec_timeout or args.sandbox_timeout > 86400:
         parser.error("sandbox timeout must cover exec timeout and be at most 86400 seconds")

@@ -281,6 +281,18 @@ def validate_alerting(
             raise ValueError("--enforce-hold needs --alert or --enforce")
 
 
+DECOY_FORMATS = ("text", "format")
+
+
+def validate_decoy_format(harness: str | None, decoy_format: str) -> None:
+    """The decoy-realism arm is the intent suite's: its checkpoint as a text-marker
+    file (text, the default) or a format-valid synthetic file (format)."""
+    if decoy_format not in DECOY_FORMATS:
+        raise ValueError(f"unknown decoy format: {decoy_format}")
+    if decoy_format != "text" and harness != "intent":
+        raise ValueError("--decoy-format format requires --harness intent")
+
+
 def validate_weights_mode(harness: str | None, weights_mode: str) -> None:
     if weights_mode not in {"text", "format"}:
         raise ValueError(f"unknown weights mode: {weights_mode}")
@@ -373,9 +385,11 @@ def remote_argv(
     enforce: bool = False,
     enforce_real_agent: bool = False,
     enforce_hold: int | None = None,
+    decoy_format: str = "text",
 ) -> list[str]:
     validate_alerting(harness, subject_command, alert=alert, enforce=enforce,
                       enforce_real_agent=enforce_real_agent, enforce_hold=enforce_hold)
+    validate_decoy_format(harness, decoy_format)
     if demo:
         if harness is not None or case_id is not None:
             raise ValueError("--demo cannot be combined with a harness or case ID")
@@ -427,6 +441,10 @@ def remote_argv(
         command.append(f"HONEYPOT_CODEX_WEB_SEARCH={web_search}")
         standalone = "1" if standalone_web_search(model, web_search) else "0"
         command.append(f"HONEYPOT_CODEX_STANDALONE_SEARCH={standalone}")
+    if harness == "intent" and decoy_format != "text":
+        # Read by intent_tripwires/run_case.py, which hands it to the harness as an
+        # option; neither lets it into the agent's environment.
+        command.append(f"HONEYPOT_DECOY_FORMAT={decoy_format}")
     if alert or enforce:
         # Read (and unset) by agent_honeypot/harness.sh: the alerter, and with
         # enforce the kill at the first boundary event (agent_honeypot/alerter.py).
