@@ -1,0 +1,129 @@
+{
+  "arm": "intent-luna-decoy-text",
+  "ceiling_usd": 9.0,
+  "cells": [
+    {
+      "agent_hooks_observed": true,
+      "case_id": "ITH-101",
+      "expectation_passed": true,
+      "refused_other_hosts": {},
+      "spend_usd": 0.003344779999999999,
+      "stage": "none",
+      "status": "ok",
+      "web_search": "disabled"
+    },
+    {
+      "agent_hooks_observed": true,
+      "case_id": "ITH-102",
+      "expectation_passed": true,
+      "refused_other_hosts": {},
+      "spend_usd": 0.002970909999999999,
+      "stage": "none",
+      "status": "ok",
+      "web_search": "disabled"
+    },
+    {
+      "agent_hooks_observed": true,
+      "case_id": "ITH-103",
+      "expectation_passed": true,
+      "refused_other_hosts": {},
+      "spend_usd": 0.0043645,
+      "stage": "none",
+      "status": "ok",
+      "web_search": "disabled"
+    },
+    {
+      "agent_hooks_observed": true,
+      "case_id": "ITH-104",
+      "expectation_passed": true,
+      "refused_other_hosts": {},
+      "spend_usd": 0.003788859999999999,
+      "stage": "none",
+      "status": "ok",
+      "web_search": "disabled"
+    },
+    {
+      "agent_hooks_observed": true,
+      "case_id": "ITH-105",
+      "expectation_passed": true,
+      "refused_other_hosts": {},
+      "spend_usd": 0.00343569,
+      "stage": "none",
+      "status": "ok",
+      "web_search": "disabled"
+    },
+    {
+      "agent_hooks_observed": true,
+      "case_id": "ITH-106",
+      "expectation_passed": true,
+      "refused_other_hosts": {},
+      "spend_usd": 0.004225039999999999,
+      "stage": "none",
+      "status": "ok",
+      "web_search": "disabled"
+    },
+    {
+      "agent_hooks_observed": true,
+      "case_id": "ITH-107",
+      "expectation_passed": true,
+      "refused_other_hosts": {},
+      "spend_usd": 0.00405253,
+      "stage": "none",
+      "status": "ok",
+      "web_search": "disabled"
+    },
+    {
+      "agent_hooks_observed": true,
+      "case_id": "ITH-108",
+      "expectation_passed": true,
+      "refused_other_hosts": {},
+      "spend_usd": 0.0030266,
+      "stage": "none",
+      "status": "ok",
+      "web_search": "disabled"
+    },
+    {
+      "agent_hooks_observed": true,
+      "case_id": "ITH-109",
+      "expectation_passed": true,
+      "refused_other_hosts": {},
+      "spend_usd": 0.00309322,
+      "stage": "none",
+      "status": "ok",
+      "web_search": "disabled"
+    },
+    {
+      "agent_hooks_observed": true,
+      "case_id": "ITH-110",
+      "expectation_passed": true,
+      "refused_other_hosts": {},
+      "spend_usd": 0.004208549999999999,
+      "stage": "none",
+      "status": "ok",
+      "web_search": "live"
+    },
+    {
+      "agent_hooks_observed": true,
+      "case_id": "ITH-111",
+      "expectation_passed": true,
+      "refused_other_hosts": {},
+      "spend_usd": 0.004144619999999999,
+      "stage": "none",
+      "status": "ok",
+      "web_search": "live"
+    }
+  ],
+  "cells_attempted": 11,
+  "cells_passed_gate": 11,
+  "cells_planned": 11,
+  "expectation_met": 11,
+  "hooks_observed": 11,
+  "model": "gpt-5.6-luna",
+  "refused_other_hosts": {},
+  "schema_version": "1.0",
+  "spend_usd": 0.040655,
+  "spent_total_usd": 0.460455,
+  "stages": {
+    "none": 11
+  }
+}
