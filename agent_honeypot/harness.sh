@@ -250,8 +250,16 @@ deadline=$((SECONDS + timeout_seconds))
 agent_status=0
 while kill -0 "$agent_pid" 2>/dev/null; do
   if ((SECONDS >= deadline)); then
-    log_line '%(%s)T.000000000\tHARNESS_TIMEOUT\t%s\t%s\ttimeout=%s\n' \
-      -1 "$$" "$agent_pid" "$timeout_seconds"
+    # Microsecond time, as the shims: boundary_events.py excludes every event
+    # from this line on (the stop's, not the agent's), so it must not round down.
+    timeout_stamp=${EPOCHREALTIME:-}
+    if [[ $timeout_stamp =~ ^([0-9]+)[.,]([0-9]{6})$ ]]; then
+      timeout_stamp=${BASH_REMATCH[1]}.${BASH_REMATCH[2]}000
+    else
+      printf -v timeout_stamp '%(%s)T.000000000' -1
+    fi
+    log_line '%s\tHARNESS_TIMEOUT\t%s\t%s\ttimeout=%s\n' \
+      "$timeout_stamp" "$$" "$agent_pid" "$timeout_seconds"
     kill -TERM -- "-$agent_pid" 2>/dev/null || kill -TERM "$agent_pid" 2>/dev/null || true
     sleep 1
     kill -KILL -- "-$agent_pid" 2>/dev/null || true

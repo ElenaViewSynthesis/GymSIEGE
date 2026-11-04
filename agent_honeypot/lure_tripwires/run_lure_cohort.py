@@ -28,6 +28,7 @@ import os
 import random
 import subprocess
 import sys
+import tarfile
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
@@ -130,11 +131,11 @@ def gate_cell(output: Path, cell: dict[str, Any]) -> dict[str, Any]:
         row = rows[0] if rows and isinstance(rows[0], dict) else {}
     except (OSError, json.JSONDecodeError, AttributeError):
         row = {}
-    signals = intent.trajectory_signals(output, cell["case_id"])
+    lifecycle = row.get("lifecycle") if isinstance(row.get("lifecycle"), dict) else {}
+    signals = execution_signals(output, cell["case_id"], lifecycle.get("termination"))
     chains = row.get("evidence_chains") if isinstance(row.get("evidence_chains"), list) else []
     hooks = row.get("agent_hooks_observed")
     verifier = row.get("verifier") if isinstance(row.get("verifier"), dict) else {}
-    lifecycle = row.get("lifecycle") if isinstance(row.get("lifecycle"), dict) else {}
     hard = {
         "run_record_present": record is not None,
         "remote_exit_zero": record_dict.get("remote_exit_code") == 0,
@@ -173,8 +174,55 @@ def gate_cell(output: Path, cell: dict[str, Any]) -> dict[str, Any]:
         "refused_client_hosts": {h: n for h, n in refused.items() if h in intent.KNOWN_CLIENT_HOSTS},
         "refused_other_hosts": {h: n for h, n in refused.items() if h not in intent.KNOWN_CLIENT_HOSTS},
         "archive_error": signals["archive_error"],
+        "execution_signals_from": signals["source"],
         "output": str(output),
     }
+
+
+# A run the harness stopped (at its time budget, or the enforcer) loses Codex's
+# JSONL event stream: trajectory.jsonl is empty or ends without turn.completed.
+# Its archived session (codex-session.jsonl) still records every tool call and
+# the token counts, so the gate reads that instead, and says so.
+STOPPED = ("budget_exhausted", "enforced")
+TOOL_OUTPUTS = frozenset({"custom_tool_call_output", "function_call_output", "local_shell_call_output"})
+
+
+def session_signals(output: Path, case_id: str) -> dict[str, Any]:
+    """From the archived Codex session: did a tool call run (its output was
+    recorded) and did the model produce output tokens (a token_count event)."""
+    result: dict[str, Any] = {"command_executed": False, "output_tokens_positive": False}
+    try:
+        with tarfile.open(output / "artifacts.tar.gz", "r:gz") as archive:
+            raw = intent._archive_member(archive, f"cases/{case_id}/codex-session.jsonl")
+    except (OSError, tarfile.TarError):
+        return result
+    for line in (raw or b"").splitlines():
+        try:
+            row = json.loads(line)
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            continue
+        payload = row.get("payload") if isinstance(row, dict) and isinstance(row.get("payload"), dict) else {}
+        if row.get("type") == "response_item" and payload.get("type") in TOOL_OUTPUTS:
+            result["command_executed"] = True
+        if row.get("type") == "event_msg" and payload.get("type") == "token_count":
+            info = payload.get("info") if isinstance(payload.get("info"), dict) else {}
+            usage = info.get("total_token_usage") if isinstance(info.get("total_token_usage"), dict) else {}
+            if intent._number(usage.get("output_tokens")) and usage["output_tokens"] > 0:
+                result["output_tokens_positive"] = True
+    return result
+
+
+def execution_signals(output: Path, case_id: str, termination: str | None) -> dict[str, Any]:
+    """The trajectory's signals; for a stopped run whose trajectory shows no
+    execution, the archived session's instead (source: trajectory | session)."""
+    signals = {**intent.trajectory_signals(output, case_id), "source": "trajectory"}
+    if termination in STOPPED and not (signals["command_executed"] and signals["output_tokens_positive"]):
+        session = session_signals(output, case_id)
+        if session["command_executed"] or session["output_tokens_positive"]:
+            signals.update(command_executed=signals["command_executed"] or session["command_executed"],
+                           output_tokens_positive=signals["output_tokens_positive"] or session["output_tokens_positive"],
+                           source="session")
+    return signals
 
 
 def spent(args: argparse.Namespace, ledger: list[dict[str, Any]]) -> float:

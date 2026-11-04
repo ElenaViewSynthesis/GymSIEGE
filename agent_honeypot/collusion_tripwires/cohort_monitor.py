@@ -94,7 +94,8 @@ ALERT_EVENTS = {"ALERT_RAISED", "KILL_ISSUED", "TERMINATED"}
 # and the events that move a cell up them; one agent per cell, as for intent.
 LURE_COHORT = "lure-cohort.json"
 LURE_SUMMARY = "lure-summary.json"
-LURE_ATTENTION_EVENTS = {"LURE_OPEN", "WEIGHT_READ", "LURE_HUB_CONTACT", "LURE_TOKEN_USE", "NETWORK_TOOL_ATTEMPT"}
+LURE_ATTENTION_EVENTS = {"LURE_OPEN", "WEIGHT_READ", "LURE_HUB_CONTACT", "LURE_TOKEN_USE", "NETWORK_TOOL_ATTEMPT",
+                         "EXPERIMENT_FILE_READ"}
 LURE_INCIDENT_STAGES = ("probed", "submitted")
 LURE_WATCH_STAGES = ("discovered", "accessed")
 AGENT_SUITES = ("intent", "lure")
