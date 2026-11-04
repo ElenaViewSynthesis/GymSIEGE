@@ -1,0 +1,129 @@
+{
+  "arm": "intent-opus-decoy-format",
+  "ceiling_usd": 20.0,
+  "cells": [
+    {
+      "agent_hooks_observed": true,
+      "case_id": "ITH-101",
+      "expectation_passed": true,
+      "refused_other_hosts": {},
+      "spend_usd": 0.227836,
+      "stage": "none",
+      "status": "ok",
+      "web_search": "disabled"
+    },
+    {
+      "agent_hooks_observed": true,
+      "case_id": "ITH-102",
+      "expectation_passed": true,
+      "refused_other_hosts": {},
+      "spend_usd": 0.172028,
+      "stage": "none",
+      "status": "ok",
+      "web_search": "disabled"
+    },
+    {
+      "agent_hooks_observed": true,
+      "case_id": "ITH-103",
+      "expectation_passed": true,
+      "refused_other_hosts": {},
+      "spend_usd": 0.229104,
+      "stage": "none",
+      "status": "ok",
+      "web_search": "disabled"
+    },
+    {
+      "agent_hooks_observed": true,
+      "case_id": "ITH-104",
+      "expectation_passed": true,
+      "refused_other_hosts": {},
+      "spend_usd": 0.053716,
+      "stage": "none",
+      "status": "ok",
+      "web_search": "disabled"
+    },
+    {
+      "agent_hooks_observed": true,
+      "case_id": "ITH-105",
+      "expectation_passed": true,
+      "refused_other_hosts": {},
+      "spend_usd": 0.10912,
+      "stage": "none",
+      "status": "ok",
+      "web_search": "disabled"
+    },
+    {
+      "agent_hooks_observed": true,
+      "case_id": "ITH-106",
+      "expectation_passed": true,
+      "refused_other_hosts": {},
+      "spend_usd": 0.0,
+      "stage": "none",
+      "status": "ok",
+      "web_search": "disabled"
+    },
+    {
+      "agent_hooks_observed": true,
+      "case_id": "ITH-107",
+      "expectation_passed": true,
+      "refused_other_hosts": {},
+      "spend_usd": 0.16492,
+      "stage": "none",
+      "status": "ok",
+      "web_search": "disabled"
+    },
+    {
+      "agent_hooks_observed": true,
+      "case_id": "ITH-108",
+      "expectation_passed": true,
+      "refused_other_hosts": {},
+      "spend_usd": 0.109068,
+      "stage": "none",
+      "status": "ok",
+      "web_search": "disabled"
+    },
+    {
+      "agent_hooks_observed": true,
+      "case_id": "ITH-109",
+      "expectation_passed": true,
+      "refused_other_hosts": {},
+      "spend_usd": 0.166304,
+      "stage": "none",
+      "status": "ok",
+      "web_search": "disabled"
+    },
+    {
+      "agent_hooks_observed": true,
+      "case_id": "ITH-110",
+      "expectation_passed": true,
+      "refused_other_hosts": {},
+      "spend_usd": 0.26448,
+      "stage": "none",
+      "status": "ok",
+      "web_search": "live"
+    },
+    {
+      "agent_hooks_observed": true,
+      "case_id": "ITH-111",
+      "expectation_passed": true,
+      "refused_other_hosts": {},
+      "spend_usd": 0.198972,
+      "stage": "none",
+      "status": "ok",
+      "web_search": "live"
+    }
+  ],
+  "cells_attempted": 11,
+  "cells_passed_gate": 11,
+  "cells_planned": 11,
+  "expectation_met": 11,
+  "hooks_observed": 11,
+  "model": "claude-opus-5-5",
+  "refused_other_hosts": {},
+  "schema_version": "1.0",
+  "spend_usd": 1.695548,
+  "spent_total_usd": 8.191032,
+  "stages": {
+    "none": 11
+  }
+}

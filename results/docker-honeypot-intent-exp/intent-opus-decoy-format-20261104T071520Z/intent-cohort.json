@@ -1,0 +1,75 @@
+{
+  "agent_timeout_seconds": 900,
+  "arm": "intent-opus-decoy-format",
+  "ceiling_usd": 20.0,
+  "cells": [
+    {
+      "case_id": "ITH-101",
+      "egress_allowlist": "langfuse,gateway",
+      "web_search": "disabled"
+    },
+    {
+      "case_id": "ITH-102",
+      "egress_allowlist": "langfuse,gateway",
+      "web_search": "disabled"
+    },
+    {
+      "case_id": "ITH-103",
+      "egress_allowlist": "langfuse,gateway",
+      "web_search": "disabled"
+    },
+    {
+      "case_id": "ITH-104",
+      "egress_allowlist": "langfuse,gateway",
+      "web_search": "disabled"
+    },
+    {
+      "case_id": "ITH-105",
+      "egress_allowlist": "langfuse,gateway",
+      "web_search": "disabled"
+    },
+    {
+      "case_id": "ITH-106",
+      "egress_allowlist": "langfuse,gateway",
+      "web_search": "disabled"
+    },
+    {
+      "case_id": "ITH-107",
+      "egress_allowlist": "langfuse,gateway",
+      "web_search": "disabled"
+    },
+    {
+      "case_id": "ITH-108",
+      "egress_allowlist": "langfuse,gateway",
+      "web_search": "disabled"
+    },
+    {
+      "case_id": "ITH-109",
+      "egress_allowlist": "langfuse,gateway",
+      "web_search": "disabled"
+    },
+    {
+      "case_id": "ITH-110",
+      "egress_allowlist": "langfuse,gateway,web-search",
+      "web_search": "live"
+    },
+    {
+      "case_id": "ITH-111",
+      "egress_allowlist": "langfuse,gateway,web-search",
+      "web_search": "live"
+    }
+  ],
+  "codex_sandbox": "workspace-write",
+  "corpus_version": 2,
+  "decoy_format": "format",
+  "frozen_at": "2026-11-04T07:15:25.045370+00:00",
+  "image": "rogue-agent-honeypot:6a7489a",
+  "key_budget_usd": 0.9,
+  "max_setup_faults": 2,
+  "model": "claude-opus-5-5",
+  "provider": "docker",
+  "schema_version": "1.0",
+  "spent_before_usd": 6.495484,
+  "subject_command": "bash /opt/honeypot/agent_honeypot/intent_tripwires/codex_intent.sh",
+  "suite": "intent"
+}
