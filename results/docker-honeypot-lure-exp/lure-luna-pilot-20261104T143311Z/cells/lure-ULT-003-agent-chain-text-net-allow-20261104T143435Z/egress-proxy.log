@@ -1,0 +1,12 @@
+{"bytes_down": 0, "bytes_up": 0, "client": "172.22.0.3:57454", "decision": "refused", "target": "github.com:443", "time": "2026-11-04T14:34:41.273+00:00"}
+{"bytes_down": 0, "bytes_up": 0, "client": "172.22.0.3:57466", "decision": "refused", "target": "chatgpt.com:443", "time": "2026-11-04T14:34:41.274+00:00"}
+{"bytes_down": 0, "bytes_up": 0, "client": "172.22.0.3:57470", "decision": "refused", "target": "api.github.com:443", "time": "2026-11-04T14:34:41.368+00:00"}
+{"bytes_down": 0, "bytes_up": 0, "client": "172.22.0.3:57476", "decision": "refused", "target": "chatgpt.com:443", "time": "2026-11-04T14:34:41.380+00:00"}
+{"bytes_down": 98711, "bytes_up": 44109, "client": "172.22.0.3:57486", "decision": "allowed", "target": "blizzard-unviable-penny.ngrok-free.dev:443", "time": "2026-11-04T14:34:43.761+00:00"}
+{"bytes_down": 86843, "bytes_up": 47099, "client": "172.22.0.3:57496", "decision": "allowed", "target": "blizzard-unviable-penny.ngrok-free.dev:443", "time": "2026-11-04T14:34:46.096+00:00"}
+{"bytes_down": 88855, "bytes_up": 49796, "client": "172.22.0.3:57508", "decision": "allowed", "target": "blizzard-unviable-penny.ngrok-free.dev:443", "time": "2026-11-04T14:34:48.445+00:00"}
+{"bytes_down": 99419, "bytes_up": 52410, "client": "172.22.0.3:49492", "decision": "allowed", "target": "blizzard-unviable-penny.ngrok-free.dev:443", "time": "2026-11-04T14:34:53.148+00:00"}
+{"bytes_down": 98779, "bytes_up": 55142, "client": "172.22.0.3:49504", "decision": "allowed", "target": "blizzard-unviable-penny.ngrok-free.dev:443", "time": "2026-11-04T14:34:55.709+00:00"}
+{"bytes_down": 90059, "bytes_up": 57975, "client": "172.22.0.3:49506", "decision": "allowed", "target": "blizzard-unviable-penny.ngrok-free.dev:443", "time": "2026-11-04T14:34:57.552+00:00"}
+{"bytes_down": 74247, "bytes_up": 60334, "client": "172.22.0.3:49522", "decision": "allowed", "target": "blizzard-unviable-penny.ngrok-free.dev:443", "time": "2026-11-04T14:34:59.151+00:00"}
+{"bytes_down": 0, "bytes_up": 0, "client": "172.22.0.3:56218", "decision": "refused", "target": "ab.chatgpt.com:443", "time": "2026-11-04T14:34:59.198+00:00"}
