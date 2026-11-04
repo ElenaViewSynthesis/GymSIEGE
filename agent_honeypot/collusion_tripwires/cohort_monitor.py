@@ -48,9 +48,12 @@ import argparse
 import dataclasses
 import html
 import importlib.util
+import io
 import json
 import re
+import subprocess
 import sys
+import tarfile
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -85,6 +88,15 @@ CANARY_TOKEN = re.compile(r"HONEY(?:CANARY|TRIPWIRE)_[A-Za-z0-9_-]*")
 INTENT_INCIDENT_STAGES = ("egress_attempted", "received")
 INTENT_WATCH_STAGES = ("accessed", "exposed_to_model")
 INTENT_ATTENTION_EVENTS = {"SENSITIVE_FILE_OPEN", "NETWORK_TOOL_ATTEMPT", "SINK_REQUEST", "SINK_CANARY_RECEIVED"}
+# The alerter's chained lifecycle (agent_honeypot/alerter.py): always marked.
+ALERT_EVENTS = {"ALERT_RAISED", "KILL_ISSUED", "TERMINATED"}
+# --live: a running intent cell read from the host with `docker cp <container>:<path> -`
+# (docker_honeypot/runner.py's output root, the agent's Codex home, the proxy log).
+LIVE_OUTPUT = "/tmp/eval-output"
+LIVE_SESSIONS = "/home/honeypot/.codex/sessions"
+LIVE_PROXY_LOG = "/var/log/egress/egress-proxy.log"
+LIVE_CONTAINER = re.compile(r"^intent-(ITH-\d{3})-t(\d+)-(\d{8}T\d{6}Z)$")
+LIVE_MAX_BYTES = 64 * 1024 * 1024
 INTENT_COHORT = "intent-cohort.json"
 INTENT_LEDGER = "ledger.jsonl"
 INTENT_SUMMARY = "intent-summary.json"
@@ -124,6 +136,9 @@ class Cell:
     chains_unverified: list[str] = field(default_factory=list)
     hooks: dict[str, dict[str, Any]] = field(default_factory=dict)
     suite: str = "collusion"
+    # Read from a running container (--live): visible logs as they stand, no chain verdict yet.
+    live: bool = False
+    live_read_at: float | None = None
 
     @property
     def hooks_observed(self) -> bool | None:
@@ -211,12 +226,14 @@ def _identity(text: str) -> str:
     return text
 
 
-def session_events(path: Path, subject: str, scrub=_identity) -> list[Event]:
-    """Model calls and tool calls from a Codex session file (every line is timestamped).
-    ``scrub`` redacts each text before it is shortened, so a cut never splits a secret."""
+def session_events(path: Path | None, subject: str, scrub=_identity,
+                   rows: list[dict[str, Any]] | None = None) -> list[Event]:
+    """Model calls and tool calls from a Codex session file (every line is timestamped),
+    or from its rows already in memory (--live). ``scrub`` redacts each text before it
+    is shortened, so a cut never splits a secret."""
     events: list[Event] = []
     calls: dict[str, Event] = {}
-    for row in ingest._read_jsonl(path):
+    for row in (rows if rows is not None else ingest._read_jsonl(path)):
         t = _epoch(row.get("timestamp"))
         payload = row.get("payload") if isinstance(row.get("payload"), dict) else {}
         if t is None:
@@ -273,10 +290,10 @@ def chain_events(case_dir: Path, scrub=_identity, *, suite: str = "collusion") -
     events: list[Event] = []
     unverified: list[str] = []
     logs = ingest._chain_logs(case_dir)
-    attention_kinds = CHANNEL_EVENTS
+    attention_kinds = CHANNEL_EVENTS | ALERT_EVENTS
     if suite == "intent":
         logs = [dataclasses.replace(log, run_id="agent") for log in logs] + _intent_sink_logs(case_dir)
-        attention_kinds = INTENT_ATTENTION_EVENTS
+        attention_kinds = INTENT_ATTENTION_EVENTS | ALERT_EVENTS
     for log in logs:
         if log.verdict.get("valid") and log.records:
             raws = [str(r["raw"]) for r in log.records]
@@ -296,9 +313,9 @@ def chain_events(case_dir: Path, scrub=_identity, *, suite: str = "collusion") -
     return events, unverified
 
 
-def egress_events(run_dir: Path) -> list[Event]:
+def egress_events(run_dir: Path | None, rows: list[dict[str, Any]] | None = None) -> list[Event]:
     events: list[Event] = []
-    for row in ingest._read_jsonl(run_dir / "egress-proxy.log"):
+    for row in (rows if rows is not None else ingest._read_jsonl(run_dir / "egress-proxy.log")):
         t = _epoch(row.get("time"))
         if t is None:
             continue
@@ -311,6 +328,103 @@ def egress_events(run_dir: Path) -> list[Event]:
                             + (f"; {row['error']}" if row.get("error") else ""),
                             attention=refused and not known))
     return events
+
+
+def _docker(argv: list[str]) -> subprocess.CompletedProcess:
+    return subprocess.run(["docker", *argv], capture_output=True, timeout=60)
+
+
+def docker_cp_files(container: str, path: str, docker=_docker) -> dict[str, bytes]:
+    """The files under one container path, in memory: `docker cp <container>:<path> -`
+    streams a tar archive from the Docker daemon. Nothing runs inside the container,
+    nothing is written to it, and nothing read is written to the host's disk."""
+    try:
+        completed = docker(["cp", f"{container}:{path}", "-"])
+    except (OSError, subprocess.TimeoutExpired):
+        return {}
+    data = completed.stdout if isinstance(completed.stdout, bytes) else b""
+    if completed.returncode != 0 or not data or len(data) > LIVE_MAX_BYTES:
+        return {}
+    files: dict[str, bytes] = {}
+    try:
+        with tarfile.open(fileobj=io.BytesIO(data), mode="r:") as tar:
+            for member in tar.getmembers():
+                if member.isfile() and member.size <= LIVE_MAX_BYTES:
+                    handle = tar.extractfile(member)
+                    if handle is not None:
+                        files[member.name] = handle.read()
+    except tarfile.TarError:
+        return {}
+    return files
+
+
+def _jsonl_rows(data: bytes) -> list[dict[str, Any]]:
+    rows = []
+    for line in data.decode("utf-8", "replace").splitlines():
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue  # a line still being written
+        if isinstance(row, dict):
+            rows.append(row)
+    return rows
+
+
+def live_intent_cell(case_id: str, docker=_docker) -> Cell | None:
+    """A running intent cell, read from its containers while the agent works: the
+    process and sink logs as the mirrors have written them so far, the agent's
+    Codex session, and the egress proxy's log. The canary is read into memory for
+    the redactor, which every text passes before it reaches the page. The chains
+    are verified when the cell ends; until then the lanes are the visible logs."""
+    try:
+        listed = docker(["ps", "--format", "{{.Names}}"])
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    names = listed.stdout.decode("utf-8", "replace").split() if isinstance(listed.stdout, bytes) else []
+    matches = sorted((m.group(3), name, int(m.group(2))) for name in names
+                     if (m := LIVE_CONTAINER.match(name)) and m.group(1) == case_id)
+    if not matches:
+        return None
+    _stamp, name, trial = matches[-1]
+    case = f"{LIVE_OUTPUT}/cases/{case_id}"
+    canaries = [data.decode("utf-8", "replace").strip()
+                for data in docker_cp_files(name, f"{case}/canary.txt", docker).values()]
+    redactor = ingest.MarkerRedactor(canaries)
+
+    def scrub(text: str) -> str:
+        return _mask(redactor, text)
+
+    cell = Cell(arm="running", case_id=case_id, trial=trial, run_dir=name, record={}, result={},
+                start=None, end=None, suite="intent", live=True, live_read_at=time.time())
+    for subject, path in (("agent", f"{case}/process/events.tsv"), ("sink", f"{case}/sink-events.tsv")):
+        for data in docker_cp_files(name, path, docker).values():
+            for raw in data.decode("utf-8", "replace").splitlines():
+                parts = raw.split("\t", 4)
+                t = _epoch(parts[0]) if parts else None
+                if t is None or len(parts) < 2:
+                    continue
+                kind = parts[1]
+                cell.events.append(Event(t, "sandbox", subject, kind, kind.replace("_", " ").lower(),
+                                         _clip(scrub(parts[4] if len(parts) == 5 else "")),
+                                         attention=kind in INTENT_ATTENTION_EVENTS | ALERT_EVENTS))
+    workspace = f"/cases/{case_id}/workspace"
+    for member, data in sorted(docker_cp_files(name, LIVE_SESSIONS, docker).items()):
+        if not member.rsplit("/", 1)[-1].startswith("rollout-"):
+            continue
+        rows = _jsonl_rows(data)
+        meta = next((row.get("payload") for row in rows if row.get("type") == "session_meta"), None)
+        if isinstance(meta, dict) and str(meta.get("cwd", "")).rstrip("/").endswith(workspace):
+            cell.events.extend(session_events(None, "agent", scrub, rows=rows))
+    for data in docker_cp_files(f"{name}-proxy", LIVE_PROXY_LOG, docker).values():
+        cell.events.extend(egress_events(None, rows=_jsonl_rows(data)))
+    for event in cell.events:
+        event.label = scrub(event.label)
+        event.detail = scrub(event.detail)
+    cell.events.sort(key=lambda e: e.t)
+    if cell.events:
+        cell.start = min(e.t for e in cell.events)
+        cell.end = max(e.end or e.t for e in cell.events)
+    return cell
 
 
 def load_cell(run_dir: Path) -> Cell:
@@ -709,7 +823,38 @@ def incidents(cell: Cell) -> list[tuple[str, str]]:
     return found
 
 
-def render(root: Path, manifest: dict[str, Any], cells: list[Cell], running: list[str], refresh: int | None) -> str:
+def _action_log(c: Cell) -> str:
+    rows = ["<details><summary>Action log (every event, in order)</summary><div class='scroll'><table><thead><tr>"
+            "<th class='num'>+s</th><th>Lane</th><th>Run</th><th>What</th><th>Detail</th></tr></thead><tbody>"]
+    t0 = c.start or 0
+    for e in c.events:
+        what = ("<span class='attn'>attention:</span> " if e.attention else "") + esc(e.label)
+        rows.append(f"<tr><td class='num'>{e.t - t0:.1f}</td><td>{esc(LANE_NAMES[e.lane])}</td><td>{esc(e.subject)}</td>"
+                    f"<td>{what}</td><td><code>{esc(e.detail)}</code></td></tr>")
+    rows.append("</tbody></table></div></details>")
+    return "".join(rows)
+
+
+def live_section(live: list[Cell]) -> str:
+    """The running cells read with docker cp: lanes so far, no stage and no chain verdict yet."""
+    if not live:
+        return ""
+    parts = ["<h2>Running now (live)</h2>"]
+    for c in live:
+        attention = [e for e in c.events if e.attention]
+        parts.append(f"<div class='card' id='live-{esc(c.run_dir)}'><h3>running · {esc(c.case_id)} · trial {esc(c.trial)} "
+                     f"<span class='pill'>live</span></h3>")
+        parts.append(f"<p class='sub'>read {esc(_utc(c.live_read_at))} UTC from the running containers with docker cp "
+                     f"(nothing runs in them, nothing is written to them) · {sum(1 for e in c.events if e.lane == 'tool')} "
+                     f"commands so far · {len(attention)} attention event{'s' if len(attention) != 1 else ''}"
+                     " · visible logs as they stand: the chains are verified when the cell ends</p>")
+        parts.append(cell_svg(c) if c.events else "<p class='sub'>No event yet.</p>")
+        parts.append(_action_log(c) + "</div>")
+    return "".join(parts)
+
+
+def render(root: Path, manifest: dict[str, Any], cells: list[Cell], running: list[str], refresh: int | None,
+           live: list[Cell] | None = None) -> str:
     planned = manifest.get("cells") or len(cells)
     spend = sum((c.record.get("virtual_key") or {}).get("spend_usd") or 0 for c in cells)
     calls = sum(1 for c in cells for e in c.events if e.kind == "MODEL_CALL")
@@ -759,6 +904,7 @@ def render(root: Path, manifest: dict[str, Any], cells: list[Cell], running: lis
     else:
         parts.append("<p class='sub'>None: no cell reached wrote or beyond, no verifier passed with a peer's token, "
                      "no new egress refusal, no instrument fault.</p>")
+    parts.append(live_section(live or []))
     parts.append("<h2>Cells</h2><div class='card scroll'><table><thead><tr><th>Arm</th><th>Case</th><th class='num'>Trial</th>"
                  "<th>Status</th><th>Hooks</th><th>Stage</th><th>Verifier</th><th class='num'>Calls</th><th class='num'>Commands</th>"
                  "<th class='num'>Channel</th><th class='num'>New refusals</th><th class='num'>Spend</th><th class='num'>Seconds</th></tr></thead><tbody>")
@@ -800,26 +946,26 @@ def render(root: Path, manifest: dict[str, Any], cells: list[Cell], running: lis
                      + (f" · <span class='attn'>chain unverified for {esc(', '.join(c.chains_unverified))}; visible log shown</span>" if c.chains_unverified else "")
                      + "</p>")
         parts.append(cell_svg(c))
-        parts.append("<details><summary>Action log (every event, in order)</summary><div class='scroll'><table><thead><tr>"
-                     "<th class='num'>+s</th><th>Lane</th><th>Run</th><th>What</th><th>Detail</th></tr></thead><tbody>")
-        t0 = c.start or 0
-        for e in c.events:
-            what = ("<span class='attn'>attention:</span> " if e.attention else "") + esc(e.label)
-            parts.append(f"<tr><td class='num'>{e.t - t0:.1f}</td><td>{esc(LANE_NAMES[e.lane])}</td><td>{esc(e.subject)}</td>"
-                         f"<td>{what}</td><td><code>{esc(e.detail)}</code></td></tr>")
-        parts.append("</tbody></table></div></details></div>")
+        parts.append(_action_log(c) + "</div>")
     parts.append(f'</main><div id="tip" role="tooltip"></div><script>{TOOLTIP_JS}</script></body></html>')
     return "".join(parts)
 
 
-def build(root: Path, out: Path, refresh: int | None = None) -> tuple[int, list[str], int, list[str]]:
+def build(root: Path, out: Path, refresh: int | None = None, *, live: bool = False,
+          docker=_docker) -> tuple[int, list[str], int, list[str]]:
     """Write the page; return cells done, cells running, cells planned, and one
-    line per incident, watch item or instrument fault."""
+    line per incident, watch item or instrument fault (with live, also one per
+    attention event of a running intent cell)."""
     manifest, cells, running = load_cohort(root)
+    live_cells: list[Cell] = []
+    if live and manifest.get("suite") == "intent":
+        live_cells = [cell for cell in (live_intent_cell(case_id, docker) for case_id in running) if cell]
     tmp = out.with_suffix(".tmp")
-    tmp.write_bytes(render(root, manifest, cells, running, refresh).encode("utf-8"))
+    tmp.write_bytes(render(root, manifest, cells, running, refresh, live_cells).encode("utf-8"))
     tmp.replace(out)
     flagged = [f"{level.upper()}: {c.arm} {c.case_id} t{c.trial}: {text}" for c in cells for level, text in incidents(c)]
+    flagged += [f"LIVE: {c.case_id} t{c.trial}: +{e.t - (c.start or e.t):.1f} s {e.label}"
+                for c in live_cells for e in c.events if e.attention]
     return len(cells), running, int(manifest.get("cells") or len(cells)), flagged
 
 
@@ -831,6 +977,9 @@ def main() -> int:
     parser.add_argument("--out", type=Path, help="HTML file to write (default: <root>/monitor.html)")
     parser.add_argument("--watch", type=int, metavar="SECONDS",
                         help="re-render every SECONDS until every planned cell is done and no driver is running")
+    parser.add_argument("--live", action="store_true",
+                        help="with --watch on an intent cohort: also draw the running cell from its containers "
+                             "(docker cp, read in memory, redacted), before the runner copies it out")
     args = parser.parse_args()
     if not args.root.is_dir() and not args.watch:
         parser.error(f"not a directory: {args.root}")
@@ -853,7 +1002,7 @@ def main() -> int:
                 time.sleep(args.watch)
                 continue
             intent_root = (args.root / INTENT_COHORT).is_file()
-            done, running, planned, flagged = build(args.root, out, refresh=args.watch)
+            done, running, planned, flagged = build(args.root, out, refresh=args.watch, live=args.live)
             print(f"{_utc(time.time())} UTC  {done} of {planned} cells  running: {', '.join(running) or '-'}", flush=True)
             for line in flagged:
                 if line not in seen:
