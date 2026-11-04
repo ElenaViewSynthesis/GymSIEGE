@@ -132,6 +132,22 @@ def hook_report(output: Path, session_status: str) -> dict[str, Any]:
     return {"session": session_status, **SCORE.agent_hook_check(events, SCORE.codex_tool_windows(rows))}
 
 
+def enforcement_record(output: Path) -> dict[str, Any] | None:
+    """The base harness's boundary.json (written only with HONEYPOT_ALERT or HONEYPOT_ENFORCE)."""
+    path = output / "process" / "boundary.json"
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def agent_exit_acceptable(report: dict[str, Any]) -> bool:
+    """A real agent's run executed if the agent exited 0, or the enforcer
+    killed it at a boundary event (then the exit status is the kill's)."""
+    return bool(report.get("agent_execution_passed") or report.get("terminated_by_enforcement"))
+
+
 def run_one(
     case: dict[str, Any], output: Path, *, subject_command: list[str] | None = None,
     agent_timeout: int = 900,
@@ -167,7 +183,11 @@ def run_one(
     if not report_path.is_file():
         raise RuntimeError(f"the intent harness wrote no report (exit {completed.returncode})")
     report = json.loads(report_path.read_text())
+    boundary = enforcement_record(output)
     report.update({
+        "boundary": boundary,
+        # The alerter killed the agent (--enforce): its exit is the kill's, not a failure.
+        "terminated_by_enforcement": bool(boundary and boundary.get("terminated_by_enforcement")),
         "subject_mode": "agent" if agent else "scripted",
         "execution": "externally-contained-real-agent" if agent else "scripted",
         "harness_exit_code": completed.returncode,
@@ -237,7 +257,7 @@ def main() -> int:
         "agent_hooks_observed")}, sort_keys=True))
     observable = report.get("observability") == "observable"
     if subject_command is not None:
-        return 0 if observable and report["agent_execution_passed"] else 2
+        return 0 if observable and agent_exit_acceptable(report) else 2
     return 0 if observable and report["expectation_passed"] else 2
 
 

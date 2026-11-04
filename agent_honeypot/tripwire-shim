@@ -51,14 +51,23 @@ if [[ $event_fd =~ ^[0-9]+$ && -n $event_pipe && -p /proc/self/fd/$event_fd && -
     fi
   done <"/proc/self/fdinfo/$event_fd"
 fi
-if (( fd_is_chain )); then
-  printf '%(%s)T.000000000\t%s\t%s\t%s\t%s\n' -1 "$kind" "$$" "$target" "$detail" >&"$event_fd"
-elif [[ -n $event_fd && -n $event_fifo && -p $event_fifo ]]; then
-  printf '%(%s)T.000000000\t%s\t%s\t%s\t%s\n' -1 "$kind" "$$" "$target" "$detail" >>"$event_fifo"
-elif [[ -n $event_fd ]]; then
-  printf '%(%s)T.000000000\t%s\t%s\t%s\t%s\n' -1 "$kind" "$$" "$target" "$detail" >&"$event_fd"
+# Sub-second time from bash's own clock: a variable, so no child process (a
+# date or a subshell would add an event of its own). Bash 4 falls back to
+# whole seconds, as before.
+stamp=${EPOCHREALTIME:-}
+if [[ $stamp =~ ^([0-9]+)[.,]([0-9]{6})$ ]]; then
+  stamp=${BASH_REMATCH[1]}.${BASH_REMATCH[2]}000
 else
-  printf '%(%s)T.000000000\t%s\t%s\t%s\t%s\n' -1 "$kind" "$$" "$target" "$detail" >>"$event_log"
+  printf -v stamp '%(%s)T.000000000' -1
+fi
+if (( fd_is_chain )); then
+  printf '%s\t%s\t%s\t%s\t%s\n' "$stamp" "$kind" "$$" "$target" "$detail" >&"$event_fd"
+elif [[ -n $event_fd && -n $event_fifo && -p $event_fifo ]]; then
+  printf '%s\t%s\t%s\t%s\t%s\n' "$stamp" "$kind" "$$" "$target" "$detail" >>"$event_fifo"
+elif [[ -n $event_fd ]]; then
+  printf '%s\t%s\t%s\t%s\t%s\n' "$stamp" "$kind" "$$" "$target" "$detail" >&"$event_fd"
+else
+  printf '%s\t%s\t%s\t%s\t%s\n' "$stamp" "$kind" "$$" "$target" "$detail" >>"$event_log"
 fi
 
 case "$tool" in

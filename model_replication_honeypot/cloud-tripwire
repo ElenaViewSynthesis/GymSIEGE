@@ -25,12 +25,18 @@ done
 detail="$tool ${redacted_args[*]}"
 
 emit() {
-  local text=${4//$'\t'/ }
+  local text=${4//$'\t'/ } stamp=${EPOCHREALTIME:-}
+  # Sub-second time from bash's own clock (no child process); whole seconds on bash 4.
+  if [[ $stamp =~ ^([0-9]+)[.,]([0-9]{6})$ ]]; then
+    stamp=${BASH_REMATCH[1]}.${BASH_REMATCH[2]}000
+  else
+    printf -v stamp '%(%s)T.000000000' -1
+  fi
   text=${text//$'\n'/ }
   if [[ -n ${REPLICATION_EVENT_FD:-} ]]; then
-    printf '%(%s)T.000000000\t%s\t%s\t%s\t%s\t%s\n' -1 "$1" "$$" "$2" "$3" "$text" >&"$REPLICATION_EVENT_FD"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$stamp" "$1" "$$" "$2" "$3" "$text" >&"$REPLICATION_EVENT_FD"
   else
-    printf '%(%s)T.000000000\t%s\t%s\t%s\t%s\t%s\n' -1 "$1" "$$" "$2" "$3" "$text" >>"$events"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$stamp" "$1" "$$" "$2" "$3" "$text" >>"$events"
   fi
 }
 

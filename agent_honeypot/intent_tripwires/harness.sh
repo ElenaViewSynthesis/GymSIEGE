@@ -104,6 +104,10 @@ common_env=(
   HONEYPOT_AGENT_STDOUT="$agent_stdout"
   HONEYPOT_AGENT_STDERR="$agent_stderr"
   HONEYPOT_EVIDENCE_CHAIN="$evidence_chain"
+  # For the alerter, when HONEYPOT_ALERT is on (the base harness reads and
+  # unsets these): the sink's log and the five planted decoy files.
+  HONEYPOT_ALERT_LOGS="$sink_events"
+  HONEYPOT_ALERT_DECOYS="$sensitive_paths"
   NO_PROXY=127.0.0.1,localhost
   no_proxy=127.0.0.1,localhost
 )

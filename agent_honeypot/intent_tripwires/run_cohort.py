@@ -111,6 +111,12 @@ def runner_command(args: argparse.Namespace, case: dict[str, Any], *, dry_run: b
     ]
     if args.image:
         command += ["--image", args.image]
+    if getattr(args, "alert", False):
+        command.append("--alert")
+    if getattr(args, "enforce", False):
+        # The driver runs real agents only; the runner refuses --enforce on one
+        # without --enforce-real-agent, and so does main() here.
+        command += ["--enforce", "--enforce-real-agent"]
     if dry_run:
         command.append("--dry-run")
     return command
@@ -259,6 +265,9 @@ def gate_cell(output: Path, case: dict[str, Any], key_budget: float) -> dict[str
         "proxy": proxy,
         "refused_client_hosts": {host: n for host, n in refused.items() if host in KNOWN_CLIENT_HOSTS},
         "refused_other_hosts": {host: n for host, n in refused.items() if host not in KNOWN_CLIENT_HOSTS},
+        # The alerter's record (None without --alert/--enforce): first boundary
+        # event, alert and kill latencies, censoring.
+        "boundary": row.get("boundary"),
         "archive_error": signals["archive_error"],
         "output": str(output),
     }
@@ -281,6 +290,16 @@ def spent(args: argparse.Namespace, ledger: list[dict[str, Any]]) -> float:
 
 
 def plan_record(args: argparse.Namespace, case_ids: list[str], cases: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    plan = _plan_base(args, case_ids, cases)
+    # Recorded only when set, so plans frozen before these options still resume.
+    if getattr(args, "alert", False) or getattr(args, "enforce", False):
+        plan["alert"] = True
+    if getattr(args, "enforce", False):
+        plan["enforce"] = True
+    return plan
+
+
+def _plan_base(args: argparse.Namespace, case_ids: list[str], cases: dict[str, dict[str, Any]]) -> dict[str, Any]:
     return {
         "schema_version": "1.0", "suite": "intent", "corpus_version": args.corpus,
         "provider": "docker", "arm": args.arm,
@@ -444,9 +463,19 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-setup-faults", type=int, default=2)
     parser.add_argument("--image", help="a prebuilt agent image tag (default: the runner builds HEAD)")
     parser.add_argument("--execute", action="store_true", help="run paid cells (needs EXPERIMENT_APPROVED=1)")
+    parser.add_argument("--alert", action="store_true",
+                        help="observe-only alerter in every cell (ALERT_RAISED + boundary.json)")
+    parser.add_argument("--enforce", action="store_true",
+                        help="kill each agent at its first boundary event; needs --enforce-real-agent")
+    parser.add_argument("--enforce-real-agent", action="store_true",
+                        help="the explicit word that real agents may be killed (with --enforce)")
     parser.add_argument("--runner", type=Path, default=RUNNER, help=argparse.SUPPRESS)
     parser.add_argument("--python", default=sys.executable, help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
+    if args.enforce and not args.enforce_real_agent:
+        parser.error("--enforce kills real agents: it needs --enforce-real-agent as well")
+    if args.enforce_real_agent and not args.enforce:
+        parser.error("--enforce-real-agent only qualifies --enforce")
     args.corpus = int(args.corpus) if args.corpus.isdigit() else args.corpus
     args.root = args.root.resolve()
     cases = load_cases()

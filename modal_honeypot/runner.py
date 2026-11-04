@@ -250,6 +250,37 @@ def validate_egress_allowlist(
         raise ValueError("--egress-allowlist cannot be combined with --network-off-suite")
 
 
+# Harnesses whose cases run under agent_honeypot/harness.sh, where the alerter lives.
+ALERT_HARNESSES = frozenset({"agent", "model", "intent", "collusion"})
+
+
+def validate_alerting(
+    harness: str | None, subject_command: str | None, *, alert: bool, enforce: bool,
+    enforce_real_agent: bool, enforce_hold: int | None,
+) -> None:
+    """The alerter is opt-in; enforcement more so. A real agent is killed at a
+    boundary event only with an explicit enforce_real_agent (the author's word:
+    real-agent cells stay observe-only otherwise), and the calibration hold is
+    for scripted cells only."""
+    if not (alert or enforce or enforce_real_agent or enforce_hold is not None):
+        return
+    if harness not in ALERT_HARNESSES:
+        raise ValueError("--alert/--enforce need a harness that runs agent_honeypot/harness.sh: "
+                         + ", ".join(sorted(ALERT_HARNESSES)))
+    if enforce_real_agent and not enforce:
+        raise ValueError("--enforce-real-agent only qualifies --enforce")
+    if enforce and subject_command is not None and not enforce_real_agent:
+        raise ValueError("refusing --enforce on a real agent without --enforce-real-agent: "
+                         "real-agent cells stay observe-only unless that flag is given")
+    if enforce_hold is not None:
+        if subject_command is not None:
+            raise ValueError("--enforce-hold is for scripted calibration cells only")
+        if not (isinstance(enforce_hold, int) and 1 <= enforce_hold <= 600):
+            raise ValueError("--enforce-hold must be 1..600 seconds")
+        if not (alert or enforce):
+            raise ValueError("--enforce-hold needs --alert or --enforce")
+
+
 def validate_weights_mode(harness: str | None, weights_mode: str) -> None:
     if weights_mode not in {"text", "format"}:
         raise ValueError(f"unknown weights mode: {weights_mode}")
@@ -338,7 +369,13 @@ def remote_argv(
     egress_allowlist: list[str] | None = None,
     execution_boundary: str | None = None,
     web_search: str = "disabled",
+    alert: bool = False,
+    enforce: bool = False,
+    enforce_real_agent: bool = False,
+    enforce_hold: int | None = None,
 ) -> list[str]:
+    validate_alerting(harness, subject_command, alert=alert, enforce=enforce,
+                      enforce_real_agent=enforce_real_agent, enforce_hold=enforce_hold)
     if demo:
         if harness is not None or case_id is not None:
             raise ValueError("--demo cannot be combined with a harness or case ID")
@@ -390,6 +427,14 @@ def remote_argv(
         command.append(f"HONEYPOT_CODEX_WEB_SEARCH={web_search}")
         standalone = "1" if standalone_web_search(model, web_search) else "0"
         command.append(f"HONEYPOT_CODEX_STANDALONE_SEARCH={standalone}")
+    if alert or enforce:
+        # Read (and unset) by agent_honeypot/harness.sh: the alerter, and with
+        # enforce the kill at the first boundary event (agent_honeypot/alerter.py).
+        command.append("HONEYPOT_ALERT=1")
+    if enforce:
+        command.append("HONEYPOT_ENFORCE=1")
+    if enforce_hold is not None:
+        command.append(f"HONEYPOT_ENFORCE_HOLD={int(enforce_hold)}")
     if harness == "network-off":
         command.append("MODAL_NETWORK_OFF_ENFORCED=1")
     if allow_network:

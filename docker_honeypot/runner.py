@@ -417,6 +417,20 @@ def run(
     }
     standalone_search = agent and base.standalone_web_search(getattr(args, "model", None), web_search)
     runtime_policy["standalone_web_search"] = standalone_search
+    alert = bool(getattr(args, "alert", False))
+    enforce = bool(getattr(args, "enforce", False))
+    enforce_real_agent = bool(getattr(args, "enforce_real_agent", False))
+    enforce_hold = getattr(args, "enforce_hold", None)
+    base.validate_alerting(args.harness, args.subject_command, alert=alert, enforce=enforce,
+                           enforce_real_agent=enforce_real_agent, enforce_hold=enforce_hold)
+    # Both settings, always, so every run record says whether the alerter ran
+    # and whether it could kill.
+    runtime_policy.update({
+        "alert": alert or enforce,
+        "enforce": enforce,
+        "enforce_real_agent": enforce_real_agent,
+        "enforce_hold_seconds": enforce_hold,
+    })
     if key_alias is not None:
         runtime_policy.update({
             "secrets": [f"virtual-key:{key_alias}"],
@@ -436,6 +450,8 @@ def run(
         egress_allowlist=egress_allowlist,
         execution_boundary=BOUNDARY,
         web_search=web_search,
+        alert=alert, enforce=enforce, enforce_real_agent=enforce_real_agent,
+        enforce_hold=enforce_hold,
     )
     name = base.output_name(
         args.harness, args.case_id, demo=False, evidence_chain=True, weights_mode="text",
@@ -643,6 +659,16 @@ def main() -> int:
     parser.add_argument("--sandbox-timeout", type=int, default=POLICY["timeout"])
     parser.add_argument("--exec-timeout", type=int, default=1500)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--alert", action="store_true",
+                        help="run agent_honeypot/alerter.py: ALERT_RAISED at the first boundary event, "
+                             "and a boundary.json latency record per case")
+    parser.add_argument("--enforce", action="store_true",
+                        help="also kill the agent's process tree at that event (implies --alert)")
+    parser.add_argument("--enforce-real-agent", action="store_true",
+                        help="required, beside --enforce, to enforce on a real agent (--subject-command)")
+    parser.add_argument("--enforce-hold", type=int,
+                        help="scripted calibration: hold each case's command SECONDS after it ends, "
+                             "with a detached sleeper, so a kill has something to kill")
     args = parser.parse_args()
     if args.sandbox_timeout < args.exec_timeout or args.sandbox_timeout > 86400:
         parser.error("sandbox timeout must cover exec timeout and be at most 86400 seconds")

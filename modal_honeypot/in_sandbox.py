@@ -68,6 +68,19 @@ def case_ids(mode: str) -> list[str]:
     return [json.loads(line)["id"] for line in dataset.read_text().splitlines() if line.strip()]
 
 
+def boundary_record(case_output: Path) -> dict[str, object] | None:
+    """The base harness's boundary.json: in the case folder (propagation suite)
+    or in its process/ folder (the harnesses that wrap the base harness)."""
+    for path in (case_output / "boundary.json", case_output / "process" / "boundary.json"):
+        if path.is_file():
+            try:
+                data = json.loads(path.read_text())
+            except (OSError, ValueError):
+                return {"error": f"unreadable boundary record: {path.name}"}
+            return data if isinstance(data, dict) else None
+    return None
+
+
 def run_case(
     mode: str, case_id: str, output_root: Path, *, subject_command: str | None = None,
     agent_timeout: int = 900,
@@ -144,6 +157,9 @@ def run_case(
             for item in report.get("evidence", []) if isinstance(item, dict)
         ],
         "time_to_first_coordination_s": report.get("time_to_first_coordination_s"),
+        # The alerter's latency record (agent_honeypot/boundary_events.py), when
+        # the run had --alert or --enforce; None otherwise.
+        "boundary": boundary_record(case_output),
         "observability": observability,
         "evidence_chains": [chain.get("valid") for chain in chains],
         "mirror_events": [chain.get("mirror_events") for chain in chains],

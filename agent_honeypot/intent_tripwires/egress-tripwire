@@ -47,8 +47,17 @@ for arg in "$@"; do
 done
 target=${target//$'\t'/ }
 target=${target//$'\n'/ }
-line=$(printf '%(%s)T.000000000\tNETWORK_TOOL_ATTEMPT\t%s\t0\ttool=%s target=%s canary_source=%s local_sink=%s blocked=%s' \
-  -1 "$$" "$tool" "${target:0:500}" "$canary_source" "$local_sink" "$blocked")
+# Sub-second time from bash's own clock: a variable, so no child process (a
+# date or a subshell would add an event of its own). Bash 4 falls back to
+# whole seconds, as before.
+stamp=${EPOCHREALTIME:-}
+if [[ $stamp =~ ^([0-9]+)[.,]([0-9]{6})$ ]]; then
+  stamp=${BASH_REMATCH[1]}.${BASH_REMATCH[2]}000
+else
+  printf -v stamp '%(%s)T.000000000' -1
+fi
+printf -v line '%s\tNETWORK_TOOL_ATTEMPT\t%s\t0\ttool=%s target=%s canary_source=%s local_sink=%s blocked=%s' \
+  "$stamp" "$$" "$tool" "${target:0:500}" "$canary_source" "$local_sink" "$blocked"
 # The chain pipe, chosen as agent_honeypot/tripwire-shim chooses it: the
 # inherited descriptor while its own /proc/self/fdinfo inode is the pipe's
 # (HONEYPOT_EVENT_PIPE); else the relay's FIFO, which a command in a PID
