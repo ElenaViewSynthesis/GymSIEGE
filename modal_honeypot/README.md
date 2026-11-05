@@ -294,3 +294,99 @@ bytes or any token matching the LiteLLM-shaped key-prefix heuristic. Unreadable
 artifacts also fail closed. An agent dry run mints nothing and prints only a
 descriptor such as `virtual-key:collusion/CLH-037/t1/<timestamp>`; the static
 `POLICY["secrets"]` and every scripted runtime policy remain empty.
+
+### Modal-served open-weight routes (GLM 5.3, Kimi K3)
+
+Modal serves GLM 5.3 Flash, GLM 5.3 and Kimi K3 as Shared Endpoints: Modal
+runs the GPUs and bills per token. These are the per-token rates on Modal's
+supported-models page on 2026-11-05. OpenRouter's Modal listings charge the
+same:
+
+| Model | Input / cached / output, per M tokens |
+|---|---|
+| GLM 5.3 Flash (NVFP4) | $0.15 / $0.03 / $0.50 |
+| GLM 5.3 Flash (no quantisation in the name) | $0.45 / $0.09 / $1.50 |
+| GLM 5.3 | $1.40 / $0.26 / $4.40 |
+| Kimi K3 | $3.00 / $0.30 / $15.00 |
+
+**Credits.** Modal's docs say "Credits included with your plan cannot be used
+for Shared Endpoint usage". They do not say whether granted startup or
+academic credits can, so check the workspace's billing page before counting
+on credits. Calls through OpenRouter are billed to OpenRouter credits, never to
+Modal credits.
+
+Dedicated Endpoints bill for compute instead. Modal's pricing page says plan
+credits cover compute, though the Endpoints docs do not say so for Dedicated
+Endpoints in particular. A 2.8T-parameter Kimi K3 would hold a multi-GPU node
+for as long as the endpoint is up. That costs far more than a lure cohort's
+tokens: the 16-cell Opus lure cohort spent USD 3.76 in all.
+
+The gateway can reach the Shared Endpoints in two ways.
+
+**Directly.** Create one Shared Endpoint per model in Modal's Endpoints
+dashboard.
+- It serves the OpenAI-compatible Chat Completions and Responses APIs (and an
+  Anthropic-compatible Messages API).
+- It authenticates with a proxy token sent as
+  `Authorization: Bearer wk-<id>.ws-<secret>`.
+- Modal recommends a `Modal-Routing-Affinity-Key` header to keep a multi-turn
+  conversation on one container.
+- Each model has a concurrency limit shared across the workspace; requests
+  above it get HTTP 429.
+
+`gateway_hooks/modal_routes.py` registers this path for Kimi K3 as the route
+`kimi-k3-modal-direct`: the model `openai/moonshotai/Kimi-K3`, with two values
+read from the gateway's environment:
+- `api_base` from `os.environ/MODAL_KIMI_K3_BASE_URL`, the endpoint URL
+  ending in `/v1`;
+- `api_key` from `os.environ/BEARER`, the proxy token joined as
+  `wk-<id>.ws-<secret>`.
+
+How the route behaves:
+- LiteLLM sends Codex's Responses request to the endpoint's own `/responses`.
+- Reasoning is on by default there, so the route adds nothing to the body.
+- It charges Modal's Shared Endpoint rates for Kimi K3. A Dedicated Endpoint
+  is billed for compute instead, and LiteLLM's spend is then only an estimate
+  at the Shared rates.
+- The gateway sends no `Modal-Routing-Affinity-Key`, so one cell's turns may
+  land on different containers.
+
+The script's check reads the endpoint's `/v1/models` with those two variables
+exported from `.env.local`.
+
+On 2026-11-05, a direct two-turn Responses call to the endpoint passed:
+- turn 1, which offered a function tool, returned a reasoning item and a valid
+  tool call;
+- turn 2 answered correctly once the turn-1 output items were sent back
+  unmodified with the tool's result.
+
+**Through OpenRouter.** The script's other three routes take this path. Each
+pins OpenRouter's provider routing to one Modal endpoint tag with fallbacks
+off. A request Modal cannot serve then fails instead of
+going to another provider.
+
+| Gateway route | OpenRouter model | Modal tag |
+|---|---|---|
+| `glm-5.3-flash-modal` | `z-ai/glm-5.3-flash` | `modal/fp4` (USD 0.15 input, the NVFP4 deployment's price) |
+| `glm-5.3-modal` | `z-ai/glm-5.3` | `modal` |
+| `kimi-k3-modal` | `moonshotai/kimi-k3` | `modal/mxfp4` |
+
+Kimi K3's Modal tag is `modal/mxfp4`, not `modal/fp4`. A `modal/fp4` pin would
+match no Kimi K3 endpoint, and with fallbacks off every request would fail.
+
+Each route has the following settings:
+- It refers to `os.environ/OPENROUTER_API_KEY` rather than storing the key.
+  The key sits in `.env.local`, and the gateway's Compose service passes it
+  through.
+- It charges the listed per-token prices, so a cell's `max_budget` holds.
+- It turns reasoning on. It also asks for the reasoning items back in a form
+  Codex returns unmodified (`include: reasoning.encrypted_content`).
+
+The script's default mode checks the tags, the tool and reasoning support, and
+the prices against OpenRouter's public catalogue, for free. `--register` adds
+the routes to the gateway. `--probe` makes one paid tool round trip per route
+and needs `EXPERIMENT_APPROVED=1`. The full setup is in
+`modal-docs/modal-inference-provider.md`.
+
+Each model is a cohort of its own, never pooled with a GPT or Opus cohort.
+Start with a two-cell pilot, as for Luna: one pair, both forms, short budget.
