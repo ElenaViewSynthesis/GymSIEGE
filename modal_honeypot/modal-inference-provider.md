@@ -103,7 +103,7 @@ OpenRouter drops a parameter an endpoint does not support unless
 `require_parameters` is set, and the routes do not set it. Codex sends
 `tool_choice: "auto"`, which is the default anyway.
 
-`gateway_hooks/modal_routes.py` holds these values. Its default mode checks
+`modal_honeypot/modal_routes.py` holds these values. Its default mode checks
 them against the live catalogue for free.
 
 ## How a lure run reaches Modal
@@ -174,7 +174,7 @@ Each route's database entry, as `--register` sends it:
 ## The direct route
 
 `kimi-k3-modal-direct` calls a Kimi K3 Modal Endpoint (see
-`modal-docs/modal-endpoints.md`) through LiteLLM's OpenAI provider:
+`modal_honeypot/modal-endpoints.md`) through LiteLLM's OpenAI provider:
 
 ```json
 {
@@ -254,14 +254,14 @@ author's word.
    `--register` would send:
 
    ```bash
-   .venv/bin/python gateway_hooks/modal_routes.py --payloads
+   .venv/bin/python modal_honeypot/modal_routes.py --payloads
    ```
 
 4. **Register.** With `LITELLM_MASTER_KEY` exported from `.env.local`, add the
    routes the gateway lacks and verify them through `/model/info`:
 
    ```bash
-   .venv/bin/python gateway_hooks/modal_routes.py --register
+   .venv/bin/python modal_honeypot/modal_routes.py --register
    ```
 
    A route that already exists is compared field by field and never
@@ -282,7 +282,7 @@ author's word.
    - the spend is above zero and within the cap.
 
    ```bash
-   EXPERIMENT_APPROVED=1 .venv/bin/python gateway_hooks/modal_routes.py --probe --report <path>.json
+   EXPERIMENT_APPROVED=1 .venv/bin/python modal_honeypot/modal_routes.py --probe --report <path>.json
    ```
 
    The report has no keys in it. Keep it with the cohort's records.

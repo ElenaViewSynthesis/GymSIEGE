@@ -334,7 +334,7 @@ dashboard.
 - Each model has a concurrency limit shared across the workspace; requests
   above it get HTTP 429.
 
-`gateway_hooks/modal_routes.py` registers this path for Kimi K3 as the route
+`modal_honeypot/modal_routes.py` registers this path for Kimi K3 as the route
 `kimi-k3-modal-direct`: the model `openai/moonshotai/Kimi-K3`, with two values
 read from the gateway's environment:
 - `api_base` from `os.environ/MODAL_KIMI_K3_BASE_URL`, the endpoint URL
@@ -386,7 +386,7 @@ The script's default mode checks the tags, the tool and reasoning support, and
 the prices against OpenRouter's public catalogue, for free. `--register` adds
 the routes to the gateway. `--probe` makes one paid tool round trip per route
 and needs `EXPERIMENT_APPROVED=1`. The full setup is in
-`modal-docs/modal-inference-provider.md`.
+`modal_honeypot/modal-inference-provider.md`.
 
 Each model is a cohort of its own, never pooled with a GPT or Opus cohort.
 Start with a two-cell pilot, as for Luna: one pair, both forms, short budget.

@@ -1,5 +1,5 @@
 """The gateway routes for GLM 5.3 and Kimi K3 on Modal through OpenRouter
-(gateway_hooks/modal_routes.py), offline: the route definitions and payloads, the
+(modal_honeypot/modal_routes.py), offline: the route definitions and payloads, the
 catalogue check, the comparison with a registered route, and the probe's stream
 reading and second-turn input. Registration and the probe itself talk to the
 gateway and are run by hand, not here.
@@ -28,7 +28,7 @@ def _load(name, path):
     return module
 
 
-routes = _load("modal_routes", REPO / "gateway_hooks" / "modal_routes.py")
+routes = _load("modal_routes", REPO / "modal_honeypot" / "modal_routes.py")
 hooks = _load("honeypot_gateway_hooks_for_routes", REPO / "gateway_hooks" / "honeypot_gateway_hooks.py")
 runner = _load("modal_honeypot_runner_for_routes", REPO / "modal_honeypot" / "runner.py")
 
